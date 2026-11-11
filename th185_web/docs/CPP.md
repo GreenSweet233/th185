@@ -436,3 +436,112 @@ if (stage == 7 && card_id == 66) return 28;   // Boss27
 
 **下一步：`CardManager.cpp`**（85 张卡）。
 表已解出（`docs/CARDS.md`：VA 0x4CA370，87 项 × 68 字节）。
+
+---
+
+## 8. 已完成：CardManager（`CardManager.hpp` / `.cpp`）
+
+### 8.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/CardManager.hpp` | 卡牌结构、特殊 ID 常量 |
+| `cpp/game/CardManager.cpp` | 87 张卡全表 + 查找 |
+| `scripts/native/cards_cpp_check.py` | 交叉校验（13 项） |
+
+### 8.2 ★ 新发现：`+0x38` / `+0x3C` 是图集格子坐标
+
+这两个字段各有 **87 种不同值**（正好等于卡牌数），最初以为它们与索引相关。
+但实测规律非常整齐：
+
+```
+icon_right == icon_left + 1     87/87 全部成立
+icon_left  全为奇数             87/87
+```
+
+示例：
+
+| 卡 | `+0x38` | `+0x3C` |
+|---|---|---|
+| PENDULUM | 19 | 20 |
+| PENDULUM2 | 17 | 18 |
+| DANGO | 21 | 22 |
+| BLANK | 5 | 6 |
+| NITORI | 145 | 146 |
+
+**这是位图中相邻的两格**——卡牌图标在图集里的位置。
+`+0x38` 是左格、`+0x3C` 是右格，卡牌图标占 2 格宽。
+
+### 8.3 另一个修正：`+0x30` 不是 Cost
+
+之前 `docs/CARDS.md` 推测 `+0x30` 是 Cost。实测：
+
+```
++0x30 的取值分布: {0: 2, 1: 85}
+```
+
+**只有 0 和 1 两种值**，不可能是 Cost 系统（TH185 的 Cost 是真实数值）。
+真正的 Cost 在别处。
+
+### 8.4 卡牌 ID 覆盖
+
+```
+id 唯一且覆盖 0..86（87 张）
+```
+
+四个特殊卡：
+
+| id | 名称 | 作用 |
+|---|---|---|
+| **0** | `BLANK` | 关卡 5 携带 → 强制 Boss26 |
+| **66** | `NITORI` | 关卡 7 携带 → 强制 Boss27 |
+| 85 | `NULL` | 空位 |
+| 86 | `BACK` | 背面 |
+
+这印证 THBWiki 的剧情：魔理沙带空白卡去守矢神社祭典，
+遇到荷取后获得荷取的卡。
+
+### 8.5 验证（13 项）
+
+```
+[PASS] reference table has 87 entries (expect 87)
+[PASS] C++ table has 87 entries (expect 87)
+[PASS] every field of every card matches (0 diffs)
+[PASS] entry size is 68 bytes (17 DWORDs)
+[PASS] icon_right == icon_left + 1 for all 87 cards
+[PASS] icon_left is odd for all 87 cards
+[PASS] reserved field (+0x40) is always 0
+[PASS] all 87 card ids are unique
+[PASS] card ids cover exactly 0..86
+[PASS] BLANK(0) and NITORI(66) exist with the expected names
+[PASS] NULL(85) and BACK(86) exist with the expected names
+[PASS] all card names are printable ASCII
+[PASS] +0x30 holds only [0, 1] (not a real cost column)
+```
+
+### 8.6 一个校验方法上的改进
+
+最初的校验脚本在 Python 里**重复了一遍 87 张卡的数字**，
+这样即使 C++ 表改错了也检查不出来（因为 Python 那份是独立抄的）。
+
+改成**直接正则解析 `CardManager.cpp` 源码**，逐字段对照二进制。
+现在只要有人改动 C++ 表的任何一个数字，校验立刻失败。
+
+**这是「镜像校验」真正有意义的形式**——镜像必须来自被测源码本身，
+而不是另抄一份。
+
+### 8.7 C++ 实现进度
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | 5 项 |
+| `Archive.hpp` / `Archive.cpp` | ✅ | 5 项 |
+| `EclResource.hpp` / `.cpp` | ✅ | 5 项 |
+| `StageScript.hpp` / `.cpp` | ✅ | 5 项 |
+| `WaveSelector.hpp` / `.cpp` | ✅ | 7 项 |
+| **`CardManager.hpp` / `.cpp`** | ✅ | **13 项** |
+| `Difficulty.cpp` | ⬜ | — |
+
+**下一步：`Difficulty.cpp`**（8 档难度）。
+表已解出（`docs/DIFFICULTY.md`：索引 `0x4D1038`，评分上限表 5 项）。

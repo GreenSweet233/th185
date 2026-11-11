@@ -1,0 +1,119 @@
+#include "CardManager.hpp"
+
+namespace th185 {
+
+namespace {
+
+// VA 0x4CA370, 87 entries x 68 bytes, in TABLE ORDER (not sorted by id).
+// Generated from the binary; see docs/CARDS.md.
+//
+// The `fields` array is +0x08..+0x34 verbatim (13 DWORDs, of which the first
+// 12 are stored here and icon_left/icon_right/reserved follow). The semantics
+// of most fields are still unknown, so they are preserved rather than guessed.
+const std::array<CardEntry, CARD_COUNT> kCards = {{
+    CardEntry{"PENDULUM", 1, {1, 3, 0, 8, 0, 999, 0, 0, 1, 0, 1, 0}, 19, 20, 0},
+        CardEntry{"PENDULUM2", 2, {1, 3, 0, 7, 0, 999, 0, 0, 1, 0, 1, 0}, 17, 18, 0},
+        CardEntry{"DANGO", 4, {1, 2, 1, 6, 0, 9, 1, 3, 0, 1, 1, 10}, 21, 22, 0},
+        CardEntry{"NARUMI", 34, {0, 2, 1, 6, 0, 9, 1, 3, 0, 1, 1, 10}, 23, 24, 0},
+        CardEntry{"PACHE", 35, {0, 2, 1, 6, 0, 9, 1, 3, 0, 1, 1, 10}, 25, 26, 0},
+        CardEntry{"MAGICSCROLL", 24, {1, 2, 1, 6, 0, 3, 1, 3, 0, 1, 1, 10}, 67, 68, 0},
+        CardEntry{"FLAN", 57, {0, 2, 4, 6, 0, 3, 1, 3, 0, 1, 1, 25}, 127, 128, 0},
+        CardEntry{"FUTO", 58, {0, 2, 1, 6, 0, 3, 1, 3, 0, 1, 1, 10}, 129, 130, 0},
+        CardEntry{"AUN", 59, {0, 2, 1, 6, 0, 3, 1, 3, 0, 1, 1, 10}, 131, 132, 0},
+        CardEntry{"EXTEND", 3, {1, 3, 3, 6, 0, 5, 0, 3, 0, 1, 1, 10}, 7, 8, 0},
+        CardEntry{"SPEEDQUEEN", 27, {0, 2, 1, 6, 0, 5, 1, 3, 0, 1, 1, 10}, 65, 66, 0},
+        CardEntry{"CIRNO_OP", 16, {1, 1, 2, 3, 0, 1, 1, 3, 0, 2, 1, 30}, 43, 44, 0},
+        CardEntry{"STAR", 54, {0, 1, 2, 3, 0, 1, 1, 3, 0, 2, 1, 30}, 121, 122, 0},
+        CardEntry{"LUNA", 55, {0, 1, 2, 3, 0, 1, 1, 3, 0, 2, 1, 30}, 123, 124, 0},
+        CardEntry{"SUNNY", 56, {0, 1, 2, 3, 0, 1, 1, 3, 0, 2, 1, 30}, 125, 126, 0},
+        CardEntry{"YUREIMU", 83, {0, 1, 5, 1, 0, 1, 1, 3, 0, 2, 1, 30}, 181, 182, 0},
+        CardEntry{"YUMARISA", 84, {0, 1, 5, 1, 0, 1, 1, 3, 0, 2, 1, 30}, 179, 180, 0},
+        CardEntry{"LARVA", 69, {0, 1, 2, 3, 0, 1, 1, 3, 0, 2, 1, 30}, 151, 152, 0},
+        CardEntry{"SEIRAN", 63, {0, 1, 5, 3, 0, 1, 1, 3, 0, 2, 1, 60}, 139, 140, 0},
+        CardEntry{"NEMUNO", 70, {0, 1, 5, 3, 0, 1, 1, 3, 0, 2, 1, 60}, 153, 154, 0},
+        CardEntry{"YOUMU_OP", 14, {1, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 47, 48, 0},
+        CardEntry{"YOUMU_OP2", 77, {1, 1, 5, 1, 0, 1, 1, 3, 0, 3, 1, 75}, 167, 168, 0},
+        CardEntry{"REIMU_OP", 6, {1, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 27, 28, 0},
+        CardEntry{"REIMU_OP2", 7, {0, 1, 6, 1, 0, 1, 1, 3, 0, 3, 1, 75}, 49, 50, 0},
+        CardEntry{"ALICE_OP", 15, {1, 1, 6, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 39, 40, 0},
+        CardEntry{"MARISA_OP", 8, {0, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 29, 30, 0},
+        CardEntry{"MARISA_OP2", 9, {0, 1, 6, 1, 0, 1, 1, 3, 0, 3, 1, 75}, 51, 52, 0},
+        CardEntry{"SAKUYA_OP", 10, {0, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 31, 32, 0},
+        CardEntry{"SAKUYA_OP2", 11, {0, 1, 6, 1, 0, 1, 1, 3, 0, 3, 1, 75}, 53, 54, 0},
+        CardEntry{"SANAE_OP", 12, {0, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 33, 34, 0},
+        CardEntry{"SANAE_OP2", 13, {0, 1, 6, 1, 0, 1, 1, 3, 0, 3, 1, 75}, 55, 56, 0},
+        CardEntry{"OKINA_OP", 17, {0, 1, 6, 2, 0, 1, 1, 3, 0, 3, 1, 60}, 41, 42, 0},
+        CardEntry{"TORAMARU", 53, {0, 1, 6, 3, 0, 1, 1, 3, 0, 3, 1, 60}, 119, 120, 0},
+        CardEntry{"NUE_OP", 18, {0, 1, 4, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 45, 46, 0},
+        CardEntry{"SEKIBANKI", 72, {0, 1, 4, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 157, 158, 0},
+        CardEntry{"EIKA", 76, {0, 1, 4, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 165, 166, 0},
+        CardEntry{"MAGATAMA", 49, {0, 1, 5, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 109, 110, 0},
+        CardEntry{"OPTION_BR", 28, {0, 1, 8, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 69, 70, 0},
+        CardEntry{"WARP", 39, {1, 0, 2, 2, 0, 1, 1, 3, 0, 1, 1, 25}, 83, 84, 0},
+        CardEntry{"SEIJA", 78, {0, 0, 2, 4, 0, 1, 1, 3, 0, 1, 1, 25}, 169, 170, 0},
+        CardEntry{"LILY", 46, {0, 0, 2, 2, 0, 1, 1, 3, 0, 1, 1, 25}, 97, 98, 0},
+        CardEntry{"KOZUCHI", 40, {1, 0, 5, 4, 0, 1, 1, 3, 1, 0, 1, 50}, 91, 92, 0},
+        CardEntry{"BASSDRUM", 47, {0, 0, 5, 2, 0, 1, 1, 3, 0, 2, 1, 50}, 99, 100, 0},
+        CardEntry{"PSYCO", 48, {0, 0, 6, 2, 0, 1, 1, 3, 0, 2, 1, 50}, 101, 102, 0},
+        CardEntry{"WAKASAGI", 71, {0, 0, 5, 3, 0, 1, 1, 3, 0, 2, 1, 50}, 155, 156, 0},
+        CardEntry{"KUTAKA", 74, {0, 0, 5, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 163, 164, 0},
+        CardEntry{"KOMACHI", 75, {0, 0, 5, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 161, 162, 0},
+        CardEntry{"KANAME2", 79, {0, 0, 5, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 171, 172, 0},
+        CardEntry{"CYLINDER", 50, {0, 0, 5, 4, 0, 1, 1, 3, 0, 3, 1, 75}, 111, 112, 0},
+        CardEntry{"KANAME", 41, {1, 0, 12, 2, 0, 1, 1, 3, 0, 4, 1, 100}, 89, 90, 0},
+        CardEntry{"MOON", 42, {1, 0, 8, 2, 0, 1, 1, 3, 0, 4, 1, 100}, 85, 86, 0},
+        CardEntry{"MIKOFLASH", 43, {0, 0, 12, 4, 0, 1, 1, 3, 0, 4, 1, 100}, 87, 88, 0},
+        CardEntry{"VAMPIRE", 44, {0, 0, 13, 2, 0, 1, 1, 3, 0, 4, 1, 100}, 93, 94, 0},
+        CardEntry{"RICEBALL", 51, {0, 0, 9, 4, 0, 1, 1, 3, 0, 4, 1, 100}, 113, 114, 0},
+        CardEntry{"SUN", 45, {0, 0, 13, 4, 0, 1, 1, 3, 0, 5, 1, 150}, 95, 96, 0},
+        CardEntry{"TEWI", 22, {1, 2, 2, 3, 0, 1, 1, 3, 0, 1, 1, 10}, 61, 62, 0},
+        CardEntry{"MANEKI", 36, {1, 2, 3, 2, 0, 1, 1, 3, 0, 1, 1, 10}, 103, 104, 0},
+        CardEntry{"KOISHI", 25, {1, 2, 1, 2, 0, 1, 1, 3, 0, 1, 1, 10}, 75, 76, 0},
+        CardEntry{"ITEM_LINE", 20, {1, 2, 3, 2, 0, 1, 1, 3, 0, 1, 1, 10}, 37, 38, 0},
+        CardEntry{"ITEM_CATCH", 19, {1, 2, 3, 3, 0, 1, 1, 3, 0, 1, 1, 25}, 35, 36, 0},
+        CardEntry{"YUYUKO", 31, {0, 2, 5, 3, 0, 1, 1, 3, 0, 1, 1, 75}, 77, 78, 0},
+        CardEntry{"URUMI", 73, {0, 2, 3, 3, 0, 1, 1, 3, 0, 1, 1, 25}, 159, 160, 0},
+        CardEntry{"DEAD_SPELL", 29, {0, 2, 8, 2, 0, 1, 1, 3, 0, 2, 1, 50}, 71, 72, 0},
+        CardEntry{"MONEY", 32, {0, 2, 2, 2, 0, 1, 1, 3, 0, 2, 1, 50}, 79, 80, 0},
+        CardEntry{"YAMAWARO", 37, {1, 2, 5, 2, 0, 1, 1, 3, 0, 2, 1, 50}, 105, 106, 0},
+        CardEntry{"KISERU", 38, {1, 2, 5, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 107, 108, 0},
+        CardEntry{"MUKADE", 52, {0, 2, 5, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 115, 116, 0},
+        CardEntry{"AUTOBOMB", 21, {1, 2, 4, 2, 0, 1, 1, 3, 0, 4, 1, 100}, 59, 60, 0},
+        CardEntry{"MINORIKO", 68, {0, 2, 3, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 149, 150, 0},
+        CardEntry{"SAKI", 81, {0, 2, 9, 1, 0, 1, 1, 3, 0, 5, 1, 125}, 175, 176, 0},
+        CardEntry{"MOKOU", 5, {1, 2, 13, 3, 0, 1, 1, 3, 0, 5, 1, 200}, 15, 16, 0},
+        CardEntry{"TAKANE", 67, {0, 2, 2, 2, 0, 1, 1, 3, 0, 1, 1, 25}, 147, 148, 0},
+        CardEntry{"MAINSHOT_PU", 23, {1, 2, 8, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 57, 58, 0},
+        CardEntry{"MAINSHOT_SP", 26, {0, 2, 8, 3, 0, 1, 1, 3, 0, 3, 1, 75}, 63, 64, 0},
+        CardEntry{"POWERMAX", 30, {0, 2, 11, 3, 0, 1, 1, 3, 0, 5, 1, 125}, 73, 74, 0},
+        CardEntry{"ROKUMON", 33, {0, 2, 6, 2, 0, 1, 1, 3, 0, 3, 1, 75}, 81, 82, 0},
+        CardEntry{"JOON", 60, {0, 2, 4, 3, 0, 1, 1, 3, 0, 1, 1, 25}, 133, 134, 0},
+        CardEntry{"PEACE", 80, {0, 2, 7, 3, 0, 1, 1, 3, 0, 4, 1, 50}, 173, 174, 0},
+        CardEntry{"SUIKA", 82, {0, 2, 7, 3, 0, 1, 1, 3, 0, 4, 1, 75}, 177, 178, 0},
+        CardEntry{"BLANK", 0, {0, 2, 5, 8, 0, 1, 1, 1, 0, 1, 1, 0}, 5, 6, 0},
+        CardEntry{"NITORI", 66, {0, 2, 8, 1, 0, 1, 1, 3, 0, 1, 1, 50}, 145, 146, 0},
+        CardEntry{"SHION", 61, {0, 3, 4, 2, 0, 1, 0, 3, 0, 2, 1, 25}, 135, 136, 0},
+        CardEntry{"KEIKI", 62, {0, 3, 1, 2, 0, 1, 0, 3, 0, 3, 1, 50}, 137, 138, 0},
+        CardEntry{"DREMII", 64, {0, 3, 5, 2, 0, 1, 0, 3, 0, 3, 1, 25}, 141, 142, 0},
+        CardEntry{"JYUNKA", 65, {0, 2, 8, 2, 0, 1, 1, 3, 0, 3, 1, 125}, 143, 144, 0},
+        CardEntry{"NULL", 85, {1, 4, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0}, 183, 184, 0},
+        CardEntry{"BACK", 86, {1, 4, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0}, 3, 4, 0},
+}};
+
+}  // namespace
+
+const std::array<CardEntry, CARD_COUNT>& cards() { return kCards; }
+
+const CardEntry* find_card(u32 id) {
+    // Linear scan: only 87 entries and ids are not sorted.
+    for (const CardEntry& card : kCards) {
+        if (card.id == id) return &card;
+    }
+    return nullptr;
+}
+
+bool is_special_card(u32 id) {
+    return id == CARD_ID_BLANK || id == CARD_ID_NITORI;
+}
+
+}  // namespace th185

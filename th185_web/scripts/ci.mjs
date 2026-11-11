@@ -56,6 +56,7 @@ checks.push(
   { name: "ecl-cpp", args: [resolve(here, "native", "ecl_cpp_check.py"), "--selftest"], python: true },
   { name: "stage-cpp", args: [resolve(here, "native", "stage_cpp_check.py"), "--selftest"], python: true },
   { name: "waves-cpp", args: [resolve(here, "native", "waves_cpp_check.py"), "--selftest"], python: true },
+  { name: "cards-cpp", args: [resolve(here, "native", "cards_cpp_check.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -74,6 +75,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "cards-cpp") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("selftest passed"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "waves-cpp") {
     if (ok) {
       const summary = output.split("\n").filter((line) =>

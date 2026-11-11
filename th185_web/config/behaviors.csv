@@ -79,3 +79,7 @@ BHV-WAVE-010,SYS-GAME-WAVE,"C++ WaveSelector 的 111 项名表与二进制完全
 BHV-WAVE-011,SYS-GAME-WAVE,"抽取只调用一次 RNG 再取模，C++ 实现与参考实现的 RNG 状态完全同步（锁定调用次序）",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","50 组随机用例含 RNG 种子对比"
 BHV-WAVE-012,SYS-GAME-WAVE,"两遍循环都跳过 skip_index，因此同一模板不会连续出现两次（111 种 skip 全部验证）",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","等权重下 skip 永不命中"
 BHV-WAVE-013,SYS-GAME-WAVE,"强制 BOSS：stage==5 && card==0 -> 索引27(Boss26)；stage==7 && card==66 -> 索引28(Boss27)",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","与 docs/WAVES.md §9 一致"
+BHV-CARD-010,SYS-GAME-CARD,"C++ CardManager 的 87 张卡 × 16 字段与二进制完全一致（校验脚本直接解析 .cpp 源码）",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","0 diffs"
+BHV-CARD-011,SYS-GAME-CARD,"+0x38 与 +0x3C 是图集格子坐标：icon_right == icon_left + 1（87/87），icon_left 全为奇数",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","位图相邻两格"
+BHV-CARD-012,SYS-GAME-CARD,"+0x30 只取 0/1，不是 Cost 字段（Cost 系统在别处）",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","87 张卡仅两种取值"
+BHV-CARD-013,SYS-GAME-CARD,"卡牌 id 唯一且覆盖 0..86；BLANK(0)/NITORI(66)/NULL(85)/BACK(86) 四个特殊卡",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","87 项全唯一"
