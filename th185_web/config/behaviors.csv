@@ -116,3 +116,7 @@ BHV-WAVE-020,SYS-GAME-WAVE,"GameSession::select_waves_from_state 已自给自足
 BHV-WAVE-021,SYS-GAME-WAVE,"RVA 0x40090 是通用 ECL 参数读取器（231 处调用），不是权重专用函数；其数据链为 ECL上下文+0x1018 -> +0x1218 -> +0x10c",original,observed,implemented,"","修正了初版文档的不准确表述"
 BHV-WAVE-022,SYS-GAME-WAVE,"+0x1218 由 RVA 0x3521D 从 EM+0x4F34 载入；该指针指向 268 字节（67 个 u32）关卡数据块，由 0x34B72 循环遍历",original,observed,implemented,"","0x10C 即块大小"
 BHV-WAVE-023,SYS-GAME-WAVE,"权重填充代码在跳转表 0x3D5DC..0x3D8A8（180 项）的 [163] 项，但 ECL 操作码 163 实测出现 0 次——表索引不是操作码本身",original,observed,implemented,"","映射关系未确定"
+BHV-ECL-100,SYS-CORE-ECL,"TH185 的 44 种操作码与 TH11 的 Op 枚举编号一致，覆盖 13048/23770 = 54.89% 指令",original,observed,verified,"th185_web/scripts/native/ecl_coverage.py --selftest","th11 EclInterpreter.cpp 的 enum class Op"
+BHV-ECL-101,SYS-CORE-ECL,"54 种最高频操作码覆盖 90% 指令（21429 条），109 种覆盖 99%（23538 条）",original,observed,verified,"th185_web/scripts/native/ecl_coverage.py --selftest","这给出了明确的实现顺序"
+BHV-ECL-102,SYS-CORE-ECL,"高频操作码 PushInt(42)=3817、PushFloat(44)=1760、Jump(12)=1078、StoreInt(43)=948、JumpIfNonzero(14)=835、EnterFrame(40)=816 全部与 TH11 同名同号",original,observed,verified,"th185_web/scripts/native/ecl_coverage.py --selftest","语义可直接复用"
+BHV-ECL-103,SYS-CORE-ECL,"TH185 独有操作码族：300..399、400..499、500..699、1000..1026，以及最高频的未知 op23(1704) 和 op1013(1021)",original,observed,implemented,"","这些是 TH11 没有的增量"

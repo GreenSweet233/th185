@@ -55,6 +55,7 @@ checks.push(
   { name: "std", args: [resolve(here, "native", "std.py"), "--selftest"], python: true },
   { name: "ecl", args: [resolve(here, "native", "ecl.py"), "--selftest"], python: true },
   { name: "ecl-builtins", args: [resolve(here, "native", "ecl_builtins.py"), "--selftest"], python: true },
+  { name: "ecl-coverage", args: [resolve(here, "native", "ecl_coverage.py"), "--selftest"], python: true },
   { name: "rng-cpp", args: [resolve(here, "native", "rng_cpp_check.py"), "--selftest"], python: true },
   { name: "archive-cpp", args: [resolve(here, "native", "archive_cpp_check.py"), "--selftest"], python: true },
   { name: "ecl-cpp", args: [resolve(here, "native", "ecl_cpp_check.py"), "--selftest"], python: true },
