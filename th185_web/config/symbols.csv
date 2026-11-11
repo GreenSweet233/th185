@@ -1,0 +1,24 @@
+address,kind,name,source,confidence,evidence
+0x004D7AC4,global,BLACK_MARKET_PTR,thprac,corroborated,thprac_th185.cpp enum addrs：黑市对象指针
+0x004CA370,global,CARD_DESC_LIST,thprac,corroborated,thprac_th185.cpp enum addrs：卡牌描述表
+0x004D7AF4,global,ENEMY_MANAGER,thprac,corroborated,thprac_th185.cpp enum addrs：敌机管理器（+0x324 波次权重）
+0x004D7B0C,global,GAME_THREAD_PTR,thprac,corroborated,thprac_th185.cpp enum addrs：游戏线程对象
+0x00573DC0,global,SCALE_ADDR,thprac,corroborated,thprac_th185.cpp enum addrs：渲染缩放 float
+0x004D7AB8,global,CARD_MANAGER_PTR,thprac,corroborated,thprac_th185.cpp AddCard 的 this 指针来源
+0x004D1024,global,PHASE,thprac,corroborated,thprac_th185.cpp：波次相位，强制写 1 固定额外卡牌槽
+0x004D1038,global,DIFFICULTY,thprac,corroborated,thprac_th185.cpp：难度索引 0..7
+0x004D106C,global,FUNDS,thprac,corroborated,thprac_th185.cpp：金钱（上限 999990）
+0x004D1070,global,BULLET_MONEY,thprac,corroborated,thprac_th185.cpp：弹币（副本 1）
+0x004D1074,global,BULLET_MONEY_2,thprac,corroborated,thprac_th185.cpp：弹币（副本 2）
+0x004D10BC,global,LIFE,thprac,corroborated,thprac_th185.cpp：残机
+0x004D7C68,global,STAGE_INDEX,thprac,corroborated,thprac_th185.cpp：当前 stage（+0xfc 取 mStage）
+0x004B5D50,global,WAVE_SUB_NAMES,thprac,corroborated,thprac_th185.cpp：110 条波次 ECL 子程序名表
+0x004CE400,global,GUI_INPUT,thprac,corroborated,thprac_th185.cpp：GUI 输入对象
+0x004CE3F8,global,GUI_INPUT_STATE,thprac,corroborated,thprac_th185.cpp：输入状态
+0x004D52C8,global,DX9_DEVICE,thprac,corroborated,thprac_th185.cpp：DX9 设备
+0x00571D50,global,WINDOW_HANDLE,thprac,corroborated,thprac_th185.cpp：窗口句柄
+0x00414F20,function,AddCard,thprac,corroborated,thprac_th185.cpp asm_call：thiscall(cardId / 2)，cardId 小于 85
+0x00468F04,function,ReplayManager_OnTick,thprac,corroborated,thprac_th185.cpp EHOOK 0x468764 附近
+0x0043CF47,function,WaveSelect,thprac,corroborated,thprac_th185.cpp：波次选择入口
+0x0043D156,function,ForceWave,thprac,corroborated,thprac_th185.cpp：强制波次入口
+0x0043D57A,function,WaveSelectDone,thprac,corroborated,thprac_th185.cpp：波次选择后跳转目标

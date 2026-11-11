@@ -29,6 +29,50 @@
 
 ---
 
+## 0.5 工作流（从 th095 / th11 的 commit 历史反推）
+
+完整规范见 **[th185_web/docs/WORKFLOW.md](th185_web/docs/WORKFLOW.md)**。要点：
+
+### 四事实分离
+
+**「有源码」「能编译」「行为一致」「已验证」是四个独立事实，互不蕴含。**
+
+| 事实 | 记录位置 |
+|---|---|
+| 子系统有实现 | `config/subsystems.csv` 的 `status` |
+| 行为已实现 | `config/behaviors.csv` 的 `status=implemented` |
+| 行为已验证 | `status=verified` + **必须有 `test_ref`** |
+| 子系统完成 | `status=complete`（该子系统全部行为 verified 之后） |
+
+### 会话前置检查
+
+```powershell
+node th185_web/scripts/ci.mjs
+```
+
+三项必须全 PASS：target（哈希+PE指纹）/ ledgers（账本一致性）/ progress（进度可生成）。
+
+### 账本
+
+| 文件 | 内容 | 校验器强制 |
+|---|---|---|
+| `config/subsystems.csv` | 30 个子系统 | deps/parent 必须存在且无环 |
+| `config/behaviors.csv` | 可观察行为断言 | verified 必须有 test_ref 且 evidence_level ∈ {behavioral, observed} |
+| `config/symbols.csv` | 23 个已知地址 | 规范地址、无重复、必须写来源 |
+
+### 一次一个行为面
+
+从 th095 的历史看，它 712 个后续 commit 几乎都是「单函数 + 单一动词」。
+**不要并行铺开**，一个 commit 一个可验证边界。
+
+### 三个硬阻塞
+
+1. **PBG4 加密**（P0）—— `th185.dat` 解不开，资源层全部阻塞
+2. **RNG 必须逐位一致** —— 波次从 110 条模板池抽取，调用次序差一步就分叉
+3. **无 Replay** —— 验证强度上限低于 th11，验收报告必须写明这个边界
+
+---
+
 ## 1. 环境
 
 | 项 | 值 | 说明 |

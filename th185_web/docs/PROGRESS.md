@@ -1,0 +1,38 @@
+# TH185 还原进度
+
+> 由 `node th185_web/scripts/progress.mjs` 自动生成，**不要手改**。
+
+目标版本：`th185` v1.00a（Japanese）
+
+## 总览
+
+| 指标 | 数量 |
+| --- | ---: |
+| 子系统总数 | 30 |
+| 已完成 | 0 |
+| 阻塞 | 1 |
+| 行为断言总数 | 0 |
+| 已验证断言 | 0 |
+| 已知符号 | 23 |
+| 子系统完成率 | 0.0% |
+
+## 子系统状态
+
+| 状态 | 数量 | 子系统 |
+| --- | ---: | --- |
+| 阻塞 | 1 | SYS-CORE-ARCHIVE |
+| 未开始 | 29 | SYS-CORE-ANM / SYS-CORE-ECL / SYS-CORE-RNG / SYS-CORE-FILE / SYS-RENDER-ANM / SYS-RENDER-TEXT / SYS-AUDIO-WAVE / SYS-INPUT-CONTROL / SYS-GAME-SESSION / SYS-GAME-WAVE / SYS-GAME-PLAYER / SYS-GAME-BULLET / SYS-GAME-ENEMY / SYS-GAME-CARD / SYS-GAME-MARKET / SYS-GAME-ITEM / SYS-GAME-DIFFICULTY / SYS-UI-TITLE / SYS-UI-PAUSE / SYS-UI-DIALOGUE / SYS-UI-ENDING / SYS-UI-RESULT / SYS-UI-MUSICROOM / SYS-UI-ACHIEVEMENT / SYS-SAVE-SCORE / SYS-PLATFORM-SDL / SYS-PLATFORM-WEB / SYS-INTEGRATION-LAUNCHER / SYS-INTEGRATION-THPRAC |
+
+## 阻塞项
+
+| 子系统 | 说明 |
+| --- | --- |
+| SYS-CORE-ARCHIVE | th185.dat 是 PBG4 加密，thtk 12 不支持 version 18 |
+
+## 这些数字不代表什么
+
+- 子系统标 `complete` **不等于**它的行为全部与原版一致——行为断言是独立的账本。
+- 有源码 **不等于**行为正确。
+- `verified` 断言必须有 `test_ref` 指向可复现的测试，否则校验器会拒绝。
+- TH185 **没有 Replay**，所以不存在「录像逐帧比对」这种强证据；
+  验证依赖内存状态快照与 Force Wave 确定性注入，强度低于 th11 的录像比对。
