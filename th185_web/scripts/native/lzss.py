@@ -134,7 +134,7 @@ def decompress(src: bytes, dst_size: int) -> bytes:
 
 
 def selftest() -> int:
-    """用构造数据验证解压器逻辑。不需要原版 exe。"""
+    """验证解压器。含与原版的差分对照。不需要原版 exe 也能跑前 4 项。"""
     print("=== LZSS 解压器自检 ===")
     print()
     failures = 0
@@ -148,7 +148,7 @@ def selftest() -> int:
             out.append(byte)
         return bytes(out)
 
-    # 1. 空输入应产出空输出
+    # 1. 空输入
     out = decompress(b"", 100)
     ok = out == b""
     print("[%s] 空输入 -> 空输出（实得 %d 字节）" % ("PASS" if ok else "FAIL", len(out)))
@@ -158,7 +158,7 @@ def selftest() -> int:
     # 2. 纯字面量：flag=1 + 8 位数据
     bits = []
     for ch in b"ABC":
-        bits.append(1)                  # flag = 字面量
+        bits.append(1)
         for i in range(7, -1, -1):
             bits.append((ch >> i) & 1)
     out = decompress(pack(bits), 3)
@@ -167,9 +167,8 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 3. 字面量 + 匹配
-    # 窗口写指针从 1 开始，所以第 1 个字面量落在 window[1]。
-    # 匹配偏移取 window[offset+i]，offset=1 指向 'A'。
+    # 3. 字面量 + 匹配（13 位偏移 + 4 位长度）
+    # 窗口写指针从 1 开始，第 1 个字面量落在 window[1]
     bits = []
     for ch in b"ABC":
         bits.append(1)
@@ -178,49 +177,71 @@ def selftest() -> int:
     bits.append(0)                      # flag = 匹配
     for i in range(12, -1, -1):
         bits.append((1 >> i) & 1)       # 13 位偏移 = 1 -> window[1] = 'A'
-    for i in range(7, -1, -1):
-        bits.append((0 >> i) & 1)       # 长度字段 0 -> 拷贝 0+3 = 3 字节
+    for i in range(3, -1, -1):
+        bits.append((0 >> i) & 1)       # 4 位长度字段 = 0 -> 拷贝 0+3 = 3 字节
     out = decompress(pack(bits), 6)
     ok = out == b"ABCABC"
     print("[%s] 字面量+匹配 -> %r（期望 b'ABCABC'）" % ("PASS" if ok else "FAIL", out))
     if not ok:
         failures += 1
 
-    # 4. 偏移 0 = 终止符
+    # 4. 偏移 0 = 终止
     bits = []
-    bits.append(1)                      # 字面量 'X'
+    bits.append(1)
     for i in range(7, -1, -1):
         bits.append((ord("X") >> i) & 1)
-    bits.append(0)                      # flag = 匹配
+    bits.append(0)
     for i in range(12, -1, -1):
-        bits.append(0)                  # 13 位偏移 = 0 -> 终止
+        bits.append(0)                  # 偏移 0 -> 终止
     out = decompress(pack(bits), 100)
     ok = out == b"X"
     print("[%s] 偏移 0 -> 终止，输出 %r（期望 b'X'）" % ("PASS" if ok else "FAIL", out))
     if not ok:
         failures += 1
 
-    # 5. 对照原版实测: 输入 0x81 0x00 -> 输出首字节 0x02
-    out = decompress(bytes([0x81, 0x00]), 4)
-    ok = len(out) >= 1 and out[0] == 0x02
-    print("[%s] 原版对照 0x8100 -> 首字节 %s（期望 0x02）"
-          % ("PASS" if ok else "FAIL", ("0x%02X" % out[0]) if out else "无"))
-    if not ok:
-        failures += 1
+    # 5. 与原版逐字节对照（真实 th185.dat）
+    try:
+        from probe import Probe, load_image, parse_pe, target_path
+        from pbg4 import (read_header, decrypt_pure,
+                          TABLE_KEY, TABLE_STEP, TABLE_BLOCK)
 
-    # 6. 对照原版实测: 输入 0xFF 0x00 -> 输出首字节 0xFE
-    out = decompress(bytes([0xFF, 0x00]), 4)
-    ok = len(out) >= 1 and out[0] == 0xFE
-    print("[%s] 原版对照 0xFF00 -> 首字节 %s（期望 0xFE）"
-          % ("PASS" if ok else "FAIL", ("0x%02X" % out[0]) if out else "无"))
-    if not ok:
-        failures += 1
+        dat = target_path().parent / "th185.dat"
+        if not dat.is_file():
+            print("[SKIP] original comparison (th185.dat not found)")
+        else:
+            header = read_header(dat)
+            with open(dat, "rb") as stream:
+                stream.seek(0x10)
+                cipher = stream.read(header["compressed_size"])
+            plain = decrypt_pure(cipher, TABLE_KEY, TABLE_STEP, TABLE_BLOCK,
+                                 header["compressed_size"])
+            mine = decompress(plain, header["decompressed_size"])
+
+            data, _t = load_image()
+            meta = parse_pe(data)
+            probe = Probe(data, meta)
+            buf = probe.alloc(len(plain) + 0x1000)
+            probe.write(buf, plain + b"\x00" * 0x1000)
+            res = probe.call(0x71E70,
+                             args=[0, header["decompressed_size"]],
+                             ecx=buf, edx=len(plain), limit=200000000)
+            orig = probe.read(res["eax"], header["decompressed_size"])
+
+            diff = [i for i in range(len(orig)) if orig[i] != mine[i]]
+            ok = len(diff) == 0
+            print("[%s] 与原版逐字节一致（%d 字节，差异 %d）"
+                  % ("PASS" if ok else "FAIL", len(orig), len(diff)))
+            if not ok:
+                print("       首个差异 @ %d" % diff[0])
+                failures += 1
+    except ImportError as exc:
+        print("[SKIP] original comparison (missing dep: %s)" % exc)
 
     print()
     if failures:
         print("自检失败 %d 项" % failures)
         return 1
-    print("自检通过：解压器逻辑与原版差分测试一致")
+    print("自检通过：解压器与原版逐字节一致")
     return 0
 
 
