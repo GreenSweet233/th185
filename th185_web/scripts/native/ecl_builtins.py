@@ -83,6 +83,11 @@ sys.path.insert(0, str(HERE))
 
 TABLE_VA = 0x43ECF4
 TABLE_COUNT = 117
+# NOTE: this is an RVA, not a VA. Do NOT subtract IMAGE_BASE.
+DISPATCH_RVA = 0x3E586     # mov eax,[ebp+8]; jmp [eax*4+TABLE] is at +0x14
+BUILTIN_BASE = 10000       # script builtin(N): index = N - 10000
+BUILTIN_MAX = 110          # cmp eax, 0x6e ; ja -> return 0
+REACHABLE = BUILTIN_MAX + 1   # 111 reachable entries
 IMAGE_BASE = 0x400000
 
 
@@ -201,6 +206,26 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # Dispatch site: jmp dword ptr [eax*4 + 0x43ecf4] guarded by cmp eax,0x6e
+    import capstone
+    md = capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32)
+    md.detail = True
+    doff = rva_to_off(DISPATCH_RVA)
+    disp = list(md.disasm(data[doff:doff + 0x20], DISPATCH_RVA)) if doff > 0 else []
+    text_all = "; ".join("%s %s" % (x.mnemonic, x.op_str) for x in disp)
+    ok = "0x2710" in text_all and "0x6e" in text_all and "0x43ecf4" in text_all
+    print("[%s] dispatch site adds 0x2710, compares 0x6e, jumps via table"
+          % ("PASS" if ok else "FAIL"))
+    if not ok:
+        print("       %s" % text_all[:120])
+        failures += 1
+
+    ok = REACHABLE == 111
+    print("[%s] builtin ids are [%d, %d] -> %d reachable entries"
+          % ("PASS" if ok else "FAIL", BUILTIN_BASE, BUILTIN_BASE + BUILTIN_MAX, REACHABLE))
+    if not ok:
+        failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)
@@ -224,9 +249,10 @@ def main() -> int:
         except ImportError as exc:
             print("error: %s" % exc, file=sys.stderr)
             return 2
-        print("%-4s %-10s %s" % ("idx", "address", "first instructions"))
+        print("%-4s %-8s %-10s %s" % ("idx", "builtin", "address", "first instructions"))
         for i, p in enumerate(ptrs):
-            print("%-4d 0x%06X %s" % (i, p, describe(data, rva_to_off, p)))
+            bid = ("%d" % (BUILTIN_BASE + i)) if i <= BUILTIN_MAX else "-"
+            print("%-4d %-8s 0x%06X %s" % (i, bid, p, describe(data, rva_to_off, p)))
         return 0
 
     parser.print_help()
