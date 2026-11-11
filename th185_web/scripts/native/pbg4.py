@@ -241,7 +241,101 @@ def extract_entry(path, entries, name):
     return None
 
 
+CIPHER_TABLE_VA = 0x4C9470
+
+# 8-entry algorithm table at VA 0x4C9470: (key, step, block, limit)
+_CIPHER_TABLE = [
+    (0x1B, 0x73, 0x100, 0x3800),
+    (0x12, 0x43, 0x200, 0x3E00),
+    (0x35, 0x79, 0x400, 0x3C00),
+    (0x03, 0x91, 0x80, 0x6400),
+    (0xAB, 0xDC, 0x80, 0x7000),
+    (0x51, 0x9E, 0x100, 0x4000),
+    (0xC1, 0x15, 0x400, 0x2C00),
+    (0x99, 0x7D, 0x80, 0x4400),
+]
+
+
+def cipher_for(name):
+    """Select cipher parameters for an entry name.
+
+    Index = sum(filename_bytes) & 7. Confirmed by disassembly at
+    RVA 0x713C5-0x713F5 (sums bytes until NUL, then ANDs with 7).
+    """
+    total = sum(name.encode("ascii", "replace")) & 0xFF
+    return _CIPHER_TABLE[total & 7]
+
+
+def extract_file(path, index=None, name=None):
+    """Fully extract one entry: decrypt and, if compressed, LZSS-decompress.
+
+    Compression detection: the entry declared `size` is the DECOMPRESSED
+    size. The actual compressed size is (next entry offset - this offset).
+    If they are equal the data is stored uncompressed (only decryption
+    needed); otherwise it is LZSS-compressed.
+
+    Verified on real data:
+      help_01.png   -> PNG magic 89 50 4E 47   (stored, comp == size)
+      se_plst00.wav -> RIFF magic 52 49 46 46  (stored, comp == size)
+      ascii.anm     -> 1866816 bytes exactly   (274760 -> 1866816)
+    """
+    from probe import Probe, load_image, parse_pe
+    from lzss import decompress
+
+    header, entries = read_entries(path)
+    filesize = path.stat().st_size
+    table_off = filesize - header["compressed_size"]
+
+    if index is None:
+        if name is None:
+            raise SystemExit("extract_file needs index or name")
+        for i, e in enumerate(entries):
+            if e["name"] == name:
+                index = i
+                break
+        else:
+            raise SystemExit("entry not found: %s" % name)
+
+    entry = entries[index]
+    next_off = entries[index + 1]["offset"] if index + 1 < len(entries) else table_off
+    comp_size = next_off - entry["offset"]
+    if comp_size <= 0:
+        raise SystemExit("invalid compressed size %d for %s"
+                         % (comp_size, entry["name"]))
+
+    data, _target = load_image()
+    meta = parse_pe(data)
+    probe = Probe(data, meta)
+
+    with open(path, "rb") as stream:
+        stream.seek(entry["offset"])
+        cipher = stream.read(comp_size)
+
+    key, step, block, limit = cipher_for(entry["name"])
+    buf = probe.alloc(comp_size + 0x100)
+    probe.write(buf, cipher + bytes(0x100))
+    result = probe.call(0x1E90, args=[key, step, block, limit],
+                        ecx=buf, edx=comp_size, limit=200000000)
+    if result["error"]:
+        raise SystemExit("decrypt failed for %s: %s"
+                         % (entry["name"], result["error"]))
+    plain = probe.read(buf, comp_size)
+
+    compressed = comp_size != entry["size"]
+    if compressed:
+        plain = decompress(plain, entry["size"])
+
+    return {
+        "name": entry["name"],
+        "declared_size": entry["size"],
+        "compressed_size": comp_size,
+        "data": plain,
+        "compressed": compressed,
+    }
+
+
 def selftest() -> int:
+
     print("=== PBG4 reader selftest ===")
     print()
     failures = 0
@@ -305,6 +399,33 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # Full extraction check: decompress a few entries of different types
+    try:
+        checks = [
+            ("help_01.png", bytes([0x89, 0x50, 0x4E, 0x47])),   # PNG magic
+            ("se_plst00.wav", b"RIFF"),                          # RIFF magic
+        ]
+        for entry_name, magic in checks:
+            info = extract_file(dat, name=entry_name)
+            ok = (info["data"][:4] == magic
+                  and len(info["data"]) == info["declared_size"]
+                  and not info["compressed"])
+            print("[%s] %s stored uncompressed, magic OK (%d bytes)"
+                  % ("PASS" if ok else "FAIL", entry_name, len(info["data"])))
+            if not ok:
+                failures += 1
+
+        info = extract_file(dat, name="ascii.anm")
+        ok = (len(info["data"]) == info["declared_size"]
+              and info["compressed"]
+              and info["data"][:4] == bytes([0x08, 0x00, 0x00, 0x00]))
+        print("[%s] ascii.anm LZSS-decompressed to exactly %d bytes"
+              % ("PASS" if ok else "FAIL", len(info["data"])))
+        if not ok:
+            failures += 1
+    except ImportError as exc:
+        print("[SKIP] extraction checks (missing dep: %s)" % exc)
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)
@@ -321,6 +442,7 @@ def main() -> int:
     parser.add_argument("--extract", metavar="DAT")
     parser.add_argument("--name")
     parser.add_argument("--outdir", default="build")
+    parser.add_argument("--dump", metavar="DAT", help="fully extract all entries to outdir")
     args = parser.parse_args()
 
     if args.selftest:
@@ -345,20 +467,46 @@ def main() -> int:
         print("total %d entries" % len(entries))
         return 0
 
+    if args.dump:
+        header, entries = read_entries(Path(args.dump))
+        out = Path(args.outdir)
+        out.mkdir(parents=True, exist_ok=True)
+        ok = 0
+        bad = []
+        for i, entry in enumerate(entries):
+            try:
+                info = extract_file(Path(args.dump), index=i)
+                if len(info["data"]) != info["declared_size"]:
+                    bad.append((entry["name"], info["declared_size"],
+                                len(info["data"])))
+                    continue
+                dest = out / entry["name"]
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_bytes(info["data"])
+                ok += 1
+            except SystemExit as exc:
+                bad.append((entry["name"], "-", str(exc)))
+        print("extracted %d / %d entries to %s" % (ok, len(entries), out))
+        for row in bad[:20]:
+            print("  FAILED %s" % (row,))
+        return 0 if not bad else 1
+
     if args.extract:
         if not args.name:
             print("--extract requires --name", file=sys.stderr)
             return 1
-        header, entries = read_entries(Path(args.extract))
-        blob = extract_entry(Path(args.extract), entries, args.name)
-        if blob is None:
-            print("entry not found: %s" % args.name, file=sys.stderr)
+        info = extract_file(Path(args.extract), name=args.name)
+        if len(info["data"]) != info["declared_size"]:
+            print("size mismatch for %s: got %d, expected %d"
+                  % (args.name, len(info["data"]), info["declared_size"]),
+                  file=sys.stderr)
             return 1
         out = Path(args.outdir)
         out.mkdir(parents=True, exist_ok=True)
         dest = out / args.name
-        dest.write_bytes(blob)
-        print("wrote %s (%d bytes, still encrypted)" % (dest, len(blob)))
+        dest.write_bytes(info["data"])
+        print("wrote %s (%d bytes, compressed=%s)"
+              % (dest, len(info["data"]), info["compressed"]))
         return 0
 
     parser.print_help()

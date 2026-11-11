@@ -30,3 +30,6 @@ BHV-ARCHIVE-011,SYS-CORE-ARCHIVE,"纯 Python LZSS 重实现与原版逐字节一
 BHV-ARCHIVE-012,SYS-CORE-ARCHIVE,"PBG4 条目表位于文件末尾（filesize - compressed_size），不在文件开头",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","反汇编 0x715555 的 IFile->Seek(filesize - table_size)"
 BHV-ARCHIVE-013,SYS-CORE-ARCHIVE,"条目结构：NUL 结尾名字 + 4 字节对齐填充 + offset/size/reserved 三个 DWORD",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","284 项名字全合法 ASCII、offset 严格递增、reserved 恒为 0"
 BHV-ARCHIVE-014,SYS-CORE-ARCHIVE,"th185.dat 含 284 个条目：ecl 114 / wav 72 / anm 55 / png 23 / std 9 / txt 5 / msg 4 / sht 1 / fmt 1",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","与调研「9 场景」「28 BOSS」完全吻合"
+BHV-ARCHIVE-015,SYS-CORE-ARCHIVE,"条目的 size 字段是解压后大小；实际压缩大小 = 下一项 offset - 本项 offset",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","ascii.anm comp=274760 -> 解压 1866816 精确匹配"
+BHV-ARCHIVE-016,SYS-CORE-ARCHIVE,"压缩判定：comp_size == size 为未压缩（只解密），comp_size < size 为 LZSS 压缩",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","help_01.png 与 se_plst00.wav 解出 PNG/RIFF 魔数"
+BHV-ARCHIVE-017,SYS-CORE-ARCHIVE,"单文件完整解包可用：help_01.png -> 1024x1024 PNG、thbgm.fmt -> 10 项音乐索引",original,observed,verified,"th185_web/scripts/native/pbg4.py --extract","端到端验证通过"
