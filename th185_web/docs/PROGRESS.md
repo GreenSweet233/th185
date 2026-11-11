@@ -10,7 +10,7 @@
 | --- | ---: |
 | 子系统总数 | 30 |
 | 已完成 | 0 |
-| 阻塞 | 1 |
+| 阻塞 | 0 |
 | 行为断言总数 | 0 |
 | 已验证断言 | 0 |
 | 已知符号 | 23 |
@@ -20,14 +20,12 @@
 
 | 状态 | 数量 | 子系统 |
 | --- | ---: | --- |
-| 阻塞 | 1 | SYS-CORE-ARCHIVE |
+| 进行中 | 1 | SYS-CORE-ARCHIVE |
 | 未开始 | 29 | SYS-CORE-ANM / SYS-CORE-ECL / SYS-CORE-RNG / SYS-CORE-FILE / SYS-RENDER-ANM / SYS-RENDER-TEXT / SYS-AUDIO-WAVE / SYS-INPUT-CONTROL / SYS-GAME-SESSION / SYS-GAME-WAVE / SYS-GAME-PLAYER / SYS-GAME-BULLET / SYS-GAME-ENEMY / SYS-GAME-CARD / SYS-GAME-MARKET / SYS-GAME-ITEM / SYS-GAME-DIFFICULTY / SYS-UI-TITLE / SYS-UI-PAUSE / SYS-UI-DIALOGUE / SYS-UI-ENDING / SYS-UI-RESULT / SYS-UI-MUSICROOM / SYS-UI-ACHIEVEMENT / SYS-SAVE-SCORE / SYS-PLATFORM-SDL / SYS-PLATFORM-WEB / SYS-INTEGRATION-LAUNCHER / SYS-INTEGRATION-THPRAC |
 
 ## 阻塞项
 
-| 子系统 | 说明 |
-| --- | --- |
-| SYS-CORE-ARCHIVE | th185.dat 是 PBG4 加密，thtk 12 不支持 version 18 |
+（无）
 
 ## 这些数字不代表什么
 

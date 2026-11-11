@@ -1,5 +1,5 @@
 id,title,parent,deps,status,evidence_level,owner,notes
-SYS-CORE-ARCHIVE,档案层（PBG4 解包）,,,blocked,none,,th185.dat 是 PBG4 加密，thtk 12 不支持 version 18
+SYS-CORE-ARCHIVE,档案层（PBG4 解包）,,,in-progress,corroborated,,已确证密钥选择算法(sum and 7)与算法表(VA 0x4C9470)，逐字节算法待 Unicorn 探针；见 docs/PBG4.md
 SYS-CORE-ANM,ANM 动画解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,与 th11 同族，可参考其 AnmInterpreter
 SYS-CORE-ECL,ECL 脚本解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,ThModern_ECLGetSub 确证与 TH18 同格式
 SYS-CORE-RNG,随机数发生器,,,not-started,none,,TH185 随机权重极大，必须逐位一致
