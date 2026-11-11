@@ -45,6 +45,7 @@ checks.push(
   { name: "waves-algo", args: [resolve(here, "native", "waves.py"), "--selftest-algo"], python: true },
   { name: "waves-force", args: [resolve(here, "native", "waves.py"), "--selftest-force"], python: true },
   { name: "cards", args: [resolve(here, "native", "cards.py"), "--selftest"], python: true },
+  { name: "card-classes", args: [resolve(here, "native", "card_classes.py"), "--selftest"], python: true },
   { name: "lzss", args: [resolve(here, "native", "lzss.py"), "--selftest"], python: true },
   { name: "difficulty", args: [resolve(here, "native", "difficulty.py"), "--selftest"], python: true },
   { name: "pbg4", args: [resolve(here, "native", "pbg4.py"), "--selftest"], python: true },
