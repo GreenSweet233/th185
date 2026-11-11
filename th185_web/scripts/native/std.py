@@ -133,7 +133,26 @@ def parse_std(blob):
         })
         pos += ENTITY_SIZE
 
+    # Command stream: starts at header+0x08 value, with a 4-byte preamble.
+    commands = []
+    cmd_pos = unknown + 4
+    while cmd_pos + 4 <= len(blob):
+        cid, size = struct.unpack_from("<HH", blob, cmd_pos)
+        if cid == 0 and size == 0:
+            break
+        if size < 4 or cmd_pos + size > len(blob):
+            break
+        commands.append({
+            "offset": cmd_pos,
+            "id": cid,
+            "size": size,
+            "payload": blob[cmd_pos + 4:cmd_pos + size],
+        })
+        cmd_pos += size
+
     return {
+        "commands": commands,
+        "command_end": cmd_pos,
         "wave_count": wave_count,
         "group_count": group_count,
         "entity_offset": entity_off,
@@ -217,6 +236,29 @@ def selftest() -> int:
              for p in parsed.values() for e in p["entities"])
     print("[%s] all entity coordinates are plausible (|v| < 8192)"
           % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+
+    # Command stream: every scene must consume the file except a fixed 16-byte tail.
+    ok = all(p["commands"] and len(p["command_end_bytes"]) == 16
+             for p in parsed.values()) if False else None
+    leftovers = []
+    for name in stds:
+        p = parsed[name]
+        from pbg4 import extract_file
+        total = len(extract_file(dat, name=name)["data"])
+        leftovers.append(total - p["command_end"])
+    ok = all(v == 16 for v in leftovers)
+    print("[%s] command stream ends with exactly 16 bytes left in every scene"
+          % ("PASS" if ok else "FAIL"))
+    if not ok:
+        print("       leftovers: %s" % leftovers)
+        failures += 1
+
+    cmd_ids = sorted({c["id"] for p in parsed.values() for c in p["commands"]})
+    ok = len(cmd_ids) >= 10
+    print("[%s] observed %d distinct command ids: %s"
+          % ("PASS" if ok else "FAIL", len(cmd_ids), cmd_ids))
     if not ok:
         failures += 1
 
