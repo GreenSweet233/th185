@@ -667,3 +667,149 @@ VA `0xBC6C4` 的倒数表（`1/20, 1/16, 1/15, ...`）的滑窗重叠——
 
 **下一步建议：补齐工具链**（emsdk / node.exe / portable/sdl），
 否则后续所有 C++ 代码都无法编译验证，只能靠 Python 镜像间接保证。
+
+---
+
+## 10. ★★★ 里程碑：C++ 代码首次编译并验证
+
+### 10.1 上一轮的判断是错的
+
+我在第 32 轮写道「工具链缺失，无法编译」，并把它列为最大短板。
+**这是错的。** 实际情况：
+
+| 组件 | 上一轮判断 | 实际 |
+|---|---|---|
+| emsdk | ❌ 不存在 | ✅ `th11-high-refresh/tools/emsdk`（emcc 6.0.11） |
+| node | ❌ 不存在 | ✅ `C:\Program Files\nodejs\node.exe` |
+| python | ✅ | ✅ `C:\Program Files\PyManager\python.exe` |
+| portable/sdl | ❌ 不存在 | ✅ `th11/portable/sdl`（本轮暂未用） |
+
+我上一轮只检查了 `thvip/tools/emsdk`（th11 的布局）就下结论，
+**没有搜索整个工作区**。这是可以避免的错误。
+
+### 10.2 遇到的一个真实障碍
+
+`emsdk/.emscripten` 里写的是：
+
+```python
+NODE_JS = [os.path.abspath(os.path.join(_sdk, '..', '..', 'th10_web', 'tools', 'node.exe'))]
+```
+
+但 `th10_web/tools/node.exe` **不存在**（`th10_web` 整个目录都没有）。
+所以直接复用 emsdk 的配置会失败。
+
+**解决办法：`build-cpp.mjs` 自己生成 `.emscripten`**，把 `NODE_JS` 指向真实存在的 node：
+
+```js
+const nodeExe = process.execPath;   // 当前运行的 node
+// 写自己的 .emscripten 到 artifacts/cpp-check/.emscripten
+```
+
+这样不依赖任何外部路径假设。
+
+### 10.3 构建脚本
+
+`th185_web/scripts/build-cpp.mjs`：
+
+```powershell
+node th185_web/scripts/build-cpp.mjs            # 编译 + 部分链接
+node th185_web/scripts/build-cpp.mjs --harness  # 额外构建 RNG 测试程序
+node th185_web/scripts/build-cpp.mjs --clean    # 清理后重建
+```
+
+做的事：
+
+1. 在 3 个候选路径找 emsdk，找到即用
+2. 生成自己的 `.emscripten`（修正 node 路径）
+3. 编译 `cpp/game/*.cpp`（排除 `Harness*.cpp`）到 `.o`
+4. 用 `emcc -r` 部分链接成 `libth185game.a`
+5. 可选：构建 `HarnessRng.cpp` 为可运行的 `.cjs`
+
+**为什么用 `emcc -r` 而不是 `ar`**：emscripten 的 `ar` 不在 PATH 上
+（它叫 `emar`），而且 `-r` 部分链接还能额外发现符号冲突和头文件不一致。
+
+### 10.4 ★ 编译结果
+
+```
+[1/7] cpp\game\Archive.cpp ... ok
+[2/7] cpp\game\CardManager.cpp ... ok
+[3/7] cpp\game\Difficulty.cpp ... ok
+[4/7] cpp\game\EclResource.cpp ... ok
+[5/7] cpp\game\Rng.cpp ... ok
+[6/7] cpp\game\StageScript.cpp ... ok
+[7/7] cpp\game\WaveSelector.cpp ... ok
+
+linking artifacts\cpp-check\libth185game.a ... ok
+```
+
+**7 个翻译单元全部编译通过，部分链接成功。**
+
+编译选项与 th11 的 `build-sdl.mjs` 一致：
+`-O1 -std=c++17 -ffp-contract=off -fno-strict-aliasing -fno-exceptions -fno-rtti -Wall -Wextra`
+
+### 10.5 ★★ 用编译产物验证 RNG
+
+这是本轮最有价值的部分。之前 RNG 的正确性靠「Python 镜像」，
+现在可以直接跑**真实编译的 C++**：
+
+`cpp/game/HarnessRng.cpp` 打印 10 个种子的 `next16` 序列、
+3 个种子的 `next32`（EAX）、以及 `next_below` 结果。
+
+`scripts/native/cpp_runtime_check.py` 会：
+
+1. 调用 `build-cpp.mjs --harness` 编译
+2. 用 node 运行产物
+3. 解析输出，与 **Unicorn 探针**逐位对照
+
+结果：
+
+```
+[PASS] harness emitted 10 seed sequences (expect 10)
+[PASS] compiled C++ next16 matches the probe for 10 seeds
+[PASS] compiled C++ next32 matches docs/RNG.md recorded EAX values
+[PASS] compiled next_below always stays inside [0, limit)
+[PASS] compiled C++ also matches the Python reference
+```
+
+实际输出（seed `0x1234`）：
+
+```
+1234: 1E86 D9A6 67B3 067D 6217 203D BE19 E060 ...
+EAX 1234: 1EB187A1 2363B669 EA43D9EC 8C30419F 2AFAD885 8ED4480F 50BA6F86 C2D63818
+```
+
+与 `docs/RNG.md` 记录的探针实测值**完全一致**。
+
+### 10.6 四事实分离：现在的状态
+
+| 事实 | 上一轮 | 本轮 |
+|---|---|---|
+| 有源码 | ✅ | ✅ |
+| **能编译** | ❌ | ✅ **7/7 通过** |
+| 行为一致 | ✅ Python 镜像 | ✅ **编译产物 vs 探针** |
+| 已验证 | ✅ | ✅ 24 项 CI |
+
+**「能编译」这一格从 ❌ 变成了 ✅，而且「行为一致」的验证强度提升了一个档次。**
+
+### 10.7 CI 新增两项
+
+```
+[PASS] cpp-build    (default)        7 个翻译单元编译 + 链接
+[PASS] cpp-runtime  (--selftest)     编译产物 vs 探针逐位对照
+```
+
+现在 **CI 共 24 项**，其中 2 项直接验证 C++ 编译与运行。
+
+### 10.8 仍需注意的边界
+
+| 项 | 状态 |
+|---|---|
+| C++ 编译 | ✅ 全部通过 |
+| RNG 运行时验证 | ✅ 与探针逐位一致 |
+| **其他 6 个模块的运行时验证** | ⚠️ **只有编译，没有运行** |
+| 完整游戏链接 | ❌ 没有平台层（SDL3/渲染/输入） |
+
+其他 6 个模块目前只验证了「能编译」+「逻辑镜像一致」，
+还没有像 RNG 那样用编译产物跑真实数据。
+下一步可以照 RNG 的模式，为 `Archive` / `EclResource` / `StageScript`
+各写一个 harness，让它们真正解析 `th185.dat`。
