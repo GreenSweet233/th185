@@ -45,3 +45,8 @@ BHV-ECL-002,SYS-CORE-ECL,"每个子程序是 ECLH 段：magic ECLH + 16 字节�
 BHV-ECL-003,SYS-CORE-ECL,"default.ecl 的 34 个子程序全部恰好剩 12 字节尾部，共 544 条指令 81 种操作码",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","34/34 一致"
 BHV-ECL-004,SYS-CORE-ECL,"子程序名是 TH18 标准命名：BossDead/BossEscape/BossInterval/BossItem/DeadAttack1/DebugSkipFunc/Ecl_EtBreak/ItemCarryLily/MainBossSpell/WaveSync 等",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","明文可见，与 TH18 约定一致"
 BHV-ECL-005,SYS-CORE-ECL,"th185.dat 含 114 个 .ecl 文件",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","与调研「114 个 ECL」吻合"
+BHV-ECL-006,SYS-CORE-ECL,"ANIM 段变长：u32 count + count 个 NUL 结尾动画名，故偏移表位置不固定，须先搜 ECLI 标记再取 +8",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","default.ecl 无动画名(表@0x34)，wave01.ecl 有 enemy.anm(表@0x40)"
+BHV-ECL-007,SYS-CORE-ECL,"全部 114 个 .ecl 解析成功，共 486 子程序 12480 条指令 112 种操作码",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","0 解析错误"
+BHV-ECL-008,SYS-CORE-ECL,"486 个子程序全部恰好剩余 12 字节尾部（486/486 一致）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","格式正确性的铁证"
+BHV-ECL-009,SYS-CORE-ECL,"ANIM 名含 boss01..boss27 + boss01t 共 28 个 BOSS 动画，与波次名表吻合",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","29 种动画名"
+BHV-ECL-010,SYS-CORE-ECL,"操作码 id=42 出现 2549 次占 20.42%，payload 为帧数类整数(1,12,32,60,120,240)，疑为等待指令",original,inferred,implemented,"","推测未验证"

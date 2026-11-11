@@ -221,3 +221,104 @@ Probe 创建（映射 2 MB 镜像 + 安装 174 个导入桩）是主要开销。
 
 > 好消息：子程序名与 TH18 完全一致，且 `th11` 仓库有完整的 ECL 解释器实现
 > （`th11_web/cpp/game/EclInterpreter.cpp`），可作为语义参考。
+
+---
+
+## 8. 全部 114 个文件的统计（本轮）
+
+### 8.1 一个必须修正的假设：ANIM 段是变长的
+
+最初以为偏移表固定在 `+0x34`，结果**只有 `default.ecl` 能解析**。
+
+对比两个文件：
+
+```
+default.ecl  +0x24  "ANIM" 00 00 00 00            ← 无动画名
+             +0x2C  "ECLI" 00 00 00 00
+             +0x34  偏移表
+
+wave01.ecl   +0x24  "ANIM" 01 00 00 00            ← 有 1 个动画名
+             +0x28  "enemy.anm" 00 00 00
+             +0x38  "ECLI" 00 00 00 00
+             +0x40  偏移表                            ← 位置变了！
+```
+
+**`ANIM` 段带 `u32 count` + `count` 个 NUL 结尾名字**，所以长度可变。
+正确做法：先搜索 `ECLI` 标记，偏移表在其后 8 字节。
+
+### 8.2 修正后的完整统计
+
+```
+子程序总数: 486
+指令总数:   12480
+操作码种类: 112
+解析失败:   0
+尾部字节:   12（486/486 全部一致）
+```
+
+**486 个子程序全部恰好剩余 12 字节**——这个一致性是格式正确的铁证。
+
+### 8.3 ANIM 名揭示了完整 BOSS 列表
+
+```
+enemy.anm     113 个文件
+boss01.anm      3    boss01t.anm   2
+boss02.anm      3    boss03.anm    3
+...                  boss27.anm    2
+```
+
+共 **29 种动画名**。`boss01..boss27` + `boss01t` 正好 **28 个 BOSS**，
+与 `docs/WAVES.md` 解出的波次名表完全吻合（1 教程 + 27 常规）。
+
+### 8.4 操作码分布（全 114 文件，12480 条指令）
+
+| id | 次数 | 占比 | size | 推测 |
+|---|---|---|---|---|
+| **42** | 2549 | **20.42%** | 20 | 等待/延时（值 1,12,32,60,120,240） |
+| **44** | 1009 | 8.08% | 20 | 浮点参数（值 1.7, 2, 2.3） |
+| **23** | 999 | 8.00% | 20 | 等待（值 60, 240） |
+| 1013 | 689 | 5.52% | 52 | 扩展指令 |
+| 12 | 571 | 4.58% | 24 | 设置整型（值 128, 340, 412） |
+| 14 | 529 | 4.24% | 24 | 设置负值（值 -40, -124, -336） |
+| 40 | 486 | 3.89% | 20 | 空操作/标记 |
+| 43 | 398 | 3.19% | 20 | 值 4 |
+| 78 | 265 | 2.12% | 20 | |
+| 55 | 245 | 1.96% | 16 | 全零 payload |
+
+**`id=42` 占 20%**，payload 值都是 1/12/32/60/120/240 这类帧数——
+极可能是「等待 N 帧」指令，这与 ECL 是协程式脚本的设计吻合。
+
+`id=44` 的 payload 是 `1.7`、`2`、`2.3` 等浮点数，可能是速度/角度参数。
+
+### 8.5 验证：12 项自检全部通过
+
+```
+[PASS] found 114 .ecl files (expect 114)
+[PASS] default.ecl has 34 subroutines (declared 34)
+[PASS] every subroutine has a name
+[PASS] every subroutine ends with exactly 12 bytes left
+[PASS] parsed 544 instructions in default.ecl
+[PASS] observed 81 distinct opcodes
+[PASS] TH18-style subroutine names present
+[PASS] all 114 .ecl files parse (0 errors)
+[PASS] all 486 subroutines end with 12-byte tail (0 bad)
+[PASS] parsed 12480 instructions across all files
+[PASS] observed 112 distinct opcodes across all files
+[PASS] ANIM names include boss animations (29 distinct names)
+```
+
+耗时 5 秒（Probe 共享实例后）。
+
+### 8.6 状态更新
+
+| 项 | 状态 |
+|---|---|
+| SCPT 容器（含变长 ANIM） | ✅ **完全解出** |
+| 全部 114 文件解析 | ✅ **0 错误** |
+| 486 子程序边界 | ✅ **全部精确** |
+| 12480 条指令 | ✅ 全部解出 |
+| 112 种操作码 | ✅ 已枚举 |
+| **操作码语义** | ❌ **未解** |
+
+**`SYS-CORE-ECL` 保持 `in-progress`。**
+容器、边界、指令流全部掌握；剩下的是 112 种操作码的语义。

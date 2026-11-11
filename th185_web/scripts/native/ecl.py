@@ -68,6 +68,8 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 MAGIC = b"SCPT"
+ANIMTAG = b"ANIM"
+ECLITAG = b"ECLI"
 SUBTAG = b"ECLH"
 ECLH_HEADER = 20        # ECLH tag + 16 bytes of header fields
 TRAILER = 12            # fixed tail after the last instruction in a block
@@ -96,15 +98,41 @@ def _shared_probe():
 
 
 def parse_ecl(blob):
-    """Parse one SCPT blob."""
+    """Parse one SCPT blob.
+
+    Section layout is variable: the ANIM section stores an animation count and
+    optional names, so the ECLI offset table is NOT at a fixed position. Locate
+    the ECLI tag first, then read the offset table immediately after it.
+    """
     if len(blob) < 0x38 or blob[:4] != MAGIC:
         raise SystemExit("not an SCPT file (magic=%r)" % blob[:4])
 
     version, name_count, _r1, sub_count = struct.unpack_from("<IIII", blob, 0x04)
 
+    # --- ANIM section (variable length) ---
+    anim_pos = blob.find(ANIMTAG)
+    anim_names = []
+    if anim_pos >= 0:
+        anim_count = struct.unpack_from("<I", blob, anim_pos + 4)[0]
+        pos = anim_pos + 8
+        for _ in range(anim_count):
+            start = pos
+            while pos < len(blob) and blob[pos] != 0:
+                pos += 1
+            if pos >= len(blob):
+                break
+            anim_names.append(blob[start:pos].decode("ascii", "replace"))
+            pos += 1
+
+    # --- ECLI section: tag + u32 reserved, then the offset table ---
+    ecli_pos = blob.find(ECLITAG)
+    if ecli_pos < 0:
+        raise SystemExit("no ECLI section")
+    table_pos = ecli_pos + 8
+
     sub_offsets = []
     for i in range(sub_count):
-        pos = 0x34 + i * 4
+        pos = table_pos + i * 4
         if pos + 4 > len(blob):
             break
         off = struct.unpack_from("<I", blob, pos)[0]
@@ -112,9 +140,9 @@ def parse_ecl(blob):
             break
         sub_offsets.append(off)
 
-    # Name table starts right after the offset table.
+    # --- Name table starts right after the offset table ---
     names = []
-    pos = 0x34 + sub_count * 4
+    pos = table_pos + sub_count * 4
     while pos < len(blob) and len(names) < name_count:
         start = pos
         while pos < len(blob) and blob[pos] != 0:
@@ -126,7 +154,7 @@ def parse_ecl(blob):
         if raw:
             names.append(raw.decode("ascii", "replace"))
 
-    # Parse each ECLH block.
+    # --- Parse each ECLH block ---
     subs = []
     bounds = sub_offsets + [len(blob)]
     for i, off in enumerate(sub_offsets):
@@ -137,7 +165,10 @@ def parse_ecl(blob):
             opcode, size = struct.unpack_from("<HH", blob, pos)
             if size < 4 or pos + size > end:
                 break
-            rank, argc = struct.unpack_from("<HH", blob, pos + 4) if size >= 8 else (0, 0)
+            if size >= 8:
+                rank, argc = struct.unpack_from("<HH", blob, pos + 4)
+            else:
+                rank, argc = 0, 0
             instrs.append({
                 "offset": pos,
                 "id": opcode,
@@ -160,6 +191,8 @@ def parse_ecl(blob):
         "version": version,
         "name_count": name_count,
         "sub_count": sub_count,
+        "anim_names": anim_names,
+        "ecli_offset": ecli_pos,
         "names": names,
         "subs": subs,
     }
@@ -241,6 +274,60 @@ def selftest() -> int:
     ok = expected <= names
     print("[%s] TH18-style subroutine names present (found %s)"
           % ("PASS" if ok else "FAIL", sorted(expected & names)))
+    if not ok:
+        failures += 1
+
+    # Parse ALL 114 files: every one must succeed, and every subroutine in
+    # every file must end with exactly TRAILER bytes left.
+    total_subs = 0
+    total_instrs = 0
+    all_opcodes = set()
+    bad_tails = []
+    anim_names = set()
+    parse_errors = []
+    for name in ecls:
+        try:
+            q = load_ecl(name)
+        except SystemExit as exc:
+            parse_errors.append((name, str(exc)))
+            continue
+        anim_names.update(q["anim_names"])
+        for s in q["subs"]:
+            total_subs += 1
+            if s["tail"] != TRAILER:
+                bad_tails.append((name, s["name"], s["tail"]))
+            for ins in s["instructions"]:
+                total_instrs += 1
+                all_opcodes.add(ins["id"])
+
+    ok = not parse_errors
+    print("[%s] all %d .ecl files parse (%d errors)"
+          % ("PASS" if ok else "FAIL", len(ecls), len(parse_errors)))
+    if not ok:
+        print("       %s" % parse_errors[:3])
+        failures += 1
+
+    ok = not bad_tails
+    print("[%s] all %d subroutines end with %d-byte tail (%d bad)"
+          % ("PASS" if ok else "FAIL", total_subs, TRAILER, len(bad_tails)))
+    if not ok:
+        print("       %s" % bad_tails[:5])
+        failures += 1
+
+    ok = total_instrs > 10000
+    print("[%s] parsed %d instructions across all files" % ("PASS" if ok else "FAIL", total_instrs))
+    if not ok:
+        failures += 1
+
+    ok = len(all_opcodes) >= 100
+    print("[%s] observed %d distinct opcodes across all files"
+          % ("PASS" if ok else "FAIL", len(all_opcodes)))
+    if not ok:
+        failures += 1
+
+    ok = any(n.startswith("boss") for n in anim_names)
+    print("[%s] ANIM names include boss animations (%d distinct names)"
+          % ("PASS" if ok else "FAIL", len(anim_names)))
     if not ok:
         failures += 1
 
