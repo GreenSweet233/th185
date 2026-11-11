@@ -60,3 +60,7 @@ BHV-ECL-017,SYS-CORE-ECL,"builtin 编号范围 [10000, 10110] 共 111 项可达�
 BHV-ECL-018,SYS-CORE-ECL,"ECL 有 7 处跳转表分派点，各覆盖不同 opcode/builtin 区间（319 / 9985 / 9995 / 10000 等基址）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","字节级搜 ff 24 85 找到 95 处分派点"
 BHV-ECL-019,SYS-CORE-ECL,"表 0x43E534 覆盖 opcode 319..337（19 项），其中 320..324 与 334 是空实现且实测不出现",original,observed,implemented,"th185_web/scripts/native/ecl.py --selftest","空实现与实测缺失吻合"
 BHV-ECL-020,SYS-CORE-ECL,"实测 opcode 共 106 种，范围 [1,1023]，与 .std 指令共用编号空间",original,observed,implemented,"th185_web/scripts/native/ecl.py --selftest","含 1..91/300..307/319/401..445/500..535/600..632/1002..1023"
+BHV-ECL-021,SYS-CORE-ECL,"opcode 300 = 按名字调用子程序，payload = [u32 field1][u32 strlen][name][args]，177 次全部带字符串",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","Wave01_GirlA01 长度14 -> strlen=16 完全吻合"
+BHV-ECL-022,SYS-CORE-ECL,"opcode 16 = 跳转到标签，同结构，128 次全部带字符串",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","Wave01Loop 长度10 -> strlen=12 吻合"
+BHV-ECL-023,SYS-CORE-ECL,"opcode 30 = 调试输出，payload 含 printf 风格格式化字符串（如 WaveENID :%d）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","78 次全部带串，含 %d 占位符"
+BHV-ECL-024,SYS-CORE-ECL,"共 13 种 opcode 带字符串参数：300/16/30/1006/11/304/15/604/404/536/301/605/44",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","全量 114 文件统计"
