@@ -27,3 +27,6 @@ BHV-ARCHIVE-008,SYS-CORE-ARCHIVE,"0x1E90 解密算法：密钥流 (key+k*step)&0
 BHV-ARCHIVE-009,SYS-CORE-ARCHIVE,"block=16 时写入顺序为 15,13,11,9,7,5,3,1,14,12,10,8,6,4,2,0",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","Unicorn 内存写钩子实测"
 BHV-ARCHIVE-010,SYS-CORE-ARCHIVE,"LZSS 最终格式：flag=1 字面量(9位)，flag=0 匹配(13位偏移+4位长度，拷贝字段+3字节)，偏移0终止",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","穷举验证：唯一满足「54位产出29字节」的参数组合"
 BHV-ARCHIVE-011,SYS-CORE-ARCHIVE,"纯 Python LZSS 重实现与原版逐字节一致（7172 字节差异 0）",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","th185.dat 条目表实测"
+BHV-ARCHIVE-012,SYS-CORE-ARCHIVE,"PBG4 条目表位于文件末尾（filesize - compressed_size），不在文件开头",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","反汇编 0x715555 的 IFile->Seek(filesize - table_size)"
+BHV-ARCHIVE-013,SYS-CORE-ARCHIVE,"条目结构：NUL 结尾名字 + 4 字节对齐填充 + offset/size/reserved 三个 DWORD",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","284 项名字全合法 ASCII、offset 严格递增、reserved 恒为 0"
+BHV-ARCHIVE-014,SYS-CORE-ARCHIVE,"th185.dat 含 284 个条目：ecl 114 / wav 72 / anm 55 / png 23 / std 9 / txt 5 / msg 4 / sht 1 / fmt 1",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","与调研「9 场景」「28 BOSS」完全吻合"

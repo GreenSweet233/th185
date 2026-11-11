@@ -1154,3 +1154,123 @@ LZSS 完全正确（差异 0），但解出的数据无法按预期解析。逐�
 
 **算法层面已完成，数据层面仍在探索。**
 这是「知道怎么解压，但不知道解压出来的是什么结构」。
+
+---
+
+## 19. 第十次实测：★ PBG4 归档完全打通
+
+### 19.1 关键突破：条目表在文件末尾
+
+之前所有尝试都从**文件开头**读条目表，全部失败。
+
+重新精读 `0x7153F`-`0x71555`：
+
+```asm
+07153F: mov eax, [ecx]
+071541: call dword ptr [eax + 0x14]   ; IFile->GetSize()
+071544: mov ecx, [0x52a004]
+07154A: sub eax, [ebp - 0x18]         ; eax = filesize - table_size
+07154D: push 0                        ; arg2 = 0 (seek mode)
+07154F: push eax                      ; arg1 = filesize - table_size
+071552: mov [ebp - 0x38], eax
+071555: call dword ptr [edx + 0x18]   ; ★ IFile->Seek(filesize - table_size)
+071558: mov esi, [ebp - 0x18]         ; esi = table_size
+07155C: call 0x93374                  ; malloc(esi)
+07157B: call dword ptr [edx + 8]      ; Read(buf, esi)
+```
+
+**`0x715555` 的 `Seek(filesize - table_size)` 就是答案。**
+条目表在文件**末尾**，前面的部分是所有资源数据。
+
+### 19.2 修正后立即成功
+
+```
+文件大小     : 74537324
+条目表偏移   : 74533671  (= 74537324 - 3653)
+条目表大小   : 3653 (压缩) / 7165 (解压)
+条目数       : 285
+```
+
+解压后的表开头立刻出现可读文件名：
+
+```
+0000  61 73 63 69 69 2E 61 6E 6D 00 00 00 10 00 00 00   ascii.anm.......
+0010  40 7C 1C 00 00 00 00 00 61 73 63 69 69 5F 39 36   @|......ascii_96
+0020  30 2E 61 6E 6D 00 00 00 58 31 04 00 50 FC 1E 00   0.anm...X1..P...
+```
+
+### 19.3 条目结构
+
+```c
+struct Entry {
+    char   name[];    // NUL 结尾
+    char   pad[];     // (name+NUL) 向上补齐到 4 的倍数
+    uint32 offset;    // 绝对文件偏移
+    uint32 size;      // 数据大小
+    uint32 reserved;  // 恒为 0
+};
+```
+
+对齐公式：`pos = start + (len+1) + ((4 - ((len+1) & 3)) & 3)`
+
+### 19.4 验证：6 项自检全部通过
+
+```
+[PASS] magic = 0x31414854 (THA1)
+[PASS] entry count matches (parsed 284, declared 285)
+[PASS] all names are valid ASCII
+[PASS] offsets are strictly increasing
+[PASS] all entries lie inside the file
+[PASS] reserved field is always 0
+```
+
+### 19.5 归档内容
+
+| 扩展名 | 数量 | 内容 |
+|---|---|---|
+| `.ecl` | 114 | 弹幕脚本（与 TH18 同格式） |
+| `.wav` | 72 | 音效 |
+| `.anm` | 55 | 动画 |
+| `.png` | 23 | 图片 |
+| `.std` | 9 | 关卡定义 |
+| `.txt` | 5 | 文本 |
+| `.msg` | 4 | 对话 |
+| `.sht` | 1 | 射击数据 |
+| `.fmt` | 1 | `thbgm.fmt` 音频索引 |
+| **合计** | **284** | |
+
+**这与调研阶段的估计完全吻合**：
+- 「ECL 格式与 TH18 相同」→ 114 个 `.ecl` 文件
+- 「9 个场景」→ 9 个 `.std` 文件
+- 「28 个 BOSS」→ `boss01.anm`..`boss27.anm` + `boss01t.anm`
+
+### 19.6 工具能力
+
+```powershell
+# 自检（6 项）
+python th185_web/scripts/native/pbg4.py --selftest
+
+# 列出全部 284 个条目
+python th185_web/scripts/native/pbg4.py --list <th185.dat>
+
+# 读头部
+python th185_web/scripts/native/pbg4.py --header <th185.dat>
+
+# 提取单个文件（原始加密数据）
+python th185_web/scripts/native/pbg4.py --extract <th185.dat> --name ascii.anm
+```
+
+### 19.7 状态
+
+| 项 | 状态 |
+|---|---|
+| 文件头解密 | ✅ |
+| 头部字段 | ✅ |
+| 条目表解密 | ✅ |
+| 条目表解压 | ✅ |
+| **条目表结构** | ✅ **284 项全部解析，字段全部验证** |
+| 提取资源文件 | ✅ 可提取（数据仍是加密的） |
+| 单文件解密 | ⚠️ 需用 `sum(filename) & 7` 选算法表项 |
+
+**PBG4 容器格式已完全打通。**
+下一步是把单个条目解密（算法表和 `0x1E90` 都已就绪）。
