@@ -322,3 +322,120 @@ boss02.anm      3    boss03.anm    3
 
 **`SYS-CORE-ECL` 保持 `in-progress`。**
 容器、边界、指令流全部掌握；剩下的是 112 种操作码的语义。
+
+---
+
+## 9. ★ 内置函数表（本轮重大发现）
+
+### 9.1 位置
+
+**VA `0x43ECF4`**（`.text` 段内），**117 项**函数指针。
+
+这是 ECL 解释器的**内置函数分派表**：脚本调用 `builtin(N)` 时，
+解释器查表跳到第 N 个 thunk 执行。
+
+### 9.2 调用约定
+
+全部是 `__thiscall`：`ecx` = ECL 上下文对象指针，返回值在 `eax`。
+
+绝大多数 thunk 是**纯字段读取器**，所以这张表同时是 **ECL 上下文布局图**。
+
+### 9.3 已确证的语义
+
+| idx | 实现 | 语义 | 交叉验证 |
+|---|---|---|---|
+| **0** | `call 0x2800; and eax,0x7fffffff` | **`rand()` 整数** | ✅ `docs/RNG.md` 的 RNG 地址 |
+| **1** | `call 0x2890; cvttss2si` | **`randf()` 浮点** | ✅ 同上 |
+| 2,11,44,45,71,72,87,88,97,99,100,103 | `xor eax,eax` | 常量 **0** | |
+| 3..8,19..34,65..68 | `cvttss2si [ecx+0x14xx]` | 上下文浮点字段 | |
+| 9,35 | `[0x4d7c3c]+0x620` | 玩家 X | |
+| 10,36 | `[0x4d7c3c]+0x624` | 玩家 Y | |
+| 13 | `call 0x28d0` | RNG 变体 3 | |
+| 40 | `[0x4d1040]` | 全局值 | |
+| **41** | `[0x4d1038]` | **难度索引** | ✅ `docs/DIFFICULTY.md` |
+| 43 | `mov eax,1` | 常量 **1** | |
+| **47..50** | `cmp [0x4d1038], 0..3` | **`is_difficulty_0..3`** | ✅ `docs/DIFFICULTY.md` |
+| **51..54** | `[EM+0x3c/0x40/0x44/0x4f44]` | ENEMY_MANAGER 字段 | ✅ `docs/DIFFICULTY.md` |
+| 55 | `[0x4d102c] + [0x4d1030]` | 两个全局之和 | |
+| 69 | `[EM+0x94]` | ENEMY_MANAGER 字段 | |
+| 73 | `[0x4d7b0c]+0xd0 == 0` | 游戏状态测试 | |
+| **74..85** | `[EM+0x0c..0x38]` | ENEMY_MANAGER 字段组 | |
+| 101 | `or eax,-1` | 常量 **-1** | |
+| 104 | `[EM+0x4eb8]` | ENEMY_MANAGER 字段 | |
+| **110** | `[0x4d1004] - 2; cmp eax,5` | **关卡号 - 2** | ✅ `docs/WAVES.md` §9 |
+
+> `EM` = `[0x4D7AF4]`（ENEMY_MANAGER）。
+
+### 9.4 三处跨子系统交叉验证
+
+**这是本轮最有价值的部分**——内置表独立印证了之前三个子系统的结论：
+
+| 内置表发现 | 之前独立解出 | 一致性 |
+|---|---|---|
+| idx 0/1 调 `0x2800` / `0x2890` | `docs/RNG.md`：RNG 在 `0x2800` | ✅ 完全一致 |
+| idx 41 读 `[0x4D1038]` | `docs/DIFFICULTY.md`：难度索引在此 | ✅ |
+| idx 47..50 是 `is_difficulty_0..3` | `docs/DIFFICULTY.md`：只有 0..3 四个判断函数 | ✅ **连「只有 4 个」都对上** |
+| idx 51..54 是 `EM+0x3c/40/44/4f44` | `docs/DIFFICULTY.md` 的访问器函数族 | ✅ 同一组地址 |
+| idx 110 是 `[0x4D1004] - 2` 且 `cmp 5` | `docs/WAVES.md` §9：关卡 5/7 触发强制 BOSS | ✅ |
+
+**五个独立结论全部吻合**，说明整个逆向链条是自洽的。
+
+### 9.5 发现过程中的弯路（记录避免重复）
+
+| 尝试 | 结果 |
+|---|---|
+| 找 `cmp reg, 1023/1024` 的 opcode 范围检查 | 0 处有用命中 |
+| 找 `jmp [reg*4+table]` 跳转表 | 11 处，都与 ECL 无关 |
+| 搜 `SCPT`/`ECLH`/`ECLI`/`ANIM` 字符串地址引用 | 0 处（实际是立即数比较） |
+| 搜 `cmp reg, 0x2a`（opcode 42） | 0 处 |
+| **全镜像扫描 >=100 项的 `.text` 指针数组** | ✅ **找到 0x43ECF4** |
+
+**有效方法：全镜像扫描连续函数指针数组。**
+ECL 不用 switch/跳转表，而是**函数指针表**，所以搜 `cmp`/`jmp` 都找不到。
+
+### 9.6 副产品：ECL 加载器代码
+
+搜索 `"ANIM"` 立即数（`0x4D494E41`）找到加载器 `0x3469E`：
+
+```asm
+03469E: cmp dword ptr [eax], 0x4d494e41   ; "ANIM"
+0346AD: cmp dword ptr [eax + 4], 0        ; count
+0346B1: lea esi, [eax + 8]                ; 名字从 +8 开始
+0346D0: cmp edi, 0x1d                     ; 29 个槽位
+0346E2: test edi, edi                     ; slot 0 -> 主角
+0346F3: cmp edi, 1                        ; slot 1 -> 敌机
+034702: mov eax, [ebx + edx]              ; 其他 -> 表 [0x4EC4 + slot*4]
+```
+
+**`0x1d = 29`** 正是实测的 29 种 ANIM 名——精确印证。
+
+`ECLI` 段（`0x3476F`）：
+
+```asm
+03476F: cmp dword ptr [esi], 0x494c4345   ; "ECLI"
+03477B: add esi, 8                        ; 偏移表在 ECLI+8
+03477E: cmp dword ptr [ebx + 4], edi      ; 循环 sub_count 次
+```
+
+**与 `docs/ECL.md` §8.1 的实现完全一致。**
+
+### 9.7 工具
+
+```powershell
+python th185_web/scripts/native/ecl_builtins.py --selftest   # 8 项
+python th185_web/scripts/native/ecl_builtins.py --list       # 117 项全表
+```
+
+### 9.8 状态
+
+| 项 | 状态 |
+|---|---|
+| 内置函数表位置与规模 | ✅ **117 项 @ 0x43ECF4** |
+| 调用约定 | ✅ `__thiscall`，`ecx` = 上下文 |
+| 已确证语义 | ✅ 约 40 项（含全部关键项） |
+| 其余约 77 项 | ⚠️ 实现可读但语义需推断 |
+| **112 种操作码语义** | ❌ **仍未解**（内置表是「读变量」，不是「执行指令」） |
+
+> **重要区分**：这 117 项是 **builtin 函数**（脚本里 `builtin(N)` 取变量），
+> 与 112 种**操作码**（ECL 指令本身）是两套东西。
+> 操作码分派仍未找到——可能编译成很长的比较链，或藏在别的结构里。

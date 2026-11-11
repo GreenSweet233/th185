@@ -50,3 +50,8 @@ BHV-ECL-007,SYS-CORE-ECL,"全部 114 个 .ecl 解析成功，共 486 子程序 1
 BHV-ECL-008,SYS-CORE-ECL,"486 个子程序全部恰好剩余 12 字节尾部（486/486 一致）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","格式正确性的铁证"
 BHV-ECL-009,SYS-CORE-ECL,"ANIM 名含 boss01..boss27 + boss01t 共 28 个 BOSS 动画，与波次名表吻合",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","29 种动画名"
 BHV-ECL-010,SYS-CORE-ECL,"操作码 id=42 出现 2549 次占 20.42%，payload 为帧数类整数(1,12,32,60,120,240)，疑为等待指令",original,inferred,implemented,"","推测未验证"
+BHV-ECL-011,SYS-CORE-ECL,"ECL 内置函数表在 VA 0x43ECF4，117 项 __thiscall thunk（ecx=上下文）",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","117 项全部指向 .text 内"
+BHV-ECL-012,SYS-CORE-ECL,"内置表 index 0 = rand 整数(call 0x2800 + and 0x7fffffff)，index 1 = randf 浮点(call 0x2890)",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","与 docs/RNG.md 的 RNG 函数地址一致"
+BHV-ECL-013,SYS-CORE-ECL,"内置表 index 41 = 难度索引[0x4D1038]，47..50 = is_difficulty_0..3，与 docs/DIFFICULTY.md 完全吻合",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","跨子系统交叉验证"
+BHV-ECL-014,SYS-CORE-ECL,"内置表 index 110 = 关卡号[0x4D1004] - 2，然后 cmp eax,5 判断，印证强制 BOSS 逻辑",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","与 docs/WAVES.md §9 交叉验证"
+BHV-ECL-015,SYS-CORE-ECL,"内置表 38 项是直接的上下文字段读取器（[ecx+0x14xx] 等），构成 ECL 上下文布局图",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","可用于推断上下文结构"
