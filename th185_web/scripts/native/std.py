@@ -70,6 +70,7 @@ HEADER_SIZE = 16
 ANM_NAME_MAX = 64
 WAVE_OFFSET_TABLE = 0x90
 WAVE_ENTRY_SIZE = 60
+GROUP_ENTRY_SIZE = 28
 ENTITY_SIZE = 16
 
 
@@ -115,6 +116,33 @@ def parse_std(blob):
             "index": index,
             "marker2": marker2,
         })
+
+    # --- 28-byte entity-group table ---
+    #
+    # Sits between the last wave entry and the entity table, with a VARIABLE
+    # number of entries (0 for world01t..03, 15 for world04, 5 for world05,
+    # 7 for world06..08; 41 in total). The last wave entry does NOT necessarily
+    # end where the entity table begins, so this span must be walked explicitly.
+    groups_start = waves[-1]["offset"] + WAVE_ENTRY_SIZE if waves else entity_off
+    groups = []
+    if entity_off > groups_start:
+        span = entity_off - groups_start
+        if span % GROUP_ENTRY_SIZE == 0:
+            for i in range(span // GROUP_ENTRY_SIZE):
+                base = groups_start + i * GROUP_ENTRY_SIZE
+                gtype, = struct.unpack_from("<I", blob, base + 0x00)
+                gx, gy = struct.unpack_from("<2f", blob, base + 0x04)
+                reserved, = struct.unpack_from("<I", blob, base + 0x0C)
+                sa, sb = struct.unpack_from("<2f", blob, base + 0x10)
+                marker, = struct.unpack_from("<I", blob, base + 0x18)
+                groups.append({
+                    "offset": base,
+                    "type": gtype,
+                    "x": gx, "y": gy,
+                    "reserved": reserved,
+                    "size_a": sa, "size_b": sb,
+                    "marker": marker,
+                })
 
     # Entity table
     entities = []

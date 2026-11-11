@@ -54,6 +54,7 @@ checks.push(
   { name: "rng-cpp", args: [resolve(here, "native", "rng_cpp_check.py"), "--selftest"], python: true },
   { name: "archive-cpp", args: [resolve(here, "native", "archive_cpp_check.py"), "--selftest"], python: true },
   { name: "ecl-cpp", args: [resolve(here, "native", "ecl_cpp_check.py"), "--selftest"], python: true },
+  { name: "stage-cpp", args: [resolve(here, "native", "stage_cpp_check.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -72,6 +73,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "stage-cpp") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("selftest passed"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "ecl-cpp") {
     if (ok) {
       const summary = output.split("\n").filter((line) =>

@@ -280,3 +280,56 @@ boss01.ecl  ECLI count=1  ->  偏移表在 "default.ecl"\0 之后（4 对齐）
 
 **下一步：`StageScript.cpp`**（`.std` 关卡指令流）。
 格式已解出（`docs/STAGE.md`），9 场景各剩 16 字节尾部。
+
+---
+
+## 6. 已完成：StageScript（`StageScript.hpp` / `.cpp`）
+
+### 6.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/StageScript.hpp` | `.std` 各段结构定义 |
+| `cpp/game/StageScript.cpp` | 波次表 + 28 字节组表 + 实体表 + 指令流 |
+| `scripts/native/stage_cpp_check.py` | 交叉校验（9 文件逐项对照） |
+
+### 6.2 ★ 本轮新发现的段
+
+**28 字节实体组表**位于末波次项与实体表之间，项数变长：
+
+```
+world01t..03  0 项
+world04      15 项（环形编队，角度间隔 48°）
+world05       5 项
+world06       7 项
+world07/08    7 项
+合计         41 项
+```
+
+上一轮漏掉这段，导致 5/9 文件把组数据误当成实体。
+
+### 6.3 验证
+
+```
+[PASS] all 9 .std files parse identically (0 mismatches)
+[PASS] entity total is 379 (expect 379)
+[PASS] entity-group total is 41 (expect 41: 0+0+0+0+15+5+7+7+7)
+[PASS] every scene ends with exactly 16 bytes of 0xFF
+[PASS] command total is 508 (expect 508)
+```
+
+### 6.4 C++ 实现进度
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | `rng_cpp_check.py` 5 项 |
+| `Archive.hpp` / `Archive.cpp` | ✅ | `archive_cpp_check.py` 5 项 |
+| `EclResource.hpp` / `.cpp` | ✅ | `ecl_cpp_check.py` 5 项 |
+| **`StageScript.hpp` / `.cpp`** | ✅ | `stage_cpp_check.py` 5 项 |
+| `WaveSelector.cpp` | ⬜ | — |
+| `CardManager.cpp` | ⬜ | — |
+
+**下一步：`WaveSelector.cpp`**（波次抽取）。
+算法已解出（`docs/WAVES.md`：两遍加权循环 + RNG 取模），
+且 `Rng` 与 `StageScript` 都已完成，可直接接上。
