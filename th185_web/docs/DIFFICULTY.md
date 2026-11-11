@@ -144,3 +144,112 @@ python th185_web/scripts/native/difficulty.py --selftest
 
 > 下一步：搜 `.rdata` 里的 float 数组，找 8 元素且递增的浮点表，
 > 那些很可能就是各档难度的倍率。
+
+---
+
+## 7. 深入：为什么找不到 8 元素的倍率表（本轮新结论）
+
+### 7.1 尝试与失败
+
+按上一轮的计划，我扫了 `.rdata` 找「8 元素递增 float 数组」：
+
+| 尝试 | 结果 |
+|---|---|
+| 8 元素递增 float，范围 0.05–20 | 46 个候选，**全是同一张表的滑窗重叠** |
+| 加严格条件（无重复 + 首尾比 > 1.2） | 仍是那 46 个滑窗 |
+| 限定 0.5–3.0（倍率典型范围） | **0 个** |
+| 从 `movss` 常量地址反查连续 8 浮点 | 全是通用常量池（`5,6,2π,7,8...`） |
+
+被误判的那张表在 VA `0xBC6C4`，内容是：
+
+```
+0.0500 0.0625 0.0667 0.0800 0.0982 0.1000 0.1111 0.1250 ...
+```
+
+这些是 `1/20, 1/16, 1/15, 1/12.5, 1/10.2, 1/10, 1/9, 1/8`——
+**一张倒数表**（正弦/角度相关），不是难度倍率。
+
+### 7.2 决定性发现：难度判断函数是虚函数
+
+搜索 `is_difficulty_0..3` 的 `call` 调用点：
+
+```
+is_diff_0 (0x3E757): 0 处
+is_diff_1 (0x3E768): 0 处
+is_diff_2 (0x3E77A): 0 处
+is_diff_3 (0x3E78C): 0 处
+```
+
+**一个都没有。** 这不符合「普通 getter」的预期。
+
+继续搜「哪些地方存了这些函数地址」，在 `.text` 段 **RVA `0x3EDB0`** 找到：
+
+```
+RVA 0x3EDB0: 0x0043E757  (is_difficulty_0)   ← vtable 起点
+RVA 0x3EDB4: 0x0043E768  (is_difficulty_1)
+RVA 0x3EDB8: 0x0043E77A  (is_difficulty_2)
+RVA 0x3EDBC: 0x0043E78C  (is_difficulty_3)
+RVA 0x3EDC0: 0x0043E79E  (get_em_3c)
+RVA 0x3EDC4: 0x0043E7AC  (get_em_40)
+RVA 0x3EDC8: 0x0043E7BA  (get_em_44)
+RVA 0x3EDCC: 0x0043E7C8  (get_em_4f44)
+```
+
+> **地址基准踩坑**：第一次写成「VA 0x3EDB0」是错的。搜索时用的是
+> `sec.vaddr + i`（i 为节内偏移），结果本身是 **RVA**。
+> 验证时 `rva_to_off(0x3EDB0 - 0x400000)` 得到负数才暴露。
+> 正确做法：直接 `rva_to_off(0x3EDB0)`。
+> 这是本项目第四次踩 VA/RVA 混淆的坑。
+
+**这是一张虚函数表（vtable）。**
+
+所以难度判断是**通过接口间接调用**的：
+
+```c
+// 伪代码
+struct IGameState {
+    virtual int  get_ecx_6224();      // vtable[0]
+    virtual bool is_difficulty_0();   // vtable[1]
+    virtual bool is_difficulty_1();   // vtable[2]
+    virtual bool is_difficulty_2();   // vtable[3]
+    virtual bool is_difficulty_3();   // vtable[4]
+    virtual int  get_em_3c();         // vtable[5]
+    virtual int  get_em_40();         // vtable[6]
+    virtual int  get_em_44();         // vtable[7]
+    virtual int  get_em_4f44();       // vtable[8]
+};
+
+// 调用方：
+state->is_difficulty_2()   // 编译成 call [vtable + 0x10]
+```
+
+### 7.3 这意味着什么
+
+**难度相关的数值倍率很可能不在静态表里，而是硬编码在各处的条件分支中。**
+
+TH 系列的传统做法有两种：
+
+| 做法 | 特征 | 本例 |
+|---|---|---|
+| 查表 | 有连续的 8 元素数组 | ❌ 找不到 |
+| 条件分支 | 散落在各处的 `if (diff >= N)` | ✅ 更可能 |
+
+如果确实是条件分支，那么「提取难度倍率」就等于**逐个函数读代码**，
+没有捷径可走。这解释了为什么扫表扫不到。
+
+### 7.4 状态修正
+
+| 项 | 上一轮判断 | 本轮结论 |
+|---|---|---|
+| 难度倍率表位置 | 「下一步搜 .rdata」 | ❌ **不存在这样的表** |
+| 难度判断函数性质 | 「普通 getter」 | ✅ **虚函数（vtable 间接调用）** |
+| 提取倍率的方法 | 查表 | ⚠️ 需逐函数读条件分支 |
+
+**`SYS-GAME-DIFFICULTY` 维持 `in-progress`。**
+结构（档位/分数表/访问器/vtable）已完全解出，但**数值倍率需要逐处逆向**，
+工作量远大于查表，应放到实现阶段再做。
+
+### 7.5 值得记录的教训
+
+**「找不到」也是结论。** 扫了两轮 float 表都没有，加上「4 个判断函数零调用点」
+这个异常，最终定位到 vtable——比继续盲目扫描更有价值。

@@ -16,3 +16,5 @@ BHV-ARCHIVE-002,SYS-CORE-ARCHIVE,"RVA 0x1E90 与输入完全无关，是纯密�
 BHV-DIFF-001,SYS-GAME-DIFFICULTY,"难度共 8 档，索引 0..7，索引 3 是 Little Hard（TH185 独有），索引 7 是 Over Drive",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","exe 字符串实测 + thprac difficulties[8]"
 BHV-DIFF-002,SYS-GAME-DIFFICULTY,"分数上限表为 5 项 [500000,1000000,1500000,2000000,1000000]，来源常量 VA 0x4BCB00 + 立即数 0xF4240",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","RVA 0x3107C-0x310AC"
 BHV-DIFF-003,SYS-GAME-DIFFICULTY,"只有 is_difficulty_0..3 四个判断函数，说明游戏逻辑仅对前 4 档做特殊分支",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","RVA 0x3E757/0x3E768/0x3E77A/0x3E78C"
+BHV-DIFF-004,SYS-GAME-DIFFICULTY,"is_difficulty_0..3 是虚函数，vtable 在 RVA 0x3EDB0，前 8 项依次为 is_diff_0..3 + get_em_3c/40/44/4f44",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","零直接 call 点 + 搜索函数地址存储位置定位到 vtable"
+BHV-DIFF-005,SYS-GAME-DIFFICULTY,".rdata 中不存在 8 元素难度倍率浮点表，倍率疑为条件分支硬编码",original,inferred,implemented,"","多轮扫描均只命中 VA 0xBC6C4 的倒数表（角度相关）滑窗"
