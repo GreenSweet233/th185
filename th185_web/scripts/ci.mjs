@@ -49,6 +49,8 @@ checks.push(
   { name: "difficulty", args: [resolve(here, "native", "difficulty.py"), "--selftest"], python: true },
   { name: "pbg4", args: [resolve(here, "native", "pbg4.py"), "--selftest"], python: true },
   { name: "save", args: [resolve(here, "native", "save.py"), "--selftest"], python: true },
+  // anm decodes all 55 .anm files (largest is 8.9 MB), so it is the slowest check.
+  { name: "anm", args: [resolve(here, "native", "anm.py"), "--selftest"], python: true, timeoutMs: 600000 },
   { name: "std", args: [resolve(here, "native", "std.py"), "--selftest"], python: true },
   { name: "ecl", args: [resolve(here, "native", "ecl.py"), "--selftest"], python: true },
   { name: "ecl-builtins", args: [resolve(here, "native", "ecl_builtins.py"), "--selftest"], python: true },

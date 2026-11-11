@@ -1,6 +1,6 @@
 id,title,parent,deps,status,evidence_level,owner,notes
 SYS-CORE-ARCHIVE,档案层（PBG4 解包）,,,complete,observed,"th185_web/scripts/native/archive_cpp_check.py --selftest","★C++实现完成:cpp/game/Archive.cpp(解密+LZSS+容器解析)与参考实现一致;表在文件末尾;头解密key=0x1B/step=0x37/block=0x10/limit=0x10;条目解密按sum(name)&7选8项表;压缩判定comp_size==size为未压缩;实测decomp=7172 comp=3653 count=285表偏移74533671;见 docs/PBG4.md"
-SYS-CORE-ANM,ANM 动画解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,与 th11 同族，可参考其 AnmInterpreter
+SYS-CORE-ANM,ANM 动画容器,,SYS-CORE-ARCHIVE,in-progress,observed,"th185_web/scripts/native/anm.py --selftest","容器层解出:头部version=8+文件大小+常量+sprite表偏移@0x10+sprite_count@0x18+脚本偏移@0x1C;图集路径表(NUL结尾4对齐,54个路径);THTX纹理块552个(16字节头=format+w+h+pad+data_size,data_size=w*h*bpp);ANM脚本与std/ecl同款[u16 id][u16 size]编码,0xFFFF终止,117条指令;4个字体图集(text.anm+ascii*.anm)结构不同;sprite定义记录(定长)未解"
 SYS-CORE-ECL,ECL 脚本解释器,,SYS-CORE-ARCHIVE,in-progress,observed,"th185_web/scripts/native/ecl_cpp_check.py --selftest","★C++实现完成:cpp/game/EclResource.cpp;★重大修正:ECLI段也变长(带count+名字如default.ecl),修正后816子程序23770指令165操作码(原486/12480/112是错的,37个BOSS文件被漏);816/816全部剩12字节尾;已确认9个opcode语义(300调用/16跳转/304变体/11定义标签/15引用/30调试输出/40子程序声明/44角度/1006注释);指令语义未全解"
 SYS-CORE-RNG,随机数发生器,,,complete,observed,"th185_web/scripts/native/rng_cpp_check.py --selftest","★C++实现完成:cpp/game/Rng.hpp与Rng.cpp逐位一致(10种子x16次next16+next32+next_below全PASS);算法16位xorshift变体A=0x9630 B=0x6553,一次调用产两个值EAX=(edi<<16)|ebx;关键:中间步有^A再-B,next16返回旋转后的新种子不是ebx;全局实例0x4D7AA8;见 docs/RNG.md"
 SYS-CORE-FILE,文件与路径层,,,not-started,none,,th185.dat / thbgm.dat / scoreth185.dat / th185.cfg
