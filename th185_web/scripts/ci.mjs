@@ -60,6 +60,7 @@ checks.push(
   { name: "difficulty-cpp", args: [resolve(here, "native", "difficulty_cpp_check.py"), "--selftest"], python: true },
   { name: "cpp-build", args: [resolve(here, "build-cpp.mjs")], python: false },
   { name: "cpp-runtime", args: [resolve(here, "native", "cpp_runtime_check.py"), "--selftest"], python: true },
+  { name: "cpp-archive", args: [resolve(here, "native", "cpp_archive_runtime.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -82,6 +83,13 @@ for (const check of checks) {
     if (ok) {
       const summary = output.split("\n").filter((line) =>
         line.includes("translation unit"));
+      output = summary.join("\n");
+    }
+  }
+  if (check.name === "cpp-archive") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("selftest passed"));
       output = summary.join("\n");
     }
   }

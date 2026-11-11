@@ -230,6 +230,11 @@ def main() -> int:
                   and count == header["entry_count"])
             print("[%s] header fields match (decomp=%d comp=%d count=%d)"
                   % ("PASS" if ok else "FAIL", decomp, comp, count))
+            ok = len(ref_entries) == 284
+            print("[%s] entry table parses to %d entries (expect 284)"
+                  % ("PASS" if ok else "FAIL", len(ref_entries)))
+            if not ok:
+                failures += 1
             if not ok:
                 failures += 1
 

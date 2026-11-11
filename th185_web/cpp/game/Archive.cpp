@@ -55,28 +55,42 @@ void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block,
         if (chunk > size - dst_base) chunk = size - dst_base;
         if (chunk == 0) break;
 
-        // Odd offsets: descending from block end - 1, stepping by 2.
-        u32 w = dst_base + chunk - 1;
-        for (u32 i = 0; i < (chunk + 1) / 2; ++i) {
-            if (src >= size) break;
-            data[w] = cipher[src] ^ cur_key;
+        // Write order, measured with a Unicorn memory-write hook on the
+        // original function (RVA 0x1E90). For a 69-byte tail the order is
+        //   67, 65, ..., 1   then   66, 64, ..., 0
+        // i.e. ODD offsets descending first, then EVEN offsets descending.
+        //
+        // The odd start is the largest odd number BELOW chunk: chunk-1 when
+        // chunk is even, chunk-2 when chunk is odd. Using chunk-1
+        // unconditionally is only correct for full blocks and silently
+        // corrupts the last partial block — that bug left exactly the final
+        // 69 bytes of the entry table wrong, which in turn lost 3 entries and
+        // broke the LZSS tail.
+        const u32 odd_start = (chunk % 2 == 0) ? chunk - 1 : chunk - 2;
+        const u32 odd_count = (chunk + 1) / 2;
+        const u32 even_start = odd_start - 1;
+        const u32 even_count = chunk / 2;
+
+        // IMPORTANT: w must be SIGNED. With an unsigned index, the final
+        // w -= 2 wraps to 0xFFFFFFFE instead of going negative, the guard
+        // "w < dst_base" never fires, and the next store writes far outside
+        // the buffer — in WASM that is a "memory access out of bounds" trap.
+        i32 w = i32(dst_base + odd_start);
+        for (u32 i = 0; i < odd_count; ++i) {
+            if (src >= size || w < i32(dst_base)) break;
+            data[u32(w)] = cipher[src] ^ cur_key;
             cur_key = u8(cur_key + cur_step);
             ++src;
-            if (w < 2) break;
             w -= 2;
         }
 
-        // Even offsets: descending from block end - 2, stepping by 2.
-        if (chunk >= 2) {
-            w = dst_base + chunk - 2;
-            for (u32 i = 0; i < chunk / 2; ++i) {
-                if (src >= size) break;
-                data[w] = cipher[src] ^ cur_key;
-                cur_key = u8(cur_key + cur_step);
-                ++src;
-                if (w < 2) break;
-                w -= 2;
-            }
+        w = i32(dst_base + even_start);
+        for (u32 i = 0; i < even_count; ++i) {
+            if (src >= size || w < i32(dst_base)) break;
+            data[u32(w)] = cipher[src] ^ cur_key;
+            cur_key = u8(cur_key + cur_step);
+            ++src;
+            w -= 2;
         }
 
         dst_base += chunk;
@@ -91,16 +105,34 @@ std::vector<u8> lzss_decompress(const u8* src, u32 src_size, u32 dst_size) {
     if (src_size == 0 || dst_size == 0) return out;
 
     std::vector<u8> window(LZSS_WINDOW_SIZE, 0);
-    u32 bit_pos = 0;
-    const u32 total_bits = src_size * 8;
     u32 dst_pos = 1;  // the window write pointer starts at 1, not 0
 
+    // Bit reader mirroring the original: a byte is loaded when the mask runs
+    // out, bits are consumed MSB first, and reading past the end yields zero
+    // bits (the original does `xor ecx,ecx` when the index exceeds the length).
+    //
+    // `exhausted()` is deliberately NOT "bit counter >= total bits": it is only
+    // true once the whole last byte has been consumed (pos past the end AND
+    // mask drained). Using a bit counter instead changes how the tail of a
+    // stream is handled and produced 117 extra bytes on the real entry table.
+    u32 pos = 0;   // next byte to load
+    u32 mask = 0;  // 0x80 down to 0x01, then reload
+    u8 cur = 0;
+
+    auto exhausted = [&]() { return pos >= src_size && mask == 0; };
     auto bit = [&]() -> u32 {
-        if (bit_pos >= total_bits) return 0;
-        const u32 byte_index = bit_pos >> 3;
-        const u32 bit_index = 7 - (bit_pos & 7);  // MSB first
-        ++bit_pos;
-        return (u32(src[byte_index]) >> bit_index) & 1u;
+        if (mask == 0) {
+            if (pos >= src_size) {
+                cur = 0;
+            } else {
+                cur = src[pos];
+                ++pos;
+            }
+            mask = 0x80;
+        }
+        const u32 result = (cur & mask) ? 1u : 0u;
+        mask >>= 1;
+        return result;
     };
     auto bits = [&](u32 count) -> u32 {
         u32 value = 0;
@@ -109,7 +141,7 @@ std::vector<u8> lzss_decompress(const u8* src, u32 src_size, u32 dst_size) {
     };
 
     while (out.size() < dst_size) {
-        if (bit_pos >= total_bits) break;
+        if (exhausted()) break;
 
         if (bit() == 1) {
             // Literal: 8 bits.
@@ -169,16 +201,33 @@ bool Archive::parse(const std::vector<u8>& file, std::string* error) {
                      compressed_table_size);
 
     // The table is LZSS-compressed.
+    //
+    // NOTE: decompressed_table_size (7172 for th185.dat) is NOT the size to stop
+    // at. The original passes a large malloc size and the LZSS stream terminates
+    // on its own offset==0 marker, so stopping at the declared size truncates
+    // the table and loses entries. The Python reference uses 0x100000 here for
+    // exactly that reason; we do the same and then trim trailing NULs.
     std::vector<u8> plain = lzss_decompress(table.data(), u32(table.size()),
-                                            decompressed_table_size);
-    if (plain.size() != decompressed_table_size) {
-        return fail("entry table did not decompress to the declared size");
+                                            0x100000);
+#ifdef TH185_ARCHIVE_DEBUG
+    {
+        std::printf("DEBUG table_cipher_first16 ");
+        for (u32 i = 0; i < 16 && i < u32(table.size()); ++i)
+            std::printf("%02X", unsigned(table[i]));
+        std::printf("\n");
+        std::printf("DEBUG lzss in=%u out=%zu\n", u32(table.size()), plain.size());
     }
+#endif
+    if (plain.empty()) return fail("entry table did not decompress");
+    while (!plain.empty() && plain.back() == 0) plain.pop_back();
 
     // Walk the entry list: NUL-terminated name, padded to a 4-byte multiple of
     // (len + 1), then u32 offset, u32 size (decompressed), u32 reserved.
     entries.clear();
     std::size_t pos = 0;
+#ifdef TH185_ARCHIVE_DEBUG
+    std::printf("DEBUG table_plain %zu\n", plain.size());
+#endif
     while (pos < plain.size()) {
         const std::size_t name_start = pos;
         while (pos < plain.size() && plain[pos] != 0) ++pos;
@@ -199,10 +248,20 @@ bool Archive::parse(const std::vector<u8>& file, std::string* error) {
         entry.reserved = read_u32(plain.data() + pos + 8);
         pos += 12;
 
-        if (entry.offset >= file.size()) break;
+        if (entry.offset >= file.size()) {
+#ifdef TH185_ARCHIVE_DEBUG
+            std::printf("DEBUG break at %zu name=%s offset=%u\n",
+                        entries.size(), entry.name.c_str(), entry.offset);
+#endif
+            break;
+        }
         entries.push_back(std::move(entry));
     }
 
+#ifdef TH185_ARCHIVE_DEBUG
+    std::printf("DEBUG parsed %zu entries, pos=%zu of %zu\n",
+                entries.size(), pos, plain.size());
+#endif
     if (entries.empty()) return fail("no entries parsed");
     return true;
 }

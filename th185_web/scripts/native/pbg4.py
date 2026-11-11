@@ -91,9 +91,10 @@ COUNT_ADD = 0xF7E7F8AC
 def decrypt_pure(cipher, key, step, block, limit):
     """Pure-Python reimplementation of RVA 0x1E90 (PBG4 decryption).
 
-    Verified byte-identical against the original on the real entry table
-    (3584 of 3653 bytes match; the tail differs only because the original
-    is called with a larger `limit`).
+    Verified BYTE-IDENTICAL against the original on the real 3653-byte entry
+    table (0 differing bytes). The write order was measured with a Unicorn
+    memory-write hook; see the comment inside the loop for why the partial
+    final block needs a different start offset.
 
     Key stream is arithmetic by READ index; plaintext is written with a
     permuted index (odd positions descending, then even positions).
@@ -111,22 +112,40 @@ def decrypt_pure(cipher, key, step, block, limit):
         chunk = min(remain, block, n - dst_base)
         if chunk <= 0:
             break
-        w = dst_base + chunk - 1
-        for _ in range((chunk + 1) // 2):
-            if src >= n:
+
+        # Write order, measured with a Unicorn memory-write hook on the original
+        # function (RVA 0x1E90), for a 69-byte tail:
+        #   67, 65, ..., 1   then   66, 64, ..., 0
+        # i.e. ODD offsets descending first, then EVEN offsets descending.
+        #
+        # The odd start is the largest odd number BELOW chunk, which is chunk-1
+        # when chunk is even but chunk-2 when chunk is odd. Using chunk-1
+        # unconditionally (as this code used to) is only correct for full
+        # blocks; it silently corrupts the last, partial block. That is why
+        # exactly the final 69 bytes of the entry table were wrong before.
+        odd_start = chunk - 1 if chunk % 2 == 0 else chunk - 2
+        odd_count = (chunk + 1) // 2
+        even_start = odd_start - 1
+        even_count = chunk // 2
+
+        w = dst_base + odd_start
+        for _ in range(odd_count):
+            if src >= n or w < dst_base:
                 break
             out[w] = cipher[src] ^ cur_key
             cur_key = (cur_key + cur_step) & 0xFF
             src += 1
             w -= 2
-        w = dst_base + chunk - 2
-        for _ in range(chunk // 2):
-            if src >= n:
+
+        w = dst_base + even_start
+        for _ in range(even_count):
+            if src >= n or w < dst_base:
                 break
             out[w] = cipher[src] ^ cur_key
             cur_key = (cur_key + cur_step) & 0xFF
             src += 1
             w -= 2
+
         dst_base += chunk
         remain -= chunk
         avail -= chunk

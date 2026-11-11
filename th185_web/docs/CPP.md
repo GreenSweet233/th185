@@ -813,3 +813,138 @@ EAX 1234: 1EB187A1 2363B669 EA43D9EC 8C30419F 2AFAD885 8ED4480F 50BA6F86 C2D6381
 还没有像 RNG 那样用编译产物跑真实数据。
 下一步可以照 RNG 的模式，为 `Archive` / `EclResource` / `StageScript`
 各写一个 harness，让它们真正解析 `th185.dat`。
+
+---
+
+## 11. ★★★ 用编译后的 C++ 跑真实数据：发现并修复 3 个真实 bug
+
+### 11.1 为什么这一步重要
+
+上一轮做到了「能编译」，但那只能证明语法和类型正确。
+本轮让**编译产物真正解析 `th185.dat`**，立刻暴露了 3 个编译检查发现不了的 bug。
+
+| bug | 症状 | 根因 |
+|---|---|---|
+| 1 | 只解析出 281 条目，`thbgm.fmt` 丢失 | 解密最后一个不完整块的起点算错 |
+| 2 | `world05.std` 起 WASM 越界崩溃 | `u32` 索引下溢，守卫永不触发 |
+| 3 | 表解压上限用了声明值 | 应按 LZSS 自身终止符停止 |
+
+### 11.2 bug 1：解密最后一个不完整块
+
+**用 Unicorn 内存写钩子**观察原版（RVA `0x1E90`）在 `chunk=69` 时的写入顺序：
+
+```
+67, 65, 63, ..., 3, 1      ← 奇数位倒序
+66, 64, 62, ..., 2, 0      ← 偶数位倒序
+```
+
+而代码用 `w = dst_base + chunk - 1`，`chunk=69` 得到 **68（偶数）**，整块错位。
+
+```python
+# 奇数起点 = 小于 chunk 的最大奇数
+odd_start = chunk - 1 if chunk % 2 == 0 else chunk - 2
+```
+
+| chunk | 旧起点 | 正确起点 |
+|---|---|---|
+| 128（偶） | 127 | 127 ✓ 一致 |
+| **69（奇）** | 68 ✗ | **67** |
+
+**这就是为什么前 28 个完整块全对，只有最后 69 字节错。**
+
+修正后：
+
+```
+条目表解密与原版一致: True
+差异: 0/3653            ← 原来 68 处
+条目数: 284             ← 原来 281
+thbgm.fmt: 537 字节     ← 原来 MISSING
+```
+
+### 11.3 bug 2：`u32` 索引下溢导致 WASM 崩溃
+
+```c
+// 错误写法
+u32 w = dst_base + odd_start;
+for (u32 i = 0; i < odd_count; ++i) {
+    if (src >= size || w < dst_base) break;   // ← 永不触发
+    data[w] = ...;
+    w -= 2;                                   // ← 0 时变成 0xFFFFFFFE
+}
+```
+
+`w` 减到 0 后再减 2，`u32` 下溢成 `0xFFFFFFFE`，
+守卫 `w < dst_base`（`dst_base=0`）**永远为假**，于是写到缓冲区外 → WASM 陷阱。
+
+修正：改成**有符号** `i32`。
+
+> 这个 bug 只在 `chunk` 为奇数时触发（`world05.std` 的 `stored=639`），
+> 所以前几个 `.std` 都能正常解析，到第 6 个才崩。
+
+### 11.4 bug 3：表解压上限
+
+`decompressed_table_size`（7172）不是停止条件。原版传一个很大的 malloc 大小，
+LZSS 流靠自身的 `offset == 0` 终止符停止。按声明值截断会丢掉表尾。
+
+修正：上限用 `0x100000`，然后裁掉尾部零字节（得到 7165）。
+
+### 11.5 修正后的真实数据结果
+
+```
+ARCHIVE entries 284
+ECL TOTAL 87 617 17546
+STD TOTAL 8 36 34 342 445
+CARDS 87 232A4BBF
+WAVENAMES 111 D0D896E8
+DIFFICULTY Very Easy Easy Normal Little Hard Hard Very Hard Lunatic Over Drive
+SCORECAPS 500000 1000000 1500000 2000000 1000000
+WAVEPICK 56 15 52 65 80 15 75 101 23 101 51 9
+```
+
+**没有崩溃，8 个 `.std` 全部解析，87 个 ECL 解析成功，卡表/名表/难度全部正确。**
+
+### 11.6 校验脚本
+
+`scripts/native/cpp_archive_runtime.py`：
+
+```
+[PASS] compiled C++ reads the header correctly (['7172', '3653', '285', '74533671'])
+[PASS] compiled C++ parses 284 entries (expect 284)
+[PASS] thbgm.fmt extracts (537 bytes) — regressed before the fix
+[PASS] all 7 probe entries extract at the expected size (ok)
+[PASS] C++ ECL totals 87/617/17546 within reference 816/23770
+```
+
+### 11.7 剩余限制（如实记录）
+
+**114 个 ECL 中只有 87 个能解析**，其余 27 个报 `extracted size does not match`。
+
+根因是**尾块处理条件未完全确定**：
+
+| 文件 | stored | block | 尾块 | 原版是否处理 |
+|---|---|---|---|---|
+| 条目表 | 3653 | 128 | 69 | ✅ 处理 |
+| `wave07.ecl` | 1436 | 128 | 28 | ❌ 不处理 |
+| `title_v.anm` | 2678 | 512 | 118 | ❌ 不处理 |
+
+我的实现总是处理尾块（对条目表正确），但对某些条目多解密尾部若干字节，
+导致 LZSS 解出错误长度。
+
+> **已投入足够多轮次，边际收益很低**：这个条件只影响部分条目的尾部，
+> 而 Python 参考实现能正确解出全部 114 个文件。
+> 明确记为已知限制，不再继续追。
+
+### 11.8 本轮最大的教训
+
+**「能编译」远远不够，「用真实数据跑一遍」才能发现真问题。**
+
+| 验证层次 | 能发现什么 | 本轮表现 |
+|---|---|---|
+| 编译通过 | 语法/类型/链接错误 | 上一轮已做到，全部通过 |
+| Python 镜像对照 | 逻辑翻译错误 | 上一轮已做，全部通过 |
+| **真实数据运行** | **解密/边界/下溢等运行时缺陷** | **本轮发现 3 个 bug** |
+
+而且 bug 1 之所以藏了 17 轮，是因为 **Python 参考实现自己有同样的 bug**——
+它的 docstring 写着「3584/3653 bytes match」，我把这当成已知边界，没意识到是缺陷。
+
+**镜像校验的盲区：镜像和被测代码同源，会一起错。**

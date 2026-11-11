@@ -28,6 +28,16 @@ bool StageScript::parse(std::vector<u8> blob, std::string* error) {
     };
 
     if (blob.size() < 0x94) return fail("std file too small");
+    // Sanity: the header must describe offsets inside the file. Without this a
+    // truncated or over-decrypted blob walks off the buffer instead of failing
+    // cleanly, which surfaces as a WASM "memory access out of bounds" trap.
+    {
+        const u32 e = read_u32(blob.data() + 0x04);
+        const u32 c = read_u32(blob.data() + 0x08);
+        if (e > blob.size() || c > blob.size()) {
+            return fail("header offsets lie outside the file");
+        }
+    }
 
     data = std::move(blob);
 
@@ -71,20 +81,25 @@ bool StageScript::parse(std::vector<u8> blob, std::string* error) {
     }
     if (waves.empty()) return fail("no wave entries parsed");
 
+    if (waves.empty()) return fail("no wave entries parsed");
+
     // --- 28-byte entity-group table ---
     // This sits between the wave entries and the entity table and has a
     // VARIABLE number of entries. The last wave entry does NOT necessarily end
     // where the entity table begins (world04 has 15 extra groups = 420 bytes).
     const u32 groups_start = waves.back().offset + STD_WAVE_ENTRY_SIZE;
     groups.clear();
-    if (entity_offset > groups_start) {
+    // Guard both ends: a malformed file must not walk past the buffer.
+    if (groups_start < entity_offset && entity_offset <= data.size()) {
         const u32 span = entity_offset - groups_start;
         if (span % STD_GROUP_ENTRY_SIZE != 0) {
             return fail("entity group span is not a multiple of 28");
         }
         const u32 count = span / STD_GROUP_ENTRY_SIZE;
         for (u32 i = 0; i < count; ++i) {
-            const u8* base = data.data() + groups_start + i * STD_GROUP_ENTRY_SIZE;
+            const std::size_t at = std::size_t(groups_start) + std::size_t(i) * STD_GROUP_ENTRY_SIZE;
+            if (at + STD_GROUP_ENTRY_SIZE > data.size()) break;
+            const u8* base = data.data() + at;
             StageGroup group;
             group.type = read_u32(base + 0x00);
             group.x = read_f32(base + 0x04);
@@ -102,6 +117,7 @@ bool StageScript::parse(std::vector<u8> blob, std::string* error) {
     entities.clear();
     {
         std::size_t pos = entity_offset;
+        if (pos >= data.size()) pos = data.size();  // nothing to read
         while (pos + STD_ENTITY_ENTRY_SIZE <= data.size()) {
             const u32 kind = read_u32(data.data() + pos);
             if ((kind >> 24) != 0x01) break;
@@ -119,6 +135,7 @@ bool StageScript::parse(std::vector<u8> blob, std::string* error) {
     // Starts 4 bytes into command_offset, then [u16 id][u16 size] records.
     commands.clear();
     command_end = command_offset + STD_COMMAND_HEADER;
+    if (command_end > data.size()) command_end = u32(data.size());
     {
         std::size_t pos = command_end;
         while (pos + STD_COMMAND_HEADER <= data.size()) {

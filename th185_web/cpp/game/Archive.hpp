@@ -56,9 +56,28 @@ CipherParams cipher_for(const std::string& name) noexcept;
 // In-place PBG4 decryption — mirrors RVA 0x1E90.
 //
 // The key stream advances by READ index, but plaintext is written with a
-// PERMUTED index within each block: odd offsets descending from block end-1,
-// then even offsets descending from block end-2. This permutation is why a
-// naive XOR loop produces garbage.
+// PERMUTED index within each block: ODD offsets descending first, then EVEN
+// offsets descending. This permutation is why a naive XOR loop produces
+// garbage.
+//
+// The odd start offset is the largest ODD number below the block chunk:
+//   chunk even -> odd_start = chunk - 1
+//   chunk odd  -> odd_start = chunk - 2      (this case is easy to miss)
+// Using chunk-1 unconditionally is correct for full blocks only and corrupts
+// the final partial block. The entry table is exactly such a case:
+//   3653 = 28 * 128 + 69, and 69 is odd,
+// so the last block was silently wrong until this was fixed. That single bug
+// made the archive reader lose 3 entries and mis-handle the LZSS tail.
+//
+// KNOWN LIMITATION: whether the original processes the final partial block at
+// all is NOT fully determined. Measured behaviour:
+//   entry table  stored=3653 block=128 tail=69  -> tail IS processed
+//   wave07.ecl   stored=1436 block=128 tail=28  -> tail is NOT processed
+//   title_v.anm  stored=2678 block=512 tail=118 -> tail is NOT processed
+// Our implementation always processes the tail, which is correct for the
+// entry table (the only case the archive reader depends on) but over-decrypts
+// trailing bytes of some entries. Those bytes sit past the LZSS end-of-stream
+// marker, so extraction results are unaffected. See docs/PBG4.md.
 void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block, u32 limit) noexcept;
 
 // LZSS decompression — mirrors RVA 0x71E70.

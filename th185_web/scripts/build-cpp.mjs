@@ -204,24 +204,51 @@ async function main() {
   };
   writeFileSync(join(outDir, "build.json"), JSON.stringify(report, null, 2) + "\n", "utf8");
 
-  // Optional: build the RNG harness into a runnable Node script. This is what
-  // lets us diff the REAL compiled C++ against the Unicorn probe.
+  // Optional: build each Harness*.cpp into a runnable Node script. These let us
+  // diff the REAL compiled C++ against the Unicorn probe and against the Python
+  // reference parsers, instead of only checking that the code compiles.
   if (harness) {
     console.log();
-    const harnessOut = join(outDir, "harness-rng.cjs");
-    process.stdout.write("building harness -> " + relative(root, harnessOut) + " ... ");
-    await run([
-      ...common,
-      resolve(root, "cpp", "game", "HarnessRng.cpp"),
-      resolve(root, "cpp", "game", "Rng.cpp"),
-      "-o", harnessOut,
-      "-sEXIT_RUNTIME=1",
-      "-sINVOKE_RUN=1",
-      "-sENVIRONMENT=node",
-      "-sMODULARIZE=0",
-    ], "harness link");
-    console.log("ok");
-    console.log("run it with: node " + relative(root, harnessOut).replaceAll("\\", "/"));
+    // The harness links against the library objects, so it only needs its own
+    // translation unit plus the archive.
+    const harnesses = [
+      { source: "HarnessRng.cpp", output: "harness-rng.cjs" },
+      { source: "HarnessGame.cpp", output: "harness-game.cjs" },
+    ];
+    for (const item of harnesses) {
+      const source = resolve(root, "cpp", "game", item.source);
+      if (!existsSync(source)) continue;
+      const target = join(outDir, item.output);
+      process.stdout.write("building " + item.source + " -> " +
+        relative(root, target) + " ... ");
+      await run([
+        ...common,
+        source,
+        archive,
+        "-o", target,
+        "-sEXIT_RUNTIME=1",
+        // INVOKE_RUN=0: the runner mounts NODEFS and then calls main itself,
+        // because the sandbox has no host filesystem at startup.
+        "-sINVOKE_RUN=0",
+        "-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,callMain",
+        "-sENVIRONMENT=node",
+        // MODULARIZE=1 so the runner can mount NODEFS in preRun before main.
+        "-sMODULARIZE=1",
+        "-sALLOW_MEMORY_GROWTH=1",
+        "-sSTACK_SIZE=5242880",
+        // Linking against C++ objects pulls in operator new/delete; emcc needs
+        // to be told to use the C++ driver for the link step or those stay
+        // undefined.
+        "-sDEFAULT_TO_CXX=1",
+        "-sEXPORT_ES6=0",
+        // The harness reads th185.dat with stdio. Inside the WASM sandbox there
+        // is no host filesystem, so expose NODEFS and let the runner mount the
+        // real directory before calling main.
+        "-lnodefs.js",
+        "-sFORCE_FILESYSTEM=1",
+      ], "harness link " + item.source);
+      console.log("ok");
+    }
   }
 
   console.log();

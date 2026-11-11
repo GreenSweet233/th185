@@ -44,8 +44,11 @@ def build_harness() -> bool:
 
 def run_harness():
     """Run the compiled harness and parse its output into sections."""
+    # The harness is built with INVOKE_RUN=0 so the runner can set up the
+    # filesystem first; run it through the runner (no file argument needed).
+    runner = WEB / "scripts" / "run-harness.mjs"
     result = subprocess.run(
-        ["node", str(HARNESS)],
+        ["node", str(runner), str(HARNESS)],
         cwd=str(REPO), capture_output=True, text=True, timeout=300,
     )
     if result.returncode != 0:
