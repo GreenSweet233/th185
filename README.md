@@ -73,7 +73,7 @@ Generated build outputs are written below `th185_web/artifacts/` and are intenti
 
 **① 这是全球首例。** GitHub 全站搜索（`th185` / `"100th Black Market"` / `touhou 18.5` / `th185 in:readme`）只找到 Mod、随机化工具和资源编译器，**没有任何 TH185 的重建或反编译项目**。Eagler Touhou 进度表里 th185 标为 `Unassigned`。
 
-**② Replay 被取消了。** THBWiki 原文「本作取消了Replay系统」——但引擎层代码还在（`th185_%.2d.rpy` 字符串 + `0x468764` 的 `ReplayManager::OnTick`）。这意味着 **TH11 那套「原版录像逐帧比对」的核心验证手段不可直接用**，必须先逆向出 `.rpy` 格式自建录像。详见 [docs/RECONSTRUCTION.md](th185_web/docs/RECONSTRUCTION.md) §3.3。
+**② Replay 被取消了——但这不是 bug，是小数点作的传统。** 扫描本机全部小数点作 exe：th095/th125/th128/th143/th165/th185 **全都没有 `Replay` UI 字符串**，只有 th18 有。所以「ZUN 代码没写好」的说法不成立；更可能是 TH185 的随机性玩法与 Replay 天然不兼容（黑市是关卡中途交互，传统 `.rpy` 表达不了）。这意味着 **TH11 那套「原版录像逐帧比对」不可直接用**，验证改用「状态快照比对 + Force Wave 确定性注入」。**不建议自建 Replay**——那是替 ZUN 解决他主动绕开的问题。详见 [docs/RECONSTRUCTION.md](th185_web/docs/RECONSTRUCTION.md) §3.2.1 与 §3.3。
 
 **③ 规模约为 TH11 的 3~3.5 倍。** 9 场景 × 50 波次槽位、110 条波次模板池、28 个 BOSS 编号、87 个卡牌类、8 档难度。自机砍到 1 人（仅魔理沙）是唯一减项。
 
