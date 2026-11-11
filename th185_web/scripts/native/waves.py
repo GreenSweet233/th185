@@ -293,16 +293,89 @@ def selftest_algorithm() -> int:
 
 
 
+# ---------- 强制 BOSS 机制（RVA 0x3D0E6 - 0x3D156，见 docs/WAVES.md §9） ----------
+
+# 关卡号 -> (所需卡牌 ID, 强制索引)
+FORCE_BOSS_RULES = {
+    5: (0, 27),      # 关卡 5 且持有卡牌 ID 0  -> 索引 27 = Boss26
+    7: (66, 28),     # 关卡 7 且持有卡牌 ID 66 -> 索引 28 = Boss27
+}
+
+# 触发强制 BOSS 需要的标志位（0x3D0E6 的 test ..., 0x100）
+FORCE_FLAG = 0x100
+
+
+def pick_forced_boss(stage, card_ids, flags):
+    """按原版逻辑决定是否强制指定 BOSS。
+
+    参数:
+        stage    -- 当前关卡号（原版 [0x4D1004]）
+        card_ids -- 当前持有的卡牌 ID 序列（原版卡牌链表）
+        flags    -- 模式标志（原版 [ebp-0x644]）
+
+    返回强制索引，或 None 表示不强制（走正常权重抽取）。
+
+    对应 RVA 0x3D0E6 - 0x3D156。
+    """
+    if not (flags & FORCE_FLAG):
+        return None
+    rule = FORCE_BOSS_RULES.get(stage)
+    if rule is None:
+        return None
+    required_card, index = rule
+    if required_card in card_ids:
+        return index
+    return None
+
+
+def selftest_force() -> int:
+    """验证强制 BOSS 逻辑的各个分支。不需要原版 exe。"""
+    print("=== 强制 BOSS 机制自检 ===")
+    print()
+    failures = 0
+
+    cases = [
+        # (stage, cards, flags, expected, 说明)
+        (5, [0], FORCE_FLAG, 27, "关卡5 + 卡牌0 + 标志置位 -> Boss26"),
+        (5, [0], 0, None, "标志未置位 -> 不强制"),
+        (5, [1, 2], FORCE_FLAG, None, "关卡5 但没有卡牌0 -> 不强制"),
+        (7, [66], FORCE_FLAG, 28, "关卡7 + 卡牌66 -> Boss27"),
+        (7, [0], FORCE_FLAG, None, "关卡7 但卡牌不对 -> 不强制"),
+        (3, [0, 66], FORCE_FLAG, None, "关卡3 无规则 -> 不强制"),
+        (5, [0, 66], FORCE_FLAG, 27, "两个卡都有，关卡5 优先卡牌0"),
+        (7, [0, 66], FORCE_FLAG, 28, "两个卡都有，关卡7 用卡牌66"),
+    ]
+
+    for stage, cards, flags, expected, desc in cases:
+        got = pick_forced_boss(stage, cards, flags)
+        ok = got == expected
+        if not ok:
+            failures += 1
+        print("[%s] %-32s 期望 %-4s 实得 %s"
+              % ("PASS" if ok else "FAIL", desc, expected, got))
+
+    print()
+    if failures:
+        print("自检失败 %d 项" % failures)
+        return 1
+    print("自检通过：强制 BOSS 逻辑与反汇编一致")
+    return 0
+
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="TH185 波次模板表提取器")
     parser.add_argument("--list", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--selftest", action="store_true", help="验证表结构")
     parser.add_argument("--selftest-algo", action="store_true", help="验证抽取算法（不需要 exe）")
+    parser.add_argument("--selftest-force", action="store_true", help="验证强制 BOSS 逻辑（不需要 exe）")
     args = parser.parse_args()
 
     if args.selftest_algo:
         return selftest_algorithm()
+    if args.selftest_force:
+        return selftest_force()
 
     try:
         names = load_table()

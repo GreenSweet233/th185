@@ -5,3 +5,6 @@ BHV-RNG-003,SYS-CORE-RNG,"取模用 32 位 EAX 而非 16 位种子",original,obs
 BHV-WAVE-001,SYS-GAME-WAVE,"波次名表共 111 项，分布为 1 空 + 1 教程BOSS + 27 BOSS + 3 教程波 + 79 常规波",original,observed,verified,"th185_web/scripts/native/waves.py --selftest","分布硬编码在自检里，锁死表结构"
 BHV-WAVE-002,SYS-GAME-WAVE,"权重抽取用两遍循环：先累加总和，RNG 取模后逐个递减到负数",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-algo","8 项算法测试含分布正确性与 RNG 联动确定性"
 BHV-WAVE-003,SYS-GAME-WAVE,"两遍循环都跳过 skip_index，防止同一模板连续出现",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-algo","skip 相关测试 2 项"
+BHV-WAVE-004,SYS-GAME-WAVE,"标志位 0x100 置位时，关卡 5 且持有卡牌 ID 0 会强制出 Boss26（索引 27）",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-force","RVA 0x3D0F8-0x3D126"
+BHV-WAVE-005,SYS-GAME-WAVE,"关卡 7 且持有卡牌 ID 66（0x42）会强制出 Boss27（索引 28）",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-force","RVA 0x3D128-0x3D151"
+BHV-WAVE-006,SYS-GAME-SESSION,"强制 BOSS 条件不满足时回退到正常权重抽取",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-force","0x3D0F6 / 0x3D10C / 0x3D11F / 0x3D137 / 0x3D14F 多处 je/jmp 0x3D156"

@@ -268,8 +268,131 @@ python th185_web/scripts/native/waves.py --selftest
 | 权重数组内容 | ❌ 运行时才填，未 dump |
 | 两条路径互斥且各自自洽 | ✅ **已澄清**（0x1BC = 111×4，两个独立数组） |
 | 两个权重数组的语义 | ❌ 待确认 |
-| 硬编码索引 27/28 的触发条件 | ❌ 未确认 |
+| 强制 BOSS 机制（索引 27/28） | ✅ **已解出**（关卡 5/7 + 特定卡牌） |
+| 卡牌 ID 0 与 66 的具体卡名 | ❌ 待查卡牌表 |
 | 每场景的模板子集 | ❌ 未确认（场景如何筛选模板池） |
 
 **`SYS-GAME-WAVE` 保持 `in-progress`**——表解出来了，
 但权重与场景筛选还没验证。
+
+---
+
+## 9. 强制 BOSS 机制（本轮新解出）
+
+### 9.1 之前误读的地方
+
+上一轮我写：
+
+> 「硬编码索引 27/28，条件 `[0x4D1004]` 等于 5 或 7」
+
+**这个描述不完整。** 实际条件还要求**持有特定卡牌**。
+
+### 9.2 完整逻辑
+
+```asm
+03D0E6: test dword ptr [ebp-0x644], 0x100   ; 某个标志位
+03D0F6: je 0x3d156                          ; 未置位 -> 走正常抽取结果
+
+03D0F8: mov eax, [0x4d1004]                 ; ★ 当前关卡号
+03D0FD: cmp eax, 5
+03D100: jne 0x3d128
+
+; --- 分支 A：关卡 == 5 ---
+03D102: mov eax, [0x4d7ab8]                 ; 卡牌管理器
+03D107: mov ecx, [eax + 0x1c]               ; 卡牌链表头
+03D10A: test ecx, ecx
+03D10C: je 0x3d156                          ; 链表空 -> 正常抽取
+03D110: mov eax, [ecx]                      ; 当前节点
+03D112: cmp dword ptr [eax + 4], 0          ; ★ 卡牌 ID == 0 ?
+03D116: je 0x3d121                          ; 命中
+03D118: mov ecx, [ecx + 4]                  ; 下一个节点
+03D11B: test ecx, ecx
+03D11D: jne 0x3d110                         ; 继续遍历
+03D11F: jmp 0x3d156                         ; 遍历完没找到 -> 正常抽取
+03D121: mov esi, 0x1b                       ; ★ 强制索引 27
+
+; --- 分支 B：关卡 == 7 ---
+03D128: cmp eax, 7
+03D12B: jne 0x3d156
+03D12D: mov eax, [0x4d7ab8]
+03D132: mov ecx, [eax + 0x1c]
+03D135: test ecx, ecx
+03D137: je 0x3d156
+03D140: mov eax, [ecx]
+03D142: cmp dword ptr [eax + 4], 0x42       ; ★ 卡牌 ID == 66 ?
+03D146: je 0x3d151
+03D148: mov ecx, [ecx + 4]
+03D14B: test ecx, ecx
+03D14D: jne 0x3d140
+03D14F: jmp 0x3d156
+03D151: mov esi, 0x1c                       ; ★ 强制索引 28
+
+; --- 汇合 ---
+03D156: push dword ptr [esi*4 + 0x4b5d50]   ; 用索引查名表
+03D15D: mov dword ptr [0x4d1020], esi       ; ★ 记录选中的索引
+```
+
+### 9.3 等价伪代码
+
+```c
+int pick_wave_or_boss(EnemyManager* em, uint32_t flags) {
+    int index = normal_pick(em);        // 上一节的权重抽取
+
+    if (flags & 0x100) {                // 特殊模式标志
+        uint32_t stage = g_stage_number;   // [0x4D1004]
+        CardNode* node = g_card_manager->list_head;  // [+0x1C]
+
+        if (stage == 5) {
+            for (; node; node = node->next) {
+                if (node->card->id == 0) {
+                    index = 27;         // Boss26
+                    break;
+                }
+            }
+        } else if (stage == 7) {
+            for (; node; node = node->next) {
+                if (node->card->id == 66) {
+                    index = 28;         // Boss27
+                    break;
+                }
+            }
+        }
+    }
+
+    g_selected_index = index;           // [0x4D1020]
+    return index;
+}
+```
+
+### 9.4 索引对应的 BOSS
+
+| 索引 | 名称 | 触发条件 |
+|---|---|---|
+| `27` (`0x1B`) | **Boss26** | 关卡 == 5 且持有卡牌 ID **0** |
+| `28` (`0x1C`) | **Boss27** | 关卡 == 7 且持有卡牌 ID **66** (`0x42`) |
+
+> 索引与名称的换算：`[2] = Boss01`，所以 `[27] = Boss26`、`[28] = Boss27`。
+
+### 9.5 数据结构
+
+| 地址 | 类型 | 含义 |
+|---|---|---|
+| `0x4D1004` | uint32 | **当前关卡号**（不是对象基址！） |
+| `0x4D7AB8` | ptr | 卡牌管理器 |
+| `+0x1C`（相对卡牌管理器） | ptr | 卡牌链表头 |
+| `+0x00`（相对链表节点） | ptr | 卡牌对象 |
+| `+0x04`（相对链表节点） | ptr | 下一个节点 |
+| `+0x04`（相对卡牌对象） | uint32 | **卡牌 ID** |
+| `0x4D1020` | uint32 | **选中的波次/BOSS 索引**（输出） |
+
+### 9.6 这一节的价值
+
+**这是 TH185 剧情推进的机制。** 之前调研说「存在需要特殊操作才能推进剧情、
+解锁场景的情况」——现在知道具体是什么了：
+
+- 在**特定关卡**持有**特定卡牌**时，强制切换到**特定 BOSS**
+- 这解释了为什么 THBWiki 会写「隐藏剧情解锁方式」需要单独一页说明
+
+> ⚠️ 但**卡牌 ID 0 和 66 具体是哪张卡**还没确认。
+> 需要卡牌表（`CARD_DESC_LIST` @ `0x4CA370`，thprac 已记录）来映射。
+> 这是下一步可以做的。
