@@ -124,11 +124,28 @@ def parse_ecl(blob):
             anim_names.append(blob[start:pos].decode("ascii", "replace"))
             pos += 1
 
-    # --- ECLI section: tag + u32 reserved, then the offset table ---
+    # --- ECLI section: tag + u32 count + count names, then the offset table ---
+    #
+    # Like ANIM, ECLI is VARIABLE LENGTH: it lists the .ecl files this script
+    # depends on (e.g. boss01.ecl -> ["default.ecl"]). Observed counts: 0 (77
+    # files), 1 (28), and 5/15/16/17/25/35/58 (one or two files each). Assuming
+    # the table sits at a fixed offset works only for the 77 count==0 files,
+    # which is exactly the bug this comment prevents.
     ecli_pos = blob.find(ECLITAG)
     if ecli_pos < 0:
         raise SystemExit("no ECLI section")
-    table_pos = ecli_pos + 8
+    ecli_count = struct.unpack_from("<I", blob, ecli_pos + 4)[0]
+    ecli_names = []
+    pos = ecli_pos + 8
+    for _ in range(ecli_count):
+        start = pos
+        while pos < len(blob) and blob[pos] != 0:
+            pos += 1
+        if pos >= len(blob):
+            break
+        ecli_names.append(blob[start:pos].decode("ascii", "replace"))
+        pos += 1
+    table_pos = (pos + 3) & ~3
 
     sub_offsets = []
     for i in range(sub_count):
@@ -193,6 +210,7 @@ def parse_ecl(blob):
         "sub_count": sub_count,
         "anim_names": anim_names,
         "ecli_offset": ecli_pos,
+        "ecli_names": ecli_names,
         "names": names,
         "subs": subs,
     }
@@ -314,13 +332,17 @@ def selftest() -> int:
         print("       %s" % bad_tails[:5])
         failures += 1
 
-    ok = total_instrs > 10000
-    print("[%s] parsed %d instructions across all files" % ("PASS" if ok else "FAIL", total_instrs))
+    # Correct total is 23770 (816 subroutines). It was 12480 / 486 before the
+    # ECLI section was understood: ECLI is variable length, and 37 boss files
+    # (all depending on "default.ecl") used to be skipped entirely.
+    ok = total_instrs == 23770
+    print("[%s] parsed %d instructions across all files (expect 23770)"
+          % ("PASS" if ok else "FAIL", total_instrs))
     if not ok:
         failures += 1
 
-    ok = len(all_opcodes) >= 100
-    print("[%s] observed %d distinct opcodes across all files"
+    ok = len(all_opcodes) >= 150
+    print("[%s] observed %d distinct opcodes across all files (expect 165)"
           % ("PASS" if ok else "FAIL", len(all_opcodes)))
     if not ok:
         failures += 1

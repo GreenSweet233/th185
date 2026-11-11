@@ -220,3 +220,63 @@ stored <  entry.size  ->  LZSS 压缩，解密 + 解压
 
 **下一步：`EclResource.cpp`**（SCPT/ECLH 加载）。
 格式已完全解出（`docs/ECL.md`），且依赖 `Archive` 已完成，可直接接上。
+
+---
+
+## 5. 已完成：EclResource（`EclResource.hpp` / `.cpp`）
+
+### 5.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/EclResource.hpp` | SCPT 容器结构、指令/子程序定义 |
+| `cpp/game/EclResource.cpp` | 解析 ANIM/ECLI 变长段 + ECLH 指令流 |
+| `scripts/native/ecl_cpp_check.py` | 交叉校验（全部 114 文件逐条对照） |
+
+### 5.2 ★ 本轮发现的重大修正
+
+**ECLI 段也是变长的**，之前只修正了 ANIM：
+
+```
+wave01.ecl  ECLI count=0  ->  偏移表在 tag+8
+boss01.ecl  ECLI count=1  ->  偏移表在 "default.ecl"\0 之后（4 对齐）
+```
+
+修正后数字全变：
+
+| 指标 | 之前（错） | 修正后 |
+|---|---|---|
+| 子程序 | 486 | **816** |
+| 指令 | 12480 | **23770** |
+| 操作码 | 112 | **165** |
+| 尾部不变式 | 486/486 | **816/816** |
+
+**37 个 BOSS 文件依赖 `default.ecl`**，之前被整个漏掉。
+
+### 5.3 验证
+
+```
+[PASS] all 114 .ecl files parse identically (0 mismatches)
+[PASS] all 816 subroutines end with the same tail (0 bad)
+[PASS] instruction total is 23770 (expect 23770)
+[PASS] subroutine total is 816 (expect 816)
+[PASS] the 12-byte tail invariant holds
+```
+
+校验方式是**逐条对照**：114 个文件、816 个子程序、23770 条指令，
+每条的 `id/size/rank/argc/offset` 全部与参考实现比对。
+
+### 5.4 C++ 实现进度
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | `rng_cpp_check.py` 5 项 |
+| `Archive.hpp` / `Archive.cpp` | ✅ | `archive_cpp_check.py` 5 项 |
+| **`EclResource.hpp` / `.cpp`** | ✅ | `ecl_cpp_check.py` 5 项 |
+| `StageScript.cpp` | ⬜ | — |
+| `WaveSelector.cpp` | ⬜ | — |
+| `CardManager.cpp` | ⬜ | — |
+
+**下一步：`StageScript.cpp`**（`.std` 关卡指令流）。
+格式已解出（`docs/STAGE.md`），9 场景各剩 16 字节尾部。
