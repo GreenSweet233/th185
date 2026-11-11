@@ -1,0 +1,52 @@
+{
+  "schema": "th185-final-baseline/1",
+  "date": "2026-11-11",
+  "status": "scaffold",
+  "target": {
+    "game": "th185",
+    "version": "1.00a",
+    "language": "Japanese",
+    "executable": "../[th185] 弹幕狂们的黑市 (汉化版+日文版)/th185.exe",
+    "sha256": "76BBF844E962C16004B64F1B2EF3551593056BAA43EA53B9A5DF45AD731345C7",
+    "imageBase": "0x00400000",
+    "evidence": "Executable title string: ` 100th Black Market ver 1.00a; PE fields recorded by scripts/verify-target.mjs. SHA-256 matches thcrap-tsa versions.js entry labelled (original, DLsite release).",
+    "completeGame": false,
+    "localizedExecutable": {
+      "file": "../[th185] 弹幕狂们的黑市 (汉化版+日文版)/th185c.exe",
+      "sha256": "38B4C0EF961E87764828EBB0AD6AEDD3277E4C306D31477A6D99645CD5A914FA"
+    }
+  },
+  "releases": {
+    "th08": {
+      "version": "3.4.1-sdl3",
+      "role": "shared-renderer-baseline",
+      "note": "本仓库不发布 TH08，仅声明共享渲染器来源版本。"
+    },
+    "th10": {
+      "version": "3.5.1-sdl3",
+      "role": "shared-renderer-baseline",
+      "note": "同上。"
+    },
+    "th11": {
+      "version": "40704f8bcd9f1dd9f4cb63f5",
+      "role": "reference-implementation",
+      "note": "TH185 的架构与验证流程直接参考 TH11。"
+    },
+    "th185": {
+      "version": "0.0.0-scaffold",
+      "role": "this-repository",
+      "completeGame": false,
+      "note": "脚手架阶段，尚无可用构建。"
+    }
+  },
+  "files": {
+    "portable/sdl/Renderer.cpp": "TO-BE-PINNED",
+    "portable/sdl/Renderer.hpp": "TO-BE-PINNED",
+    "portable/sdl/GraphicsState.hpp": "TO-BE-PINNED",
+    "portable/sdl/Shaders.hpp": "TO-BE-PINNED",
+    "portable/sdl/FrameCadence.hpp": "TO-BE-PINNED",
+    "portable/input/KeyboardMap.inc": "TO-BE-PINNED",
+    "portable/input/TouchController.hpp": "TO-BE-PINNED"
+  },
+  "filesNote": "portable/ 下的共享文件在首次接入时必须从 TH11 最终版固定（pin）到本仓库，并把实际 SHA-256 写回此处。当前为占位值。"
+}

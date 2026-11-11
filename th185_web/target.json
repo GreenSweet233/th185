@@ -1,0 +1,31 @@
+{
+  "game": "th185",
+  "version": "1.00a",
+  "language": "Japanese",
+  "executable": "../[th185] 弹幕狂们的黑市 (汉化版+日文版)/th185.exe",
+  "sha256": "76BBF844E962C16004B64F1B2EF3551593056BAA43EA53B9A5DF45AD731345C7",
+  "imageBase": "0x00400000",
+  "evidence": "Executable title string: ` 100th Black Market ver 1.00a / TH18 - 100th Black Market ver 1.00a; PE TimeDateStamp 1659144319 (0x62E4887F), .text SizeOfRawData 711168 (0xADA00), PE CheckSum 0x000DE79F, no overlay. SHA-256 matches thcrap-tsa versions.js entry labelled (original, DLsite release).",
+  "completeGame": false,
+  "localizedExecutable": {
+    "file": "../[th185] 弹幕狂们的黑市 (汉化版+日文版)/th185c.exe",
+    "sha256": "38b4c0ef961e87764828ebb0ad6aedd3277e4c306d31477a6d99645cd5a914fa",
+    "note": "喵玉汉化启动器，仅作参考，不参与逻辑基准"
+  },
+  "data": {
+    "file": "th185.dat",
+    "sha256": "5AF133F02ADD57F27FBEBA1B8D1E7D579F484B40C2595D57D4536537806D7428",
+    "size": 74537324,
+    "format": "PBG4 (encrypted archive, same family as th18.dat)"
+  },
+  "music": {
+    "file": "thbgm.dat",
+    "sha256": "5224F1311D4FD91325BCC53399DBBEFA3A6D33F14D8E820459753123D036F1EE",
+    "size": 255321904
+  },
+  "config": {
+    "file": "custom.exe",
+    "sha256": "AFA0747120A4B7EA97478D04A61908236CC82FE3B377248088DF71E29673D83C",
+    "size": 128512
+  }
+}
