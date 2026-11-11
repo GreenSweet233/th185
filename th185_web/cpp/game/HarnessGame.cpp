@@ -10,6 +10,7 @@
 #include "Difficulty.hpp"
 #include "EclResource.hpp"
 #include "GameSession.hpp"
+#include "EnemyManager.hpp"
 #include "Rng.hpp"
 #include "SaveFile.hpp"
 #include "StageScript.hpp"
@@ -184,13 +185,23 @@ void emit_session(const std::vector<u8>& file) {
     session.difficulty = 2;   // Normal
     session.card_id = 0;
 
+    // Per-template inputs. The original reads these from a session object we
+    // have not reconstructed (RVA 0x40090), so they are supplied here.
+    std::array<u32, WAVE_TABLE_SIZE> value_a{};
+    std::array<u32, WAVE_TABLE_SIZE> value_b{};
+    for (u32 i = 0; i < WAVE_TABLE_SIZE; ++i) {
+        value_a[i] = 100 + (i % 11) * 10;
+        value_b[i] = 1000 + (i % 7) * 100;
+    }
+
     for (u32 stage = 0; stage < SESSION_SCENE_COUNT; ++stage) {
         if (!session.load_stage(stage, &error)) {
             std::printf("SESSION %u LOAD_ERROR %s\n", stage, error.c_str());
             continue;
         }
         session.seed(u16(0x1234 + stage));
-        const u32 count = session.select_waves(weights);
+        session.enemies.reset();
+        const u32 count = session.select_waves_from_state(value_a, value_b);
 
         // Digest the picks so a mismatch points at the stage.
         u32 hash = 2166136261u;
@@ -199,12 +210,15 @@ void emit_session(const std::vector<u8>& file) {
             hash = (hash ^ wave.type) * 16777619u;
             hash = (hash ^ wave.ordinal) * 16777619u;
         }
+        // Counters must have advanced exactly once per resolved slot.
+        u32 drawn = 0;
+        for (u32 i = 0; i < WAVE_TABLE_SIZE; ++i) drawn += session.enemies.counter[i];
         std::printf("SESSION %u %s slots=%u entities=%zu groups=%zu cmds=%zu"
-                    " forced=%u scorecap=%u hash=%08X\n",
+                    " forced=%u scorecap=%u drawn=%u skip=%u hash=%08X\n",
                     stage, scene_files()[stage], count,
                     session.stage.entities.size(), session.stage.groups.size(),
                     session.stage.commands.size(), session.forced_boss(),
-                    session.score_cap(), hash);
+                    session.score_cap(), drawn, session.enemies.skip_index, hash);
     }
 }
 

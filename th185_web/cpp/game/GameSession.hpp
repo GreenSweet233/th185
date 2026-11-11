@@ -20,6 +20,7 @@
 #include "Archive.hpp"
 #include "CardManager.hpp"
 #include "Difficulty.hpp"
+#include "EnemyManager.hpp"
 #include "Rng.hpp"
 #include "StageScript.hpp"
 #include "WaveSelector.hpp"
@@ -47,6 +48,7 @@ struct ResolvedWave {
 struct GameSession {
     Archive archive;
     std::vector<u8> file;            // the whole .dat, kept for extraction
+    EnemyManager enemies;            // runtime wave-selection state
     StageScript stage;
     Rng rng;
     u32 stage_index = 0;
@@ -64,6 +66,13 @@ struct GameSession {
 
     // Seed the RNG. Must be called before select_waves().
     void seed(u16 value);
+
+    // Recompute EnemyManager weights from per-template inputs, then resolve
+    // every wave slot. This is the self-sufficient path: no caller-supplied
+    // weights are needed.
+    u32 select_waves_from_state(
+        const std::array<u32, WAVE_TABLE_SIZE>& value_a,
+        const std::array<u32, WAVE_TABLE_SIZE>& value_b);
 
     // Resolve every wave slot in the loaded scene using `weights`.
     //   skip tracking: the previous pick is passed as skip_index so the same

@@ -109,3 +109,7 @@ BHV-CARD-018,SYS-GAME-CARD,"卡表 87 项与 RTTI 类 1:1 对应；16 个名字�
 BHV-WAVE-014,SYS-GAME-WAVE,"权重数组在 EM+0x324(A) 与 EM+0x4E0(B)，由 RVA 0x3CEF2-0x3CF31 填充",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-algo","反汇编逐条确证"
 BHV-WAVE-015,SYS-GAME-WAVE,"权重计算公式：weights_A[idx]=value0；weights_B[idx]=value1/(count+1)-count，count 在 EM+0x168，结果负数则跳过",original,observed,implemented,"","公式来自 RVA 0x3CF0E-0x3CF31 反汇编"
 BHV-WAVE-016,SYS-GAME-WAVE,"权重是运行时动态计算而非静态表，依赖关卡号 0x4D1004、全局 0x4D0FE8、计数数组 EM+0x168",original,observed,implemented,"","这解释了为何静态搜索找不到权重表"
+BHV-WAVE-017,SYS-GAME-WAVE,"EnemyManager 三个数组各 444 字节（111*4），counter@+0x168、weights_A@+0x324、weights_B@+0x4E0，间距 0x1BC",original,observed,verified,"th185_web/scripts/native/enemymanager_cpp_check.py --selftest","间距算术锁定 111 项"
+BHV-WAVE-018,SYS-GAME-WAVE,"C++ EnemyManager::recompute 实现权重公式 weights_b=value_b/(count+1)-count，负数结果过滤为 0 并计为不可选",original,observed,verified,"th185_web/scripts/native/enemymanager_cpp_check.py --selftest","15 项校验全 PASS"
+BHV-WAVE-019,SYS-GAME-WAVE,"每抽中一个模板就递增其 counter 并记录 skip_index（对应 RVA 0x3D243 的 inc [eax+esi*4+0x168]）",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","真实会话 drawn==slots 全部吻合"
+BHV-WAVE-020,SYS-GAME-WAVE,"GameSession::select_waves_from_state 已自给自足：无需调用方提供权重数组",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","8 个场景全部走此路径"

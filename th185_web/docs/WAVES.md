@@ -478,3 +478,114 @@ weights_B[idx] = value1 / (count + 1) - count;  // 来自 0x40090(1)
 3. 关卡号与 `0x4D0FE8` 的位掩码逻辑
 
 这三项都依赖尚未实现的自机/会话状态，属**结构性依赖**。
+
+---
+
+## 11. ★ EnemyManager：让波次抽取自给自足
+
+### 11.1 之前的限制
+
+`WaveSelector::select_waves` 要求调用方提供权重数组——
+而权重是运行时计算的（§10），所以这等于把问题推给了调用方。
+
+`EnemyManager` 解决了这个问题：它维护权重所需的全部状态。
+
+### 11.2 内存布局
+
+```c
+struct EnemyManager {
+    uint32 counter[111];    // +0x168  每模板被抽中的次数
+    uint32 weights_a[111];  // +0x324  权重集 A
+    uint32 weights_b[111];  // +0x4E0  权重集 B
+    uint32 skip_index;      // +0x4F4C 上次抽中的索引
+};
+```
+
+**三个数组各 444 字节，间距 `0x1BC` = `111 × 4`**——
+这个算术就是「111 项」的确证依据，不是猜的。
+
+### 11.3 权重公式
+
+```c
+weights_a[i] = value_a[i];
+
+count        = counter[i];
+result       = value_b[i] / (count + 1) - count;
+weights_b[i] = result < 0 ? 0 : result;   // 负数 = 不可选
+```
+
+**`- count` 是防重复机制**：抽中越多次，权重越低。
+
+### 11.4 计数簿记
+
+对应 RVA `0x3D243`：
+
+```asm
+03D243: inc dword ptr [eax + esi*4 + 0x168]   ; counter[idx]++
+```
+
+C++ 侧在 `select_waves` 里同步：
+
+```cpp
+if (picked >= 0) {
+    skip = u32(picked);
+    enemies.note_drawn(u32(picked));   // ++counter[picked]
+}
+```
+
+### 11.5 真实会话验证
+
+harness 输出（新增 `drawn` / `skip` 字段）：
+
+```
+SESSION 0 world01t.std slots=7 ... drawn=7 skip=24
+SESSION 1 world01.std  slots=4 ... drawn=4 skip=26
+SESSION 2 world02.std  slots=9 ... drawn=9 skip=89
+SESSION 3 world03.std  slots=7 ... drawn=7 skip=31
+SESSION 4 world04.std  slots=4 ... drawn=4 skip=24
+SESSION 5 world05.std  slots=3 ... forced=27 drawn=3 skip=19
+SESSION 7 world07.std  slots=1 ... drawn=1 skip=26
+SESSION 8 world08.std  slots=1 ... drawn=1 skip=76
+```
+
+**`drawn` 精确等于 `slots`**——每个槽位恰好递增一次计数器。
+这是计数簿记链路完整的直接证据。
+
+### 11.6 验证（15 项）
+
+```
+[PASS] counter -> weights_a stride is 111 * 4 = 0x1BC
+[PASS] weights_a -> weights_b stride is 111 * 4 = 0x1BC
+[PASS] header declares EM_COUNTER_OFFSET = 0x168
+[PASS] header declares EM_WEIGHTS_A_OFFSET = 0x324
+[PASS] header declares EM_WEIGHTS_B_OFFSET = 0x4E0
+[PASS] header declares EM_SKIP_INDEX_OFFSET = 0x4F4C
+[PASS] weights_a is a straight copy of value_a
+[PASS] weights_b = value_b/(count+1) - count with count=0 gives 1000
+[PASS] count=9 gives weights_b = 1000/10 - 9 = 91
+[PASS] a negative result is filtered to 0 and counted as ineligible
+[PASS] note_drawn increments the counter and records the skip index
+[PASS] drawing the same template twice makes counter 2
+[PASS] the source really increments counter[index]
+[PASS] header states value_a/value_b are inputs from RVA 0x40090
+[PASS] after 50 draws template 0 is no longer eligible
+```
+
+### 11.7 仍然缺失的部分（如实记录）
+
+`value_a` / `value_b` 是**输入**，不是本类能推导的：
+
+它们来自 RVA `0x40090` 的两次调用，而那个函数读的是
+`ecx+0x5590` → `ecx+0xC` 的会话对象——我们尚未重建它。
+
+| 项 | 状态 |
+|---|---|
+| counter / weights 数组布局 | ✅ 精确 |
+| 权重公式 | ✅ 精确 |
+| 计数簿记 | ✅ 精确 |
+| 负数过滤 | ✅ 精确 |
+| **value_a / value_b 的来源** | ❌ 依赖未重建的会话对象 |
+
+**但这是一个真正的进步**：之前 `select_waves` 需要调用方提供
+「整个 111 项权重数组」，现在只需要提供「两组每模板输入值」。
+簿记、公式、过滤都在内部完成。

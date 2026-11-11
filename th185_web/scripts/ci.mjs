@@ -60,6 +60,7 @@ checks.push(
   { name: "ecl-cpp", args: [resolve(here, "native", "ecl_cpp_check.py"), "--selftest"], python: true },
   { name: "stage-cpp", args: [resolve(here, "native", "stage_cpp_check.py"), "--selftest"], python: true },
   { name: "waves-cpp", args: [resolve(here, "native", "waves_cpp_check.py"), "--selftest"], python: true },
+  { name: "enemymanager-cpp", args: [resolve(here, "native", "enemymanager_cpp_check.py"), "--selftest"], python: true },
   { name: "cards-cpp", args: [resolve(here, "native", "cards_cpp_check.py"), "--selftest"], python: true },
   { name: "difficulty-cpp", args: [resolve(here, "native", "difficulty_cpp_check.py"), "--selftest"], python: true },
   { name: "cpp-build", args: [resolve(here, "build-cpp.mjs")], python: false },

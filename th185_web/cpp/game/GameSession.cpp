@@ -80,9 +80,24 @@ u32 GameSession::select_waves(const std::array<u32, WAVE_TABLE_SIZE>& weights) {
         resolved.ordinal = slot.marker & 0xFFFF;
         waves.push_back(resolved);
 
-        if (picked >= 0) skip = u32(picked);
+        if (picked >= 0) {
+            skip = u32(picked);
+            // Keep the counter bookkeeping in sync: RVA 0x3D243 increments
+            // counter[i] every time template i is drawn, which is what makes
+            // weights decay over time.
+            enemies.note_drawn(u32(picked));
+        }
     }
     return u32(waves.size());
+}
+
+u32 GameSession::select_waves_from_state(
+    const std::array<u32, WAVE_TABLE_SIZE>& value_a,
+    const std::array<u32, WAVE_TABLE_SIZE>& value_b) {
+    // Refresh the runtime weights, then select using set B (the one the
+    // original subtracts from after the RNG roll at RVA 0x3D098).
+    enemies.recompute(value_a, value_b);
+    return select_waves(enemies.weights_b);
 }
 
 bool GameSession::has_forced_boss() const {

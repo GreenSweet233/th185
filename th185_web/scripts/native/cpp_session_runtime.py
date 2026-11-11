@@ -180,7 +180,37 @@ def main() -> int:
             print("       stage %d: got %s expect %s" % item)
         failures += 1
 
-    # 6. Wave selection must be deterministic: same seed -> same hash.
+    # 6. Counter bookkeeping: every resolved slot must increment exactly one
+    #    counter (RVA 0x3D243). If this drifts, weights stop decaying and the
+    #    anti-repeat mechanism silently breaks.
+    bad_drawn = []
+    for stage, record in sorted(sessions.items()):
+        slots = int(record.get("slots", "-1"))
+        drawn = int(record.get("drawn", "-1"))
+        if drawn != slots:
+            bad_drawn.append((stage, drawn, slots))
+    ok = not bad_drawn
+    print("[%s] drawn counter total equals slot count for every scene"
+          % ("PASS" if ok else "FAIL"))
+    if not ok:
+        for item in bad_drawn[:4]:
+            print("       stage %d: drawn=%d slots=%d" % item)
+        failures += 1
+
+    # 7. skip_index must point at a real template (or be the sentinel).
+    bad_skip = []
+    for stage, record in sorted(sessions.items()):
+        skip = int(record.get("skip", "-1"))
+        if skip != 0xFFFFFFFF and not (0 <= skip < 111):
+            bad_skip.append((stage, skip))
+    ok = not bad_skip
+    print("[%s] skip_index is always a valid template index or the sentinel"
+          % ("PASS" if ok else "FAIL"))
+    if not ok:
+        print("       %s" % bad_skip[:4])
+        failures += 1
+
+    # 8. Wave selection must be deterministic: same seed -> same hash.
     first = run(dat)
     second = run(dat)
     ok = first == second
