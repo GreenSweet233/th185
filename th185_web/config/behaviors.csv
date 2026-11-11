@@ -68,3 +68,6 @@ BHV-ECL-025,SYS-CORE-ECL,"opcode 40 是子程序声明，486/486 子程序全部
 BHV-ECL-026,SYS-CORE-ECL,"opcode 44 是弧度制角度参数，值域为 π 的分数倍（-π/2, -3π/4, π/18, π/9 等）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","973/1009 float 合理，0/1009 int 合理"
 BHV-ECL-027,SYS-CORE-ECL,"数值型 opcode 的 payload 结构：[int32 占位][int32 值][int32 标志][可选第4字段]",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","flag 字段 >99% 为 0"
 BHV-ECL-028,SYS-CORE-ECL,"opcode 14（全负）与 12（全正）是正向/反向配对，且 14->12 单向出现 31 次",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","12->14 为 0 次"
+BHV-ECL-029,SYS-CORE-ECL,"opcode 12/14 的值全部是 4 的倍数（571/571 与 529/529 无例外）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","全量 114 文件统计"
+BHV-ECL-030,SYS-CORE-ECL,"opcode 12 = |opcode 14| + 4，70/71 项匹配（唯一例外是 Ecl_EtBreak* 系列）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","系统性偏移非巧合"
+BHV-ECL-031,SYS-CORE-ECL,"opcode 12 全正(0/571负)、14 全负(529/529负)，且 14->12 单向出现 31 次",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","正向/反向配对"
