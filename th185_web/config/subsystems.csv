@@ -2,7 +2,7 @@ id,title,parent,deps,status,evidence_level,owner,notes
 SYS-CORE-ARCHIVE,档案层（PBG4 解包）,,,complete,observed,,"★完全打通:表在文件末尾;头解密+条目解密+压缩判定+LZSS全验证;单文件解包端到端通过(help_01.png解出1024x1024 PNG、thbgm.fmt解出10项音乐索引);工具 pbg4.py --selftest(9项)/--list/--extract/--dump;见 docs/PBG4.md 20"
 SYS-CORE-ANM,ANM 动画解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,与 th11 同族，可参考其 AnmInterpreter
 SYS-CORE-ECL,ECL 脚本解释器,,SYS-CORE-ARCHIVE,in-progress,observed,,"SCPT容器+ECLH全解出(114文件486子程序12480指令112操作码);已确认9个opcode语义:300调用/16跳转/304变体/11定义标签/15引用/30调试输出/40子程序声明(486/486)/44角度(π分数倍)/1006注释;数值型42/23/12/14值域已摸清但语义未定;见 docs/ECL.md 12-14"
-SYS-CORE-RNG,随机数发生器,,,complete,observed,,RVA 0x2800；16位xorshift变体 A=0x9630 B=0x6553；返回(edi<<16)|ebx 一次两个值；全局实例0x4D7AA8；16种子与探针逐位一致；见 docs/RNG.md
+SYS-CORE-RNG,随机数发生器,,,complete,observed,"th185_web/scripts/native/rng_cpp_check.py --selftest","★C++实现完成:cpp/game/Rng.hpp与Rng.cpp逐位一致(10种子x16次next16+next32+next_below全PASS);算法16位xorshift变体A=0x9630 B=0x6553,一次调用产两个值EAX=(edi<<16)|ebx;关键:中间步有^A再-B,next16返回旋转后的新种子不是ebx;全局实例0x4D7AA8;见 docs/RNG.md"
 SYS-CORE-FILE,文件与路径层,,,not-started,none,,th185.dat / thbgm.dat / scoreth185.dat / th185.cfg
 SYS-RENDER-ANM,ANM 渲染,SYS-CORE-ANM,SYS-CORE-ANM,not-started,none,,可复用 th11 的 AnmGeometry / AnmProjection
 SYS-RENDER-TEXT,文字渲染,,,not-started,none,,thcrap 的文本框尺寸 / 居中 / ruby 算法可参考
