@@ -9,7 +9,7 @@ SYS-RENDER-TEXT,文字渲染,,,not-started,none,,thcrap 的文本框尺寸 / 居
 SYS-AUDIO-WAVE,音频层,,,not-started,none,,thbgm.dat 是 WAV 容器
 SYS-INPUT-CONTROL,输入层,,,not-started,none,,DINPUT8 + XINPUT1_3
 SYS-GAME-SESSION,会话与流程,,,not-started,none,,9 场景 + 教程 + Boss Rush
-SYS-GAME-WAVE,波次系统,SYS-GAME-SESSION,SYS-CORE-RNG,not-started,none,,110 模板池 x 50 槽位，TH185 独有
+SYS-GAME-WAVE,波次系统,SYS-GAME-SESSION,SYS-CORE-RNG,in-progress,observed,,名表VA 0x4B5D50共111项(1空+1教程Boss+27Boss+3教程波+79常规波)已完全解出;抽取算法两遍循环已实现并自测8项通过;权重数组运行时构建未dump;见 docs/WAVES.md
 SYS-GAME-PLAYER,自机,SYS-GAME-SESSION,,not-started,none,,仅魔理沙 1 组
 SYS-GAME-BULLET,弹幕,SYS-GAME-SESSION,,not-started,none,,与 th11 同族
 SYS-GAME-ENEMY,敌人与 Boss,SYS-GAME-SESSION,SYS-CORE-ECL,not-started,none,,28 个 BOSS 编号

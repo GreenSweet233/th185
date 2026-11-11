@@ -40,6 +40,9 @@ checks.push(
   { name: "probe", args: [resolve(here, "native", "probe.py"), "--selftest"], python: true },
   // RNG 自检不需要 unicorn，纯算法验证。它锁死了 TH185 最关键的机制。
   { name: "rng", args: [resolve(here, "native", "rng.py"), "--selftest"], python: true },
+  // 波次表结构 + 抽取算法。前者需要 exe，后者纯算法。
+  { name: "waves", args: [resolve(here, "native", "waves.py"), "--selftest"], python: true },
+  { name: "waves-algo", args: [resolve(here, "native", "waves.py"), "--selftest-algo"], python: true },
 );
 
 let failures = 0;
@@ -58,6 +61,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "waves" || check.name === "waves-algo") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("自检通过") || line.startsWith("合计"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "rng") {
     if (!ok) {
       // 保留完整输出：RNG 失败意味着算法被动过
