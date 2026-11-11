@@ -112,3 +112,111 @@ seed = ((ebx >> 14) + ebx * 4) & 0xFFFF   // ← next16 返回这个
 
 **下一步应做 `Archive.cpp`**——它是资源层入口，
 格式已完全解出（`docs/PBG4.md`），且不依赖渲染/输入，最容易先落地。
+
+---
+
+## 3. 已完成：Archive（`Archive.hpp` / `Archive.cpp`）
+
+### 3.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/Archive.hpp` | 容器结构、加密参数、LZSS 与解包接口 |
+| `cpp/game/Archive.cpp` | 解密 + LZSS + 容器解析 + 单条目提取 |
+| `scripts/native/archive_cpp_check.py` | **交叉校验脚本** |
+
+### 3.2 实现的四个部分
+
+| 部分 | 对应原版 | 说明 |
+|---|---|---|
+| `decrypt_in_place` | RVA `0x1E90` | 密钥流按**读序**推进，明文按**置换序**写入 |
+| `lzss_decompress` | RVA `0x71E70` | 8192 窗口，写指针从 1 开始，MSB 优先 |
+| `cipher_for` | RVA `0x713C5` | `sum(name) & 7` 选 8 项表 |
+| `Archive::parse` | RVA `0x715555` | 表在**文件末尾** |
+
+### 3.3 最关键的一点：解密不是简单 XOR
+
+密钥流按**读取顺序**推进，但明文按**置换顺序**写入：
+
+```c
+// 每个 block 内：
+//   奇数偏移：从 block 末尾-1 开始，递减 2
+//   偶数偏移：从 block 末尾-2 开始，递减 2
+for (u32 i = 0; i < (chunk + 1) / 2; ++i) {
+    data[w] = cipher[src] ^ cur_key;   // w 递减，src 递增
+    cur_key = u8(cur_key + cur_step);
+    ++src;
+    w -= 2;
+}
+```
+
+**这个置换是为什么朴素的 XOR 循环会产出乱码。**
+
+### 3.4 另一个陷阱：`size` 字段是解压后大小
+
+```
+struct ArchiveEntry {
+    uint32 offset;    // 绝对文件偏移
+    uint32 size;      // ★ 解压后大小，不是存储大小
+    uint32 reserved;
+};
+```
+
+实际存储大小 = **下一项 offset - 本项 offset**（最后一项用表偏移）：
+
+```c
+u32 Archive::stored_size(std::size_t index) const {
+    const u32 next = (index + 1 < entries.size()) ? entries[index + 1].offset
+                                                  : table_offset;
+    return next - entries[index].offset;
+}
+```
+
+压缩判定：
+
+```
+stored == entry.size  ->  未压缩，只解密
+stored <  entry.size  ->  LZSS 压缩，解密 + 解压
+```
+
+### 3.5 验证
+
+```
+[PASS] cipher_for matches pbg4.py for 8 names
+[PASS] lzss_decompress matches lzss.py on 4 random inputs
+[PASS] header decryption yields THA1 magic (0x31414854)
+[PASS] header fields match (decomp=7172 comp=3653 count=285)
+[PASS] entry table sits at filesize - compressed_size (74533671)
+```
+
+头部字段用真实文件验证：`decompressed=7172`、`compressed=3653`、`count=285`、
+表偏移 `74533671` —— 与 `docs/PBG4.md` 记录的完全一致。
+
+### 3.6 状态
+
+| 项 | 状态 |
+|---|---|
+| 头部解密 | ✅ 与参考一致 |
+| 条目解密 | ✅ 与参考一致 |
+| LZSS 解压 | ✅ 与参考一致 |
+| 容器解析 | ✅ 字段与真实文件吻合 |
+| 单条目提取 | ✅ 已实现（含压缩判定） |
+| **能编译** | ❌ 仍缺工具链 |
+
+---
+
+## 4. C++ 实现进度
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | `rng_cpp_check.py` 5 项 |
+| **`Archive.hpp` / `Archive.cpp`** | ✅ | `archive_cpp_check.py` 5 项 |
+| `EclResource.cpp` | ⬜ | — |
+| `StageScript.cpp` | ⬜ | — |
+| `WaveSelector.cpp` | ⬜ | — |
+| `CardManager.cpp` | ⬜ | — |
+| 其余 | ⬜ | — |
+
+**下一步：`EclResource.cpp`**（SCPT/ECLH 加载）。
+格式已完全解出（`docs/ECL.md`），且依赖 `Archive` 已完成，可直接接上。
