@@ -106,3 +106,6 @@ BHV-CARD-015,SYS-GAME-CARD,"每个卡牌类有 22 个虚函数，vtable 间距 0
 BHV-CARD-016,SYS-GAME-CARD,"槽位 21 是标量删除析构函数（写基类 vtable 指针 + 测试 delete 标志），87 个类全部验证",original,observed,verified,"th185_web/scripts/native/card_classes.py --selftest","不是卡牌效果"
 BHV-CARD-017,SYS-GAME-CARD,"槽位 0-19 多为 xor eax,eax 的默认实现（65-87 个类共用）；槽位 20 有 79 种实现",original,observed,verified,"th185_web/scripts/native/card_classes.py --selftest","卡牌效果是薄封装，多设置标志位"
 BHV-CARD-018,SYS-GAME-CARD,"卡表 87 项与 RTTI 类 1:1 对应；16 个名字不完全一致（如 FLAN 在 RTTI 里是 Fran），必须按 id 关联而非字符串",original,observed,verified,"th185_web/scripts/native/card_classes.py --selftest","按名字匹配会漏 16 个"
+BHV-WAVE-014,SYS-GAME-WAVE,"权重数组在 EM+0x324(A) 与 EM+0x4E0(B)，由 RVA 0x3CEF2-0x3CF31 填充",original,observed,verified,"th185_web/scripts/native/waves.py --selftest-algo","反汇编逐条确证"
+BHV-WAVE-015,SYS-GAME-WAVE,"权重计算公式：weights_A[idx]=value0；weights_B[idx]=value1/(count+1)-count，count 在 EM+0x168，结果负数则跳过",original,observed,implemented,"","公式来自 RVA 0x3CF0E-0x3CF31 反汇编"
+BHV-WAVE-016,SYS-GAME-WAVE,"权重是运行时动态计算而非静态表，依赖关卡号 0x4D1004、全局 0x4D0FE8、计数数组 EM+0x168",original,observed,implemented,"","这解释了为何静态搜索找不到权重表"

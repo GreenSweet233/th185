@@ -396,3 +396,85 @@ int pick_wave_or_boss(EnemyManager* em, uint32_t flags) {
 > ⚠️ 但**卡牌 ID 0 和 66 具体是哪张卡**还没确认。
 > 需要卡牌表（`CARD_DESC_LIST` @ `0x4CA370`，thprac 已记录）来映射。
 > 这是下一步可以做的。
+
+---
+
+## 10. ★ 权重数组的来源（本轮解出）
+
+### 10.1 为什么之前 dump 不到
+
+**权重不是静态表，是运行时按游戏状态动态计算的。**
+这解释了为什么在 `.rdata`/`.data` 里搜不到 111 项权重数组。
+
+### 10.2 填充点（RVA `0x3CEF2` - `0x3CF31`）
+
+```asm
+03CEF2: call 0x40090                    ; 参数 0 -> 返回 esi（索引）
+03CEFB: push 1                          ; 参数 1
+03CEFD: call 0x40090                    ; -> 返回 eax（值）
+03CF08: mov edi, [0x4d7af4]             ; edi = ENEMY_MANAGER
+03CF0E: mov [edi + esi*4 + 0x324], eax  ; ★ weights_A[idx] = eax
+03CF15: mov esi, [edi + esi*4 + 0x168]  ; ★ esi = 计数数组[idx]
+03CF1D: lea ecx, [esi + 1]              ; ecx = count + 1
+03CF20: idiv ecx                        ; eax /= (count + 1)
+03CF28: sub eax, esi                    ; eax -= count
+03CF2A: mov [edi + ecx*4 + 0x4E0], eax  ; ★ weights_B[idx] = eax - count
+03CF31: jns 0x3d578                     ; 负数则跳过
+```
+
+### 10.3 核心公式
+
+```c
+weights_A[idx] = value0;                        // 来自 0x40090(0)
+count          = EM->counter[idx];              // EM + 0x168
+weights_B[idx] = value1 / (count + 1) - count;  // 来自 0x40090(1)
+// 若结果 < 0，该模板不参与本次抽取
+```
+
+### 10.4 权重依赖的运行时状态
+
+填充逻辑在 `0x3CEEE`，它是**一个大 switch 的 case 分支**
+（跳转表 `0x3D5DC..0x3D8A8`，180 项，全部指向 `0x43Cxxx`）。
+
+该分支还引用了：
+
+| 地址 | 用途 |
+|---|---|
+| `0x4D1004` | **关卡号**（与强制 BOSS 逻辑同一个全局） |
+| `0x4D0FE8` | 另一个全局（经 `0x31300` 计算位掩码） |
+| `EM + 0x168` | **计数数组**（每模板被抽中的次数） |
+| `EM + 0x324` | 权重数组 A |
+| `EM + 0x4E0` | 权重数组 B |
+
+位掩码片段：
+
+```asm
+03CE74: mov ecx, 0x4d0fe8
+03CE79: call 0x31300        ; 计算 n
+03CE80: mov dl, 1
+03CE82: shl dl, cl          ; ★ 1 << n
+03CE8A: call 0x33b00        ; 设置位掩码
+```
+
+### 10.5 结论
+
+| 项 | 状态 |
+|---|---|
+| 权重数组位置 | ✅ `EM+0x324` / `EM+0x4E0`（已由反汇编确证） |
+| 权重计算公式 | ✅ `B = value/(count+1) - count` |
+| 权重是否静态 | ❌ **否，运行时计算** |
+| **具体权重数值** | ❌ **无法静态 dump** |
+
+**这意味着**：要实现波次抽取，必须**同时实现计数数组的维护逻辑**
+（每抽中一次就递增），否则权重永远算不对。
+
+### 10.6 对实现的影响
+
+`WaveSelector::select_waves` 目前要求调用方提供权重数组。
+要让它自给自足，需要补上：
+
+1. `EM->counter[111]`（`+0x168`）的维护：抽中即递增
+2. `0x40090` 的两个取值函数（依赖 `ecx+0x5590` → `ecx+0xC` 的对象）
+3. 关卡号与 `0x4D0FE8` 的位掩码逻辑
+
+这三项都依赖尚未实现的自机/会话状态，属**结构性依赖**。
