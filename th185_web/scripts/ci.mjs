@@ -35,13 +35,17 @@ if (!skipTarget) {
 checks.push(
   { name: "ledgers", args: [resolve(here, "validate-ledgers.mjs")] },
   { name: "progress", args: [resolve(here, "progress.mjs"), "--stdout"] },
+  // 探针自检需要 unicorn + capstone。缺依赖时跳过而不是判失败，
+  // 但会在输出里明确提示，避免"CI 全绿"被误解为"探针可用"。
+  { name: "probe", args: [resolve(here, "native", "probe.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
 const width = Math.max(...checks.map((c) => c.name.length));
 
 for (const check of checks) {
-  const result = spawnSync(process.execPath, check.args, {
+  const command = check.python ? "python" : process.execPath;
+  const result = spawnSync(command, check.args, {
     cwd: repoRoot,
     encoding: "utf8",
     maxBuffer: 16 * 1024 * 1024,
@@ -52,6 +56,16 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "probe") {
+    if (!ok && /No module named/.test(output)) {
+      console.log("         (跳过：缺少 unicorn/capstone，pip install unicorn capstone)");
+      output = "";
+    } else if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("[PASS]") || line.startsWith("自检") || line.includes("导入函数数"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "progress" && ok) {
     const summary = output.split("\n").filter((line) =>
       line.startsWith("| 子系统总数") ||
