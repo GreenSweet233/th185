@@ -29,3 +29,4 @@ SYS-PLATFORM-SDL,SDL3 平台层,,,not-started,none,,可复用 th11 的 cpp/sdl
 SYS-PLATFORM-WEB,Web 运行时壳,,,not-started,none,,可复用 th11 的 sdl-runtime
 SYS-INTEGRATION-LAUNCHER,启动器接入,SYS-PLATFORM-WEB,,not-started,none,,eagler-touhou/1 协议
 SYS-INTEGRATION-THPRAC,thprac 适配,,,not-started,none,,参考 _references/thprac
+SYS-GAME-STAGE,关卡布局（.std）,,SYS-CORE-ARCHIVE,in-progress,observed,,"9个.std全部解析:头=u16波次数+u16组数+实体表偏移+ANM名;波次项60字节含标记/坐标/标志/槽位id;实体项16字节=kind(高字节0x01)+xyz坐标;实测379个实体;工具 std.py --selftest/--list/--scene"

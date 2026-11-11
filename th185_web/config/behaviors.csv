@@ -33,3 +33,7 @@ BHV-ARCHIVE-014,SYS-CORE-ARCHIVE,"th185.dat 含 284 个条目：ecl 114 / wav 72
 BHV-ARCHIVE-015,SYS-CORE-ARCHIVE,"条目的 size 字段是解压后大小；实际压缩大小 = 下一项 offset - 本项 offset",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","ascii.anm comp=274760 -> 解压 1866816 精确匹配"
 BHV-ARCHIVE-016,SYS-CORE-ARCHIVE,"压缩判定：comp_size == size 为未压缩（只解密），comp_size < size 为 LZSS 压缩",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","help_01.png 与 se_plst00.wav 解出 PNG/RIFF 魔数"
 BHV-ARCHIVE-017,SYS-CORE-ARCHIVE,"单文件完整解包可用：help_01.png -> 1024x1024 PNG、thbgm.fmt -> 10 项音乐索引",original,observed,verified,"th185_web/scripts/native/pbg4.py --extract","端到端验证通过"
+BHV-STAGE-001,SYS-GAME-STAGE,".std 头部：u16 波次数 + u16 组数 + u32 实体表偏移 + u32 未知 + u32 保留 + ANM 名",original,observed,verified,"th185_web/scripts/native/std.py --selftest","9 个 .std 全部解析，波次数与偏移表项数一致"
+BHV-STAGE-002,SYS-GAME-STAGE,"波次项 60 字节：+0x00 标记 +0x10..0x18 三个 float +0x1C 标志 +0x20 槽位 id +0x38 标记2",original,observed,verified,"th185_web/scripts/native/std.py --selftest","world01t 的 7 项偏移为 172,232,...,532 步长 60"
+BHV-STAGE-003,SYS-GAME-STAGE,"实体项 16 字节：u32 kind(高字节 0x01) + 3 个 float 坐标；9 个场景共 379 个实体",original,observed,verified,"th185_web/scripts/native/std.py --selftest","坐标范围含 y=4352 等大值"
+BHV-STAGE-004,SYS-GAME-STAGE,"波次项 +0x20 是槽位 id 不是序号（world03 为 0,1,2,2,2,9,10）",original,observed,verified,"th185_web/scripts/native/std.py --selftest","实测序列证明非连续"

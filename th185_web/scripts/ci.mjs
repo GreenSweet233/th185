@@ -48,6 +48,7 @@ checks.push(
   { name: "lzss", args: [resolve(here, "native", "lzss.py"), "--selftest"], python: true },
   { name: "difficulty", args: [resolve(here, "native", "difficulty.py"), "--selftest"], python: true },
   { name: "pbg4", args: [resolve(here, "native", "pbg4.py"), "--selftest"], python: true },
+  { name: "std", args: [resolve(here, "native", "std.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -66,6 +67,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "std") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("selftest passed"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "pbg4") {
     if (ok) {
       const summary = output.split("\n").filter((line) =>

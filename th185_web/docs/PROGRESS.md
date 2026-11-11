@@ -8,20 +8,20 @@
 
 | 指标 | 数量 |
 | --- | ---: |
-| 子系统总数 | 30 |
-| 已完成 | 1 |
+| 子系统总数 | 31 |
+| 已完成 | 2 |
 | 阻塞 | 0 |
-| 行为断言总数 | 22 |
-| 已验证断言 | 20 |
+| 行为断言总数 | 38 |
+| 已验证断言 | 36 |
 | 已知符号 | 23 |
-| 子系统完成率 | 3.3% |
+| 子系统完成率 | 6.5% |
 
 ## 子系统状态
 
 | 状态 | 数量 | 子系统 |
 | --- | ---: | --- |
-| 已完成 | 1 | SYS-CORE-RNG |
-| 进行中 | 5 | SYS-CORE-ARCHIVE / SYS-GAME-SESSION / SYS-GAME-WAVE / SYS-GAME-CARD / SYS-GAME-DIFFICULTY |
+| 已完成 | 2 | SYS-CORE-ARCHIVE / SYS-CORE-RNG |
+| 进行中 | 5 | SYS-GAME-SESSION / SYS-GAME-WAVE / SYS-GAME-CARD / SYS-GAME-DIFFICULTY / SYS-GAME-STAGE |
 | 未开始 | 24 | SYS-CORE-ANM / SYS-CORE-ECL / SYS-CORE-FILE / SYS-RENDER-ANM / SYS-RENDER-TEXT / SYS-AUDIO-WAVE / SYS-INPUT-CONTROL / SYS-GAME-PLAYER / SYS-GAME-BULLET / SYS-GAME-ENEMY / SYS-GAME-MARKET / SYS-GAME-ITEM / SYS-UI-TITLE / SYS-UI-PAUSE / SYS-UI-DIALOGUE / SYS-UI-ENDING / SYS-UI-RESULT / SYS-UI-MUSICROOM / SYS-UI-ACHIEVEMENT / SYS-SAVE-SCORE / SYS-PLATFORM-SDL / SYS-PLATFORM-WEB / SYS-INTEGRATION-LAUNCHER / SYS-INTEGRATION-THPRAC |
 
 ## 阻塞项
