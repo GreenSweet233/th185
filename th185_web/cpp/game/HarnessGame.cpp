@@ -9,6 +9,7 @@
 #include "CardManager.hpp"
 #include "Difficulty.hpp"
 #include "EclResource.hpp"
+#include "GameSession.hpp"
 #include "Rng.hpp"
 #include "StageScript.hpp"
 #include "WaveSelector.hpp"
@@ -164,6 +165,48 @@ void emit_std(const std::vector<u8>& file) {
                 entities, commands);
 }
 
+void emit_session(const std::vector<u8>& file) {
+    // Exercise the composition path: open -> load each scene -> seed ->
+    // select waves -> report the resolved layout.
+    GameSession session;
+    std::string error;
+    if (!session.open(file, &error)) {
+        std::printf("SESSION ERROR open %s\n", error.c_str());
+        return;
+    }
+
+    // The original builds these weights at runtime; use a deterministic stand-in
+    // so the SELECTION ORDER is reproducible and comparable.
+    std::array<u32, WAVE_TABLE_SIZE> weights{};
+    for (u32 i = 0; i < WAVE_TABLE_SIZE; ++i) weights[i] = 1 + (i % 7);
+
+    session.difficulty = 2;   // Normal
+    session.card_id = 0;
+
+    for (u32 stage = 0; stage < SESSION_SCENE_COUNT; ++stage) {
+        if (!session.load_stage(stage, &error)) {
+            std::printf("SESSION %u LOAD_ERROR %s\n", stage, error.c_str());
+            continue;
+        }
+        session.seed(u16(0x1234 + stage));
+        const u32 count = session.select_waves(weights);
+
+        // Digest the picks so a mismatch points at the stage.
+        u32 hash = 2166136261u;
+        for (const ResolvedWave& wave : session.waves) {
+            hash = (hash ^ u32(wave.template_index)) * 16777619u;
+            hash = (hash ^ wave.type) * 16777619u;
+            hash = (hash ^ wave.ordinal) * 16777619u;
+        }
+        std::printf("SESSION %u %s slots=%u entities=%zu groups=%zu cmds=%zu"
+                    " forced=%u scorecap=%u hash=%08X\n",
+                    stage, scene_files()[stage], count,
+                    session.stage.entities.size(), session.stage.groups.size(),
+                    session.stage.commands.size(), session.forced_boss(),
+                    session.score_cap(), hash);
+    }
+}
+
 void emit_tables() {
     // Card table digest.
     u32 card_hash = 2166136261u;
@@ -220,6 +263,7 @@ int main(int argc, char** argv) {
     emit_archive(file);
     emit_ecl(file);
     emit_std(file);
+    emit_session(file);
     emit_tables();
     return 0;
 }

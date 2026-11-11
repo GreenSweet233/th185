@@ -948,3 +948,113 @@ WAVEPICK 56 15 52 65 80 15 75 101 23 101 51 9
 它的 docstring 写着「3584/3653 bytes match」，我把这当成已知边界，没意识到是缺陷。
 
 **镜像校验的盲区：镜像和被测代码同源，会一起错。**
+
+---
+
+## 12. 已完成：GameSession（第一个组合型类）
+
+### 12.1 为什么这一步重要
+
+之前 8 个模块都是**解码器**——各自解析一种格式，互不相关。
+`GameSession` 是第一个**组合**它们的类，把数据流串成可执行流程：
+
+```
+open(归档字节)  →  load_stage(0..8)  →  seed(RNG)  →  select_waves(权重)
+```
+
+### 12.2 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/GameSession.hpp` | 会话结构、9 个场景文件名、ResolvedWave |
+| `cpp/game/GameSession.cpp` | 组合逻辑 |
+| `scripts/native/cpp_session_runtime.py` | 6 项校验 |
+
+### 12.3 核心接口
+
+```cpp
+struct GameSession {
+    Archive archive;
+    StageScript stage;
+    Rng rng;
+    u32 stage_index, difficulty, card_id;
+    std::vector<ResolvedWave> waves;
+
+    bool open(std::vector<u8> archive_bytes, std::string* error);
+    bool load_stage(u32 stage_index, std::string* error);
+    void seed(u16 value);
+    u32  select_waves(const std::array<u32, WAVE_TABLE_SIZE>& weights);
+    u32  forced_boss() const;
+    u32  score_cap() const;
+};
+```
+
+### 12.4 波次选择保留了 `skip_index` 语义
+
+```cpp
+u32 skip = 0xFFFFFFFFu;
+for (每个波次槽位) {
+    const i32 picked = select_wave(weights, rng, skip);
+    ...
+    if (picked >= 0) skip = u32(picked);   // 下一次跳过本次结果
+}
+```
+
+这对应原版「同一个模板不会连续出现两次」的行为。
+
+### 12.5 ★ 端到端验证了强制 BOSS 规则
+
+harness 输出：
+
+```
+SESSION 0 world01t.std slots=7 entities=88 groups=0  cmds=38  forced=4294967295
+SESSION 1 world01.std  slots=4 entities=24 groups=0  cmds=40  forced=4294967295
+SESSION 2 world02.std  slots=9 entities=88 groups=0  cmds=47  forced=4294967295
+SESSION 3 world03.std  slots=7 entities=68 groups=0  cmds=21  forced=4294967295
+SESSION 4 world04.std  slots=4 entities=52 groups=15 cmds=16  forced=4294967295
+SESSION 5 world05.std  slots=3 entities=12 groups=5  cmds=49  forced=27      ← Boss26
+SESSION 6 LOAD_ERROR extracted size does not match the declared size
+SESSION 7 world07.std  slots=1 entities=5  groups=7  cmds=117 forced=4294967295
+SESSION 8 world08.std  slots=1 entities=5  groups=7  cmds=117 forced=4294967295
+```
+
+**`stage=5` 时 `forced=27`**，正好是 `docs/WAVES.md` 记录的「关卡 5 + 卡牌 0 → Boss26」。
+
+这是**第一次在组合链路里端到端验证一个玩法规则**，而不只是单元测试。
+
+### 12.6 验证（6 项）
+
+```
+[PASS] all 8 loaded scenes match the reference parser
+[PASS] 8 of 9 scenes load (1 known misses)
+[PASS] stage 5 + card 0 forces template 27 (Boss26): 27
+[PASS] no other stage forces a boss with card 0 (ok)
+[PASS] score caps are cap[Normal] * stage for every loaded scene
+[PASS] wave selection is deterministic across runs
+```
+
+### 12.7 明确的能力边界
+
+| 项 | 状态 |
+|---|---|
+| 归档读取 | ✅ 284 条目 |
+| 场景加载 | ✅ 8/9（`world06.std` 受尾块限制） |
+| RNG | ✅ 逐位一致 |
+| 波次选择算法 | ✅ 逐位一致 |
+| **波次权重** | ❌ **未 dump**（原版运行时构建） |
+| 渲染 / 输入 / 音频 | ❌ 未实现 |
+| **能玩** | ❌ **不能** |
+
+**`select_waves` 需要调用方提供权重**，因为原版在 `EnemyManager+0x324` 运行时构建它们，
+我们还没 dump 出来。算法正确、数据缺失——这个区分很重要。
+
+### 12.8 这个类证明了什么
+
+| 之前 | 现在 |
+|---|---|
+| 8 个独立解码器 | 8 个解码器 **+ 1 个能跑的流程** |
+| 每个模块单独验证 | **跨模块数据流验证** |
+| 玩法规则只是文档条目 | **强制 BOSS 规则在代码里生效并被断言** |
+
+下一步可以按同样方式接入 `CardManager` 的卡牌效果选择、
+或者先补齐波次权重（需要运行时 hook）。

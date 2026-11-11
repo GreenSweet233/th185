@@ -179,6 +179,7 @@ def parse_std(blob):
         cmd_pos += size
 
     return {
+        "groups": groups,
         "commands": commands,
         "command_end": cmd_pos,
         "wave_count": wave_count,

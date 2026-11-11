@@ -86,3 +86,8 @@ BHV-CARD-013,SYS-GAME-CARD,"卡牌 id 唯一且覆盖 0..86；BLANK(0)/NITORI(66
 BHV-DIFF-010,SYS-GAME-DIFFICULTY,"C++ Difficulty 的 8 档名称与二进制一致，index 3 是 TH185 独有的 Little Hard",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","逐项对照 difficulty.py"
 BHV-DIFF-011,SYS-GAME-DIFFICULTY,"评分上限表 5 项 [500000,1000000,1500000,2000000,1000000]，8 档会越界读——原版行为已忠实保留并显式报告 out_of_range",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","不静默 clamp"
 BHV-DIFF-012,SYS-GAME-DIFFICULTY,"is_difficulty_0..3 是虚函数，vtable 在 RVA 0x3EDB0，顺序为 is_0..3 + get_em_3c/40/44/4f44",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","零直接调用点"
+BHV-SESSION-001,SYS-GAME-SESSION,"GameSession 组合链路可用：open 归档 → load_stage → seed → select_waves，8/9 场景加载成功",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","world06.std 受已知尾块限制"
+BHV-SESSION-002,SYS-GAME-SESSION,"加载的场景与 Python 参考解析器的 entities/groups/cmds/slots 完全一致",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","8 个场景逐项对照"
+BHV-SESSION-003,SYS-GAME-SESSION,"强制 BOSS 规则在组合链路中生效：stage 5 + card 0 → 模板 27（Boss26），其他关卡不触发",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","端到端验证而非单元测试"
+BHV-SESSION-004,SYS-GAME-SESSION,"评分上限 = cap[Normal] × stage，随关卡线性增长",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","cap[2]=1500000"
+BHV-SESSION-005,SYS-GAME-SESSION,"波次选择具有确定性：同一种子两次运行结果完全相同",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","哈希一致"
