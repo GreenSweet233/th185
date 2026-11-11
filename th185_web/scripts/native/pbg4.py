@@ -266,7 +266,7 @@ def cipher_for(name):
     return _CIPHER_TABLE[total & 7]
 
 
-def extract_file(path, index=None, name=None):
+def extract_file(path, index=None, name=None, probe=None):
     """Fully extract one entry: decrypt and, if compressed, LZSS-decompress.
 
     Compression detection: the entry declared `size` is the DECOMPRESSED
@@ -303,9 +303,10 @@ def extract_file(path, index=None, name=None):
         raise SystemExit("invalid compressed size %d for %s"
                          % (comp_size, entry["name"]))
 
-    data, _target = load_image()
-    meta = parse_pe(data)
-    probe = Probe(data, meta)
+    if probe is None:
+        data, _target = load_image()
+        meta = parse_pe(data)
+        probe = Probe(data, meta)
 
     with open(path, "rb") as stream:
         stream.seek(entry["offset"])

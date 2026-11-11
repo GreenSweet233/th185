@@ -40,3 +40,8 @@ BHV-STAGE-004,SYS-GAME-STAGE,"波次项 +0x20 是槽位 id 不是序号（world0
 BHV-STAGE-005,SYS-GAME-STAGE,"指令流格式：[u16 id][u16 size][payload]，从 header+0x08 的 unknown+4 开始，id==0 && size==0 结束",original,observed,verified,"th185_web/scripts/native/std.py --selftest","9 场景全部精确解析"
 BHV-STAGE-006,SYS-GAME-STAGE,"9 个场景的指令流都恰好剩余 16 字节（固定尾部），证明格式正确",original,observed,verified,"th185_web/scripts/native/std.py --selftest","9/9 全部剩余 16"
 BHV-STAGE-007,SYS-GAME-STAGE,"共 15 种指令 id（1-10,12,13,14,16,19），每种 size 固定",original,observed,verified,"th185_web/scripts/native/std.py --selftest","id 1:16 id 2:20 id 3:28 id 10:52 等"
+BHV-ECL-001,SYS-CORE-ECL,".ecl 用 SCPT 容器：magic SCPT + version + name_count + sub_count + ANIM/ECLI 段标记 + 偏移表 + 名字表",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","default.ecl 有 36 名字 34 子程序"
+BHV-ECL-002,SYS-CORE-ECL,"每个子程序是 ECLH 段：magic ECLH + 16 字节头 + 指令流（从 +0x14 开始）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","34 个偏移全部指向 ECLH"
+BHV-ECL-003,SYS-CORE-ECL,"default.ecl 的 34 个子程序全部恰好剩 12 字节尾部，共 544 条指令 81 种操作码",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","34/34 一致"
+BHV-ECL-004,SYS-CORE-ECL,"子程序名是 TH18 标准命名：BossDead/BossEscape/BossInterval/BossItem/DeadAttack1/DebugSkipFunc/Ecl_EtBreak/ItemCarryLily/MainBossSpell/WaveSync 等",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","明文可见，与 TH18 约定一致"
+BHV-ECL-005,SYS-CORE-ECL,"th185.dat 含 114 个 .ecl 文件",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","与调研「114 个 ECL」吻合"
