@@ -58,5 +58,5 @@ BHV-ECL-015,SYS-CORE-ECL,"内置表 38 项是直接的上下文字段读取器�
 BHV-ECL-016,SYS-CORE-ECL,"内置函数分派器在 RVA 0x3E586：mov eax,[ebp+8]; add eax,0x2710; cmp eax,0x6e; ja 返回0; jmp [eax*4+0x43ECF4]",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","分派器代码逐条验证"
 BHV-ECL-017,SYS-CORE-ECL,"builtin 编号范围 [10000, 10110] 共 111 项可达；表 117 项中 111..116 不可达",original,observed,verified,"th185_web/scripts/native/ecl_builtins.py --selftest","cmp 0x6e 上限；不可达项是 push imm;push imm 风格"
 BHV-ECL-018,SYS-CORE-ECL,"ECL 有 7 处跳转表分派点，各覆盖不同 opcode/builtin 区间（319 / 9985 / 9995 / 10000 等基址）",original,observed,verified,"th185_web/scripts/native/ecl.py --selftest","字节级搜 ff 24 85 找到 95 处分派点"
-BHV-ECL-019,SYS-CORE-ECL,"表 0x43E534 覆盖 opcode 319..337（19 项），其中 320..324 与 334 是空实现且实测不出现",original,observed,verified,"","空实现与实测缺失吻合"
-BHV-ECL-020,SYS-CORE-ECL,"实测 opcode 共 106 种，范围 [1,1023]，与 .std 指令共用编号空间",original,observed,verified,"","含 1..91/300..307/319/401..445/500..535/600..632/1002..1023"
+BHV-ECL-019,SYS-CORE-ECL,"表 0x43E534 覆盖 opcode 319..337（19 项），其中 320..324 与 334 是空实现且实测不出现",original,observed,implemented,"th185_web/scripts/native/ecl.py --selftest","空实现与实测缺失吻合"
+BHV-ECL-020,SYS-CORE-ECL,"实测 opcode 共 106 种，范围 [1,1023]，与 .std 指令共用编号空间",original,observed,implemented,"th185_web/scripts/native/ecl.py --selftest","含 1..91/300..307/319/401..445/500..535/600..632/1002..1023"
