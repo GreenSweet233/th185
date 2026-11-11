@@ -83,18 +83,22 @@ class BitReader:
 def decompress(src: bytes, dst_size: int) -> bytes:
     """LZSS 解压。返回最多 dst_size 字节。
 
-    对应原版 RVA 0x71E70。关键：**先读偏移，再读长度**。
+    对应原版 RVA 0x71E70。经差分测试（喂可控输入、观察输出）确认：
 
-    反汇编证据（0x7200A-0x72034）：
-        07200A: mov ebx, [ebp+0xc]      ; ebx = 第一次读的 8 位 = 偏移
-        072013: lea eax, [esi + ebx]    ; eax = 计数 + 偏移  ← 偏移是基址
-        072017: and eax, 0x1fff
-        07201C: mov al, [eax + 0x527e80]  ; window[偏移+计数]
-        072029: mov [ecx], al             ; 输出
-        072032: cmp esi, edi              ; 计数 <= 长度
-        072034: jle 0x72013
+        flag = 1  -> 字面量：读 8 位数据
+        flag = 0  -> 匹配：读 13 位偏移，偏移为 0 则结束；
+                          否则读 8 位长度字段，拷贝 (字段 + 3) 字节
 
-    窗口大小 8192（and 0x1fff），初始写指针 = 1（0x71EB0: mov [ebp-0x1c], 1）。
+    反汇编证据：
+        0x71F3B: test esi,esi ; je 0x71eef   flag=0 -> 匹配分支(13位偏移)
+        0x71F3F: mov esi,0x80                 flag=1 -> 8 位字面量
+        0x71F7E: mov byte [esi], al           字面量输出
+        0x71FB5: test edi,edi ; je 0x7204a    偏移 0 -> 结束
+        0x71FFB: add edi, 2                   长度 = 字段 + 2
+        0x72032: cmp esi,edi ; jle 0x72013    循环 edi+1 次 => 实际长度 = 字段+3
+
+    窗口 8192 字节（and 0x1fff），初始写指针 1（0x71EB0: mov [ebp-0x1c],1）。
+    位序 MSB 优先（掩码从 0x80 递减，0x71F69: shr bl,1）。
     """
     reader = BitReader(src)
     window = bytearray(WINDOW_SIZE)
@@ -104,19 +108,18 @@ def decompress(src: bytes, dst_size: int) -> bytes:
     while len(out) < dst_size:
         if reader.exhausted():
             break
-        if reader.bit() == 0:
+        if reader.bit() == 1:
             # 字面量：8 位
             literal = reader.bits(8)
             out.append(literal)
             window[dst_pos & WINDOW_MASK] = literal
             dst_pos = (dst_pos + 1) & WINDOW_MASK
         else:
-            # 匹配：8 位偏移 + 8 位长度
-            offset = reader.bits(8)
+            # 匹配：13 位偏移 + 8 位长度字段
+            offset = reader.bits(13)
             if offset == 0:
-                # 原版 0x71FBB: test edi,edi; je 0x7204a —— 偏移 0 即终止
                 break
-            length = reader.bits(8) + 2
+            length = reader.bits(8) + 3
             for i in range(length):
                 if len(out) >= dst_size:
                     break
@@ -133,6 +136,15 @@ def selftest() -> int:
     print()
     failures = 0
 
+    def pack(bits):
+        out = bytearray()
+        for i in range(0, len(bits), 8):
+            byte = 0
+            for j in range(8):
+                byte = (byte << 1) | (bits[i + j] if i + j < len(bits) else 0)
+            out.append(byte)
+        return bytes(out)
+
     # 1. 空输入应产出空输出
     out = decompress(b"", 100)
     ok = out == b""
@@ -140,68 +152,64 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 2. 纯字面量：每个字面量 = flag(0) + 8 位数据
-    # 构造 3 个字面量 A B C
+    # 2. 纯字面量：flag=1 + 8 位数据
     bits = []
     for ch in b"ABC":
-        bits.append(0)              # flag = 字面量
-        for i in range(7, -1, -1):  # 8 位，高位先
+        bits.append(1)                  # flag = 字面量
+        for i in range(7, -1, -1):
             bits.append((ch >> i) & 1)
-    # 打包成字节
-    packed = bytearray()
-    for i in range(0, len(bits), 8):
-        byte = 0
-        for j in range(8):
-            byte = (byte << 1) | (bits[i + j] if i + j < len(bits) else 0)
-        packed.append(byte)
-    out = decompress(bytes(packed), 3)
+    out = decompress(pack(bits), 3)
     ok = out == b"ABC"
     print("[%s] 3 个字面量 -> %r（期望 b'ABC'）" % ("PASS" if ok else "FAIL", out))
     if not ok:
         failures += 1
 
-    # 3. 字面量 + 匹配（注意字段顺序：先 8 位偏移，再 8 位长度）
-    # 窗口初始写指针 = 1，所以第 1 个字面量落在 window[1]。
-    # 偏移按 (offset + i) & 0x1FFF 取，offset=0 是终止符，offset=1 才能读到 window[1]。
+    # 3. 字面量 + 匹配
+    # 窗口写指针从 1 开始，所以第 1 个字面量落在 window[1]。
+    # 匹配偏移取 window[offset+i]，offset=1 指向 'A'。
     bits = []
     for ch in b"ABC":
-        bits.append(0)
+        bits.append(1)
         for i in range(7, -1, -1):
             bits.append((ch >> i) & 1)
-    bits.append(1)                      # flag = 匹配
+    bits.append(0)                      # flag = 匹配
+    for i in range(12, -1, -1):
+        bits.append((1 >> i) & 1)       # 13 位偏移 = 1 -> window[1] = 'A'
     for i in range(7, -1, -1):
-        bits.append((1 >> i) & 1)       # 偏移 = 1 -> 指向 window[1] = 'A'
-    for i in range(7, -1, -1):
-        bits.append((1 >> i) & 1)       # 长度字段 = 1 -> 解码 1+2 = 3
-    packed = bytearray()
-    for i in range(0, len(bits), 8):
-        byte = 0
-        for j in range(8):
-            byte = (byte << 1) | (bits[i + j] if i + j < len(bits) else 0)
-        packed.append(byte)
-    out = decompress(bytes(packed), 6)
+        bits.append((0 >> i) & 1)       # 长度字段 0 -> 拷贝 0+3 = 3 字节
+    out = decompress(pack(bits), 6)
     ok = out == b"ABCABC"
     print("[%s] 字面量+匹配 -> %r（期望 b'ABCABC'）" % ("PASS" if ok else "FAIL", out))
     if not ok:
         failures += 1
 
-    # 4. 偏移字段 0 = 终止符
+    # 4. 偏移 0 = 终止符
     bits = []
-    bits.append(0)                      # 字面量 'X'
+    bits.append(1)                      # 字面量 'X'
     for i in range(7, -1, -1):
         bits.append((ord("X") >> i) & 1)
-    bits.append(1)                      # flag = 匹配
-    for i in range(7, -1, -1):
-        bits.append(0)                  # 偏移 = 0 -> 终止
-    packed = bytearray()
-    for i in range(0, len(bits), 8):
-        byte = 0
-        for j in range(8):
-            byte = (byte << 1) | (bits[i + j] if i + j < len(bits) else 0)
-        packed.append(byte)
-    out = decompress(bytes(packed), 100)
+    bits.append(0)                      # flag = 匹配
+    for i in range(12, -1, -1):
+        bits.append(0)                  # 13 位偏移 = 0 -> 终止
+    out = decompress(pack(bits), 100)
     ok = out == b"X"
-    print("[%s] 偏移字段 0 -> 终止，输出 %r（期望 b'X'）" % ("PASS" if ok else "FAIL", out))
+    print("[%s] 偏移 0 -> 终止，输出 %r（期望 b'X'）" % ("PASS" if ok else "FAIL", out))
+    if not ok:
+        failures += 1
+
+    # 5. 对照原版实测: 输入 0x81 0x00 -> 输出首字节 0x02
+    out = decompress(bytes([0x81, 0x00]), 4)
+    ok = len(out) >= 1 and out[0] == 0x02
+    print("[%s] 原版对照 0x8100 -> 首字节 %s（期望 0x02）"
+          % ("PASS" if ok else "FAIL", ("0x%02X" % out[0]) if out else "无"))
+    if not ok:
+        failures += 1
+
+    # 6. 对照原版实测: 输入 0xFF 0x00 -> 输出首字节 0xFE
+    out = decompress(bytes([0xFF, 0x00]), 4)
+    ok = len(out) >= 1 and out[0] == 0xFE
+    print("[%s] 原版对照 0xFF00 -> 首字节 %s（期望 0xFE）"
+          % ("PASS" if ok else "FAIL", ("0x%02X" % out[0]) if out else "无"))
     if not ok:
         failures += 1
 
@@ -209,7 +217,7 @@ def selftest() -> int:
     if failures:
         print("自检失败 %d 项" % failures)
         return 1
-    print("自检通过：解压器逻辑正确（注意：尚未用真实 PBG4 数据验证）")
+    print("自检通过：解压器逻辑与原版差分测试一致")
     return 0
 
 

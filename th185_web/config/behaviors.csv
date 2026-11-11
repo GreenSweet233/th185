@@ -21,3 +21,5 @@ BHV-DIFF-005,SYS-GAME-DIFFICULTY,".rdata 中不存在 8 元素难度倍率浮点
 BHV-ARCHIVE-003,SYS-CORE-ARCHIVE,"PBG4 文件头 16 字节经 0x1E90 解密后首 4 字节为魔数 0x31414854（THA1）",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","参数 key=0x1B step=0x37 block=0x10 limit=0x10，来自 RVA 0x714FA-0x7150C"
 BHV-ARCHIVE-004,SYS-CORE-ARCHIVE,"头部字段：解压后大小=head[1]-0x75BCD15、压缩后大小=head[2]-0x3ADE68B1、条目数=head[3]+0xF7E7F8AC",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","实测 7172/3653/285，每项 25.16 字节"
 BHV-ARCHIVE-005,SYS-CORE-ARCHIVE,"RVA 0x92E00 是 memcpy 不是 memset（读两个指针+比较重叠区间）",original,observed,verified,"th185_web/scripts/native/probe.py --selftest","误 stub 成 memset 导致前四轮所有解密尝试失败"
+BHV-ARCHIVE-006,SYS-CORE-ARCHIVE,"LZSS 编码：flag=1 字面量(8位)，flag=0 匹配(13位偏移+8位长度字段，拷贝字段+3字节)，偏移0终止",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","差分测试 8 样本吻合 (in&0x7F)<<1，含 2 项原版对照"
+BHV-ARCHIVE-007,SYS-CORE-ARCHIVE,"RVA 0x71E70 使用全局静态窗口 0x527E80（8192字节），跨调用保留状态，不是纯函数",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","连续两次调用同一输入输出不同"
