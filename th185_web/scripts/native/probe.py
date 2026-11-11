@@ -222,11 +222,11 @@ class Probe:
         """注册内部 CRT 函数的 RVA 拦截。
 
         这些 RVA 是从反汇编确认的：
-          0x92E00  memset   (SSE2 优化版，探针里直接实现更快也更安全)
+          0x92E00  memcpy   (SSE2 优化版；注意不是 memset！见 crt_memcpy 文档)
           0x93374  malloc   (跳转到 0x9F003 的堆管理器，探针不实现)
           0x9337F  free
         """
-        Probe.CRT_STUBS[0x92E00] = Probe.crt_memset
+        Probe.CRT_STUBS[0x92E00] = Probe.crt_memcpy
         Probe.CRT_STUBS[0x93374] = Probe.crt_malloc
         Probe.CRT_STUBS[0x9337F] = Probe.crt_free
 
@@ -274,9 +274,25 @@ class Probe:
             except Exception:
                 self.trace.append("  %06X: <undecodable>" % (address - self.base))
 
-    def crt_memset(self):
-        dest, value, count = self._args(3)
-        self.write(dest, bytes([value & 0xFF]) * count)
+    def crt_memcpy(self):
+        """RVA 0x92E00 —— 这是 memcpy，不是 memset！
+
+        判据（反汇编 0x92E00）：
+            092E02: mov esi, [esp+0x10]   ; 第 2 个参数 = src
+            092E06: mov ecx, [esp+0x14]   ; 第 3 个参数 = n
+            092E0A: mov edi, [esp+0xc]    ; 第 1 个参数 = dst
+            092E12: add eax, esi          ; eax = src + n
+            092E14: cmp edi, esi          ; 比较 dst 与 src
+            092E18: cmp edi, eax          ; 比较 dst 与 src+n
+            092E1A: jb 0x930b4            ; 重叠 -> 反向拷贝
+
+        读两个指针 + 比较重叠区间 = memcpy 的标准实现。
+        之前把它 stub 成 memset 导致 0x1E90 内部拷贝变成清零，
+        输入数据从未进入运算 —— 这是 PBG4 反复解不出明文的真正原因。
+        """
+        dest, src, count = self._args(3)
+        if count:
+            self.write(dest, self.read(src, count))
         self._ret(dest, 3)
 
     def crt_memcpy(self):
@@ -382,14 +398,17 @@ def cmd_selftest(probe):
 
     failures = 0
 
-    target = probe.alloc(64)
-    probe.write(target, b"\xAA" * 64)
-    # 注意：CRT 函数的 RVA 是 0x92E00，不是 0x492E00。
-    # 反汇编输出里的 0x492E00 是【虚拟地址】，减 image_base 才是 RVA。
-    result = probe.call(0x92E00, args=[target, 0x00, 64])
-    blob = probe.read(target, 64)
-    ok = blob == b"\x00" * 64 and result["error"] is None
-    print("[%s] memset(0x92E00) 清零 64 字节" % ("PASS" if ok else "FAIL"))
+    src = probe.alloc(64)
+    dst = probe.alloc(64)
+    payload = bytes(range(64))
+    probe.write(src, payload)
+    probe.write(dst, b"\xAA" * 64)
+    # 0x92E00 是 memcpy（不是 memset）。这是本项目最隐蔽的一个 bug：
+    # 把它当 memset 会让所有依赖它的函数读不到输入。
+    result = probe.call(0x92E00, args=[dst, src, 64])
+    blob = probe.read(dst, 64)
+    ok = blob == payload and result["error"] is None
+    print("[%s] memcpy(0x92E00) 拷贝 64 字节" % ("PASS" if ok else "FAIL"))
     if not ok:
         print("       前 16 字节: %s  error=%s" % (blob[:16].hex(), result["error"]))
         failures += 1

@@ -18,3 +18,6 @@ BHV-DIFF-002,SYS-GAME-DIFFICULTY,"分数上限表为 5 项 [500000,1000000,15000
 BHV-DIFF-003,SYS-GAME-DIFFICULTY,"只有 is_difficulty_0..3 四个判断函数，说明游戏逻辑仅对前 4 档做特殊分支",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","RVA 0x3E757/0x3E768/0x3E77A/0x3E78C"
 BHV-DIFF-004,SYS-GAME-DIFFICULTY,"is_difficulty_0..3 是虚函数，vtable 在 RVA 0x3EDB0，前 8 项依次为 is_diff_0..3 + get_em_3c/40/44/4f44",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","零直接 call 点 + 搜索函数地址存储位置定位到 vtable"
 BHV-DIFF-005,SYS-GAME-DIFFICULTY,".rdata 中不存在 8 元素难度倍率浮点表，倍率疑为条件分支硬编码",original,inferred,implemented,"","多轮扫描均只命中 VA 0xBC6C4 的倒数表（角度相关）滑窗"
+BHV-ARCHIVE-003,SYS-CORE-ARCHIVE,"PBG4 文件头 16 字节经 0x1E90 解密后首 4 字节为魔数 0x31414854（THA1）",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","参数 key=0x1B step=0x37 block=0x10 limit=0x10，来自 RVA 0x714FA-0x7150C"
+BHV-ARCHIVE-004,SYS-CORE-ARCHIVE,"头部字段：解压后大小=head[1]-0x75BCD15、压缩后大小=head[2]-0x3ADE68B1、条目数=head[3]+0xF7E7F8AC",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","实测 7172/3653/285，每项 25.16 字节"
+BHV-ARCHIVE-005,SYS-CORE-ARCHIVE,"RVA 0x92E00 是 memcpy 不是 memset（读两个指针+比较重叠区间）",original,observed,verified,"th185_web/scripts/native/probe.py --selftest","误 stub 成 memset 导致前四轮所有解密尝试失败"

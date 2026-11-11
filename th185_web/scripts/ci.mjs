@@ -47,6 +47,7 @@ checks.push(
   { name: "cards", args: [resolve(here, "native", "cards.py"), "--selftest"], python: true },
   { name: "lzss", args: [resolve(here, "native", "lzss.py"), "--selftest"], python: true },
   { name: "difficulty", args: [resolve(here, "native", "difficulty.py"), "--selftest"], python: true },
+  { name: "pbg4", args: [resolve(here, "native", "pbg4.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -65,6 +66,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "pbg4") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("selftest passed") || line.includes("magic ="));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "difficulty") {
     if (ok) {
       const summary = output.split("\n").filter((line) =>
