@@ -16,7 +16,7 @@ SYS-GAME-ENEMY,敌人与 Boss,SYS-GAME-SESSION,SYS-CORE-ECL,not-started,none,,28
 SYS-GAME-CARD,卡牌系统（85张）,,SYS-CORE-ARCHIVE,in-progress,observed,"th185_web/scripts/native/cards_cpp_check.py --selftest","★C++实现完成:cpp/game/CardManager.cpp 87张卡全表(68字节/项);★新发现+0x38/+0x3C是图集格子坐标(icon_right=icon_left+1,87/87;icon_left全为奇数);+0x40恒0;+0x30只取值0/1不是cost;id覆盖0..86唯一;BLANK(0)/NITORI(66)对应隐藏BOSS机制,NULL(85)/BACK(86)特殊;13项校验含逐字段对照C++源码"
 SYS-GAME-MARKET,黑市与经济,SYS-GAME-CARD,,not-started,none,,双货币 funds / bulletMoney
 SYS-GAME-ITEM,道具,,,not-started,none,,
-SYS-GAME-DIFFICULTY,难度数值表,,,in-progress,observed,,"8档索引0x4D1038;分数上限表5项VA 0x4BCB00;访问器11个;关键:is_difficulty_0..3是虚函数(vtable在0x3EDB0附近)零直接call;.rdata无8元素倍率表,倍率疑为条件分支硬编码;见 docs/DIFFICULTY.md 7"
+SYS-GAME-DIFFICULTY,难度系统（8档）,,,in-progress,observed,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","★C++实现完成:cpp/game/Difficulty.cpp;8档索引@0x4D1038(VeryEasy/Easy/Normal/LittleHard/Hard/VeryHard/Lunatic/OverDrive);评分上限表5项[500000,1000000,1500000,2000000,1000000]但8档会越界读原版行为已忠实保留并显式报告;is_difficulty_0..3是虚函数vtable@RVA 0x3EDB0;无8元素倍率表(倍率硬编码在条件分支,未提取);10项校验"
 SYS-UI-TITLE,标题与菜单,,,not-started,none,,
 SYS-UI-PAUSE,暂停菜单,,,not-started,none,,
 SYS-UI-DIALOGUE,对话,,,not-started,none,,

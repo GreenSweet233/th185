@@ -83,3 +83,6 @@ BHV-CARD-010,SYS-GAME-CARD,"C++ CardManager 的 87 张卡 × 16 字段与二进�
 BHV-CARD-011,SYS-GAME-CARD,"+0x38 与 +0x3C 是图集格子坐标：icon_right == icon_left + 1（87/87），icon_left 全为奇数",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","位图相邻两格"
 BHV-CARD-012,SYS-GAME-CARD,"+0x30 只取 0/1，不是 Cost 字段（Cost 系统在别处）",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","87 张卡仅两种取值"
 BHV-CARD-013,SYS-GAME-CARD,"卡牌 id 唯一且覆盖 0..86；BLANK(0)/NITORI(66)/NULL(85)/BACK(86) 四个特殊卡",original,observed,verified,"th185_web/scripts/native/cards_cpp_check.py --selftest","87 项全唯一"
+BHV-DIFF-010,SYS-GAME-DIFFICULTY,"C++ Difficulty 的 8 档名称与二进制一致，index 3 是 TH185 独有的 Little Hard",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","逐项对照 difficulty.py"
+BHV-DIFF-011,SYS-GAME-DIFFICULTY,"评分上限表 5 项 [500000,1000000,1500000,2000000,1000000]，8 档会越界读——原版行为已忠实保留并显式报告 out_of_range",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","不静默 clamp"
+BHV-DIFF-012,SYS-GAME-DIFFICULTY,"is_difficulty_0..3 是虚函数，vtable 在 RVA 0x3EDB0，顺序为 is_0..3 + get_em_3c/40/44/4f44",original,observed,verified,"th185_web/scripts/native/difficulty_cpp_check.py --selftest","零直接调用点"

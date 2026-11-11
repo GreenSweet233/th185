@@ -545,3 +545,125 @@ id 唯一且覆盖 0..86（87 张）
 
 **下一步：`Difficulty.cpp`**（8 档难度）。
 表已解出（`docs/DIFFICULTY.md`：索引 `0x4D1038`，评分上限表 5 项）。
+
+---
+
+## 9. 已完成：Difficulty（`Difficulty.hpp` / `.cpp`）
+
+### 9.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/Difficulty.hpp` | 8 档名称、评分上限表、访问器声明 |
+| `cpp/game/Difficulty.cpp` | 名称表 + 评分上限 + 四个 `is_difficulty_N` |
+| `scripts/native/difficulty_cpp_check.py` | 交叉校验（10 项，解析 C++ 源码） |
+
+### 9.2 8 档难度
+
+| 索引 | 名称 | 备注 |
+|---|---|---|
+| 0 | Very Easy | |
+| 1 | Easy | |
+| 2 | Normal | |
+| 3 | **Little Hard** | **TH185 独有，TH18 没有** |
+| 4 | Hard | |
+| 5 | Very Hard | |
+| 6 | Lunatic | |
+| 7 | Over Drive | |
+
+### 9.3 评分上限表：5 项 vs 8 档
+
+```c
+// VA 0x4BCB00（前 4 项）+ 立即数 0xF4240（第 5 项）
+[500000, 1000000, 1500000, 2000000, 1000000]
+```
+
+**表只有 5 项，但难度有 8 档。** 原版 `mov eax, [ebp + eax*4 - 0x18]`
+在索引 5..7 时会**读到栈上的相邻数据**——这是原版行为，不是解析错误。
+
+我的 C++ 实现选择：
+
+```c
+if (out_of_range) *out_of_range = difficulty >= SCORE_CAP_TABLE_SIZE;
+if (difficulty >= SCORE_CAP_TABLE_SIZE) {
+    return kScoreCaps[SCORE_CAP_TABLE_SIZE - 1];  // clamp
+}
+```
+
+**夹紧到最后一个有效值，但通过 `out_of_range` 显式报告**——
+不静默吞掉这个差异，让调用方知道原版此处是未定义行为。
+
+这比“假装表有 8 项”或“直接返回 0”都更诚实。
+
+### 9.4 `is_difficulty_0..3` 是虚函数
+
+搜直接调用点得到 **0 处**——这个异常是突破口。
+改搜「谁存了这些函数地址」，在 `.text` RVA `0x3EDB0` 找到 vtable：
+
+```
+[0] is_difficulty_0   [1] is_difficulty_1
+[2] is_difficulty_2   [3] is_difficulty_3
+[4] get_em_3c         [5] get_em_40
+[6] get_em_44         [7] get_em_4f44
+```
+
+顺序与 `docs/DIFFICULTY.md` 记录的一致。
+
+### 9.5 一个未解项：没有 8 元素倍率表
+
+多轮扫描 `.rdata` 找 8 元素递增浮点数组，全部只命中
+VA `0xBC6C4` 的倒数表（`1/20, 1/16, 1/15, ...`）的滑窗重叠——
+那是角度/正弦相关，不是难度。
+
+**结论：每档的数值倍率硬编码在条件分支里，不存在表。**
+提取它们需要逐个函数逆向，本轮未做。这是 `SYS-GAME-DIFFICULTY`
+保持 `in-progress` 的原因。
+
+### 9.6 验证（10 项）
+
+```
+[PASS] C++ declares 8 tier names (expect 8)
+[PASS] tier names match the reference
+[PASS] index 3 is Little Hard (TH185-only tier)
+[PASS] C++ score-cap table has 5 entries (expect 5)
+[PASS] score caps match the binary: [500000, 1000000, 1500000, 2000000, 1000000]
+[PASS] 5-entry table vs 8 tiers (original reads past the array)
+[PASS] header records VA 0x4D1038 / 0x4BCB00 / immediate 0xF4240
+[PASS] header records the vtable RVA 0x3EDB0
+[PASS] all four is_difficulty_N predicates are implemented
+[PASS] out-of-range tiers are reported, not silently clamped
+```
+
+校验脚本同样**直接解析 C++ 源码**（正则提取 `kNames` / `kScoreCaps` 数组），
+不是另抄一份数据。
+
+### 9.7 C++ 实现进度：静态数据部分完成
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | 5 项 |
+| `Archive.hpp` / `Archive.cpp` | ✅ | 5 项 |
+| `EclResource.hpp` / `.cpp` | ✅ | 5 项 |
+| `StageScript.hpp` / `.cpp` | ✅ | 5 项 |
+| `WaveSelector.hpp` / `.cpp` | ✅ | 7 项 |
+| `CardManager.hpp` / `.cpp` | ✅ | 13 项 |
+| **`Difficulty.hpp` / `.cpp`** | ✅ | **10 项** |
+
+**七个模块全部完成，共 55 项校验。**
+
+### 9.8 下一阶段
+
+到这里，**所有能从静态数据完整解出的子系统都已实现**。
+剩下的都需要运行时信息或大规模逆向：
+
+| 方向 | 阻塞点 |
+|---|---|
+| 波次权重数组 | 运行时构建（`EM+0x324`/`+0x4E0`），需 hook 或探针初始化后读取 |
+| 难度倍率 | 硬编码在条件分支，需逐函数逆向 |
+| ECL 操作码语义 | 165 种，分派器未找到 |
+| ANM 动画 | 需要 ANM 解释器 + 渲染层 |
+| 渲染 / 输入 / 音频 | 需要 SDL3 平台层，且工具链缺失无法编译 |
+
+**下一步建议：补齐工具链**（emsdk / node.exe / portable/sdl），
+否则后续所有 C++ 代码都无法编译验证，只能靠 Python 镜像间接保证。
