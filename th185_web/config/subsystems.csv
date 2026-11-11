@@ -9,7 +9,7 @@ SYS-RENDER-TEXT,文字渲染,,,not-started,none,,thcrap 的文本框尺寸 / 居
 SYS-AUDIO-WAVE,音频层,,,not-started,none,,thbgm.dat 是 WAV 容器
 SYS-INPUT-CONTROL,输入层,,,not-started,none,,DINPUT8 + XINPUT1_3
 SYS-GAME-SESSION,会话与流程,,,in-progress,observed,,"强制BOSS机制已解出:关卡5+卡牌0->Boss26 / 关卡7+卡牌66->Boss27(标志0x100);关卡号在0x4D1004;卡牌管理器0x4D7AB8;选中索引输出0x4D1020;见 docs/WAVES.md 9"
-SYS-GAME-WAVE,波次系统,SYS-GAME-SESSION,SYS-CORE-RNG,in-progress,observed,,名表VA 0x4B5D50共111项已解出;抽取算法+强制BOSS机制已实现并自测;权重数组运行时构建未dump;见 docs/WAVES.md
+SYS-GAME-WAVE,波次随机抽取,,SYS-CORE-RNG,in-progress,observed,"th185_web/scripts/native/waves_cpp_check.py --selftest","★C++实现完成:cpp/game/WaveSelector.cpp;111项名表(0空+1Boss01t+2..28 Boss01-27+29..31 Wave01t-03t+32..110 Wave01-79)=110可选;两遍循环都跳过skip_index;一次RNG调用+取模锁定次序;强制BOSS:stage5+card0->27,stage7+card66->28;权重运行时构建(EM+0x324/+0x4E0)未dump"
 SYS-GAME-PLAYER,自机,SYS-GAME-SESSION,,not-started,none,,仅魔理沙 1 组
 SYS-GAME-BULLET,弹幕,SYS-GAME-SESSION,,not-started,none,,与 th11 同族
 SYS-GAME-ENEMY,敌人与 Boss,SYS-GAME-SESSION,SYS-CORE-ECL,not-started,none,,28 个 BOSS 编号

@@ -75,3 +75,7 @@ BHV-STAGE-008,SYS-GAME-STAGE,".std 在末波次项与实体表之间有 28 字�
 BHV-STAGE-009,SYS-GAME-STAGE,"28 字节组项 = u32 type + float x + float y + u32 0 + float 16.0 + float 512.0 + u32 marker；坐标呈环形排列",original,observed,verified,"th185_web/scripts/native/stage_cpp_check.py --selftest","world04 前 7 项半径 16.4~20.7、角度间隔约 48°"
 BHV-STAGE-010,SYS-GAME-STAGE,"9 个场景共 379 实体、508 指令，每个场景指令流后恰好剩 16 字节 0xFF",original,observed,verified,"th185_web/scripts/native/stage_cpp_check.py --selftest","38+40+47+21+16+49+63+117+117=508"
 BHV-STAGE-011,SYS-GAME-STAGE,"实体表结束到指令流起始恒为 16 字节间隔（9/9 一致）",original,observed,verified,"th185_web/scripts/native/stage_cpp_check.py --selftest","固定间隔，非变长"
+BHV-WAVE-010,SYS-GAME-WAVE,"C++ WaveSelector 的 111 项名表与二进制完全一致",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","逐项对照 load_table()"
+BHV-WAVE-011,SYS-GAME-WAVE,"抽取只调用一次 RNG 再取模，C++ 实现与参考实现的 RNG 状态完全同步（锁定调用次序）",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","50 组随机用例含 RNG 种子对比"
+BHV-WAVE-012,SYS-GAME-WAVE,"两遍循环都跳过 skip_index，因此同一模板不会连续出现两次（111 种 skip 全部验证）",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","等权重下 skip 永不命中"
+BHV-WAVE-013,SYS-GAME-WAVE,"强制 BOSS：stage==5 && card==0 -> 索引27(Boss26)；stage==7 && card==66 -> 索引28(Boss27)",original,observed,verified,"th185_web/scripts/native/waves_cpp_check.py --selftest","与 docs/WAVES.md §9 一致"

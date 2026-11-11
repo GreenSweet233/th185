@@ -333,3 +333,106 @@ world07/08    7 项
 **下一步：`WaveSelector.cpp`**（波次抽取）。
 算法已解出（`docs/WAVES.md`：两遍加权循环 + RNG 取模），
 且 `Rng` 与 `StageScript` 都已完成，可直接接上。
+
+---
+
+## 7. 已完成：WaveSelector（`WaveSelector.hpp` / `.cpp`）
+
+### 7.1 文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/WaveSelector.hpp` | 111 项名表、权重结构、抽取接口 |
+| `cpp/game/WaveSelector.cpp` | 两遍加权循环 + 强制 BOSS |
+| `scripts/native/waves_cpp_check.py` | 交叉校验（7 项） |
+
+### 7.2 这是 TH185 的核心机制
+
+TH11/TH18 的道中敌人是**手工编排**的；TH185 不同——
+每个场景的波次是**从全局 110 条模板池里随机加权抽取**的。
+
+所以 **RNG 调用次序必须逐位一致**（`AGENTS.md` 铁律 5），
+否则整局状态会分叉。
+
+### 7.3 名表结构
+
+```
+[0]       空占位（不可选）
+[1]       Boss01t         教程 BOSS
+[2..28]   Boss01..Boss27  27 个常规 BOSS
+[29..31]  Wave01t..03t    3 个教程道中
+[32..110] Wave01..Wave79  79 个常规道中
+```
+
+**合计 111 项，其中 110 项可选**（索引 0 是占位）。
+
+### 7.4 抽取算法
+
+```c
+// 第一遍：累加权重，跳过 skip_index
+u32 total = 0;
+for (u32 i = 0; i < 111; ++i) {
+    if (i == skip_index) continue;
+    total += weights[i];
+}
+
+// 只调用一次 RNG
+const u32 roll = rng.next_below(total);
+
+// 第二遍：递减到负数，命中即结果
+i32 remaining = i32(roll);
+for (u32 i = 0; i < 111; ++i) {
+    if (i == skip_index) continue;
+    remaining -= i32(weights[i]);
+    if (remaining < 0) return i32(i);
+}
+```
+
+**关键细节**：第二遍必须用**有符号**比较（`remaining < 0`），
+用无符号比较永远不会触发。
+
+### 7.5 `skip_index` 的作用
+
+两遍循环**都**跳过 `skip_index`，所以**同一模板不会连续出现两次**。
+
+验证：等权重下，111 种 `skip` 取值全部不会命中自己。
+
+### 7.6 强制 BOSS
+
+```c
+if (stage == 5 && card_id == 0)  return 27;   // Boss26
+if (stage == 7 && card_id == 66) return 28;   // Boss27
+```
+
+对应原版 `RVA 0x3D121 mov esi,0x1B` 与 `0x3D151 mov esi,0x1C`。
+
+### 7.7 验证（7 项）
+
+```
+[PASS] C++ name table has 111 entries (expect 111)
+[PASS] C++ name table matches the binary
+[PASS] weight total and pick index match waves.py over 200 random cases
+[PASS] full selection (incl. RNG state) matches over 50 random cases
+[PASS] skip_index is never selected (all 111 cases)
+[PASS] forced-boss overrides match docs/WAVES.md
+[PASS] index ranges are contiguous (1+27+3+79 = 110 selectable)
+```
+
+第 4 项最关键——它不仅比对选出的索引，还比对 **RNG 的最终种子**，
+所以只要 C++ 里多调或少调一次 RNG 就会失败。
+
+### 7.8 C++ 实现进度
+
+| 文件 | 状态 | 校验 |
+|---|---|---|
+| `Types.hpp` | ✅ | — |
+| `Rng.hpp` / `Rng.cpp` | ✅ | `rng_cpp_check.py` 5 项 |
+| `Archive.hpp` / `Archive.cpp` | ✅ | `archive_cpp_check.py` 5 项 |
+| `EclResource.hpp` / `.cpp` | ✅ | `ecl_cpp_check.py` 5 项 |
+| `StageScript.hpp` / `.cpp` | ✅ | `stage_cpp_check.py` 5 项 |
+| **`WaveSelector.hpp` / `.cpp`** | ✅ | `waves_cpp_check.py` 7 项 |
+| `CardManager.cpp` | ⬜ | — |
+| `Difficulty.cpp` | ⬜ | — |
+
+**下一步：`CardManager.cpp`**（85 张卡）。
+表已解出（`docs/CARDS.md`：VA 0x4CA370，87 项 × 68 字节）。
