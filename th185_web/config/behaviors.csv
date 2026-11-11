@@ -25,3 +25,5 @@ BHV-ARCHIVE-006,SYS-CORE-ARCHIVE,"LZSS 编码：flag=1 字面量(8位)，flag=0 
 BHV-ARCHIVE-007,SYS-CORE-ARCHIVE,"RVA 0x71E70 使用全局静态窗口 0x527E80（8192字节），跨调用保留状态，不是纯函数",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","连续两次调用同一输入输出不同"
 BHV-ARCHIVE-008,SYS-CORE-ARCHIVE,"0x1E90 解密算法：密钥流 (key+k*step)&0xFF 按读取序号递增，明文按奇偶两轮交错写入（每 block 一组）",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","16/16 字节密钥流命中，真实数据前 3584 字节与原版一致"
 BHV-ARCHIVE-009,SYS-CORE-ARCHIVE,"block=16 时写入顺序为 15,13,11,9,7,5,3,1,14,12,10,8,6,4,2,0",original,observed,verified,"th185_web/scripts/native/pbg4.py --selftest","Unicorn 内存写钩子实测"
+BHV-ARCHIVE-010,SYS-CORE-ARCHIVE,"LZSS 最终格式：flag=1 字面量(9位)，flag=0 匹配(13位偏移+4位长度，拷贝字段+3字节)，偏移0终止",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","穷举验证：唯一满足「54位产出29字节」的参数组合"
+BHV-ARCHIVE-011,SYS-CORE-ARCHIVE,"纯 Python LZSS 重实现与原版逐字节一致（7172 字节差异 0）",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","th185.dat 条目表实测"

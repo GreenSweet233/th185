@@ -83,22 +83,25 @@ class BitReader:
 def decompress(src: bytes, dst_size: int) -> bytes:
     """LZSS 解压。返回最多 dst_size 字节。
 
-    对应原版 RVA 0x71E70。经差分测试（喂可控输入、观察输出）确认：
+    对应原版 RVA 0x71E70。编码格式经**穷举验证**确证：
 
-        flag = 1  -> 字面量：读 8 位数据
-        flag = 0  -> 匹配：读 13 位偏移，偏移为 0 则结束；
-                          否则读 8 位长度字段，拷贝 (字段 + 3) 字节
+        flag = 1  -> 字面量：读 8 位数据                      (共 9 位)
+        flag = 0  -> 匹配：读 13 位偏移                       (共 1+13+4 = 18 位)
+                          偏移 == 0 -> 结束
+                          否则读 **4 位**长度字段，拷贝 (字段 + 3) 字节
 
-    反汇编证据：
-        0x71F3B: test esi,esi ; je 0x71eef   flag=0 -> 匹配分支(13位偏移)
-        0x71F3F: mov esi,0x80                 flag=1 -> 8 位字面量
-        0x71F7E: mov byte [esi], al           字面量输出
-        0x71FB5: test edi,edi ; je 0x7204a    偏移 0 -> 结束
-        0x71FFB: add edi, 2                   长度 = 字段 + 2
-        0x72032: cmp esi,edi ; jle 0x72013    循环 edi+1 次 => 实际长度 = 字段+3
+    关键证据（th185.dat 条目表，解密后）：
+        目标输出第 29..34 字节是 B8 19 12 06 09 D8，它们是 6 个连续字面量，
+        位模式在解密流中位于 **bit 54**。
+        因此前 54 位必须恰好产出 29 字节。
+        穷举 (偏移位宽, 长度位宽, 长度偏移) 的所有组合，
+        只有 **(13, 4, +3)** 能精确满足：消耗 54 位、产出 29 字节：
+            M(偏移=5476, 长度=10) + M(偏移=2553, 长度=6) + M(偏移=7909, 长度=13)
+            = 10 + 6 + 13 = 29 ✓
 
-    窗口 8192 字节（and 0x1fff），初始写指针 1（0x71EB0: mov [ebp-0x1c],1）。
-    位序 MSB 优先（掩码从 0x80 递减，0x71F69: shr bl,1）。
+    窗口 8192 字节（and 0x1fff），初始写指针 1
+    （实测：win[1] 对应输出[0]，win[30] 对应输出[29]）。
+    位序 MSB 优先。
     """
     reader = BitReader(src)
     window = bytearray(WINDOW_SIZE)
@@ -115,11 +118,11 @@ def decompress(src: bytes, dst_size: int) -> bytes:
             window[dst_pos & WINDOW_MASK] = literal
             dst_pos = (dst_pos + 1) & WINDOW_MASK
         else:
-            # 匹配：13 位偏移 + 8 位长度字段
+            # 匹配：13 位偏移 + 4 位长度字段
             offset = reader.bits(13)
             if offset == 0:
                 break
-            length = reader.bits(8) + 3
+            length = reader.bits(4) + 3
             for i in range(length):
                 if len(out) >= dst_size:
                     break
