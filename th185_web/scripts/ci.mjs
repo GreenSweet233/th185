@@ -44,6 +44,7 @@ checks.push(
   { name: "waves", args: [resolve(here, "native", "waves.py"), "--selftest"], python: true },
   { name: "waves-algo", args: [resolve(here, "native", "waves.py"), "--selftest-algo"], python: true },
   { name: "waves-force", args: [resolve(here, "native", "waves.py"), "--selftest-force"], python: true },
+  { name: "cards", args: [resolve(here, "native", "cards.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -62,6 +63,13 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "cards") {
+    if (ok) {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("自检通过") || line.includes("解析"));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "waves" || check.name === "waves-algo" || check.name === "waves-force") {
     if (ok) {
       const summary = output.split("\n").filter((line) =>

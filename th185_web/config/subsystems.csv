@@ -13,7 +13,7 @@ SYS-GAME-WAVE,波次系统,SYS-GAME-SESSION,SYS-CORE-RNG,in-progress,observed,,�
 SYS-GAME-PLAYER,自机,SYS-GAME-SESSION,,not-started,none,,仅魔理沙 1 组
 SYS-GAME-BULLET,弹幕,SYS-GAME-SESSION,,not-started,none,,与 th11 同族
 SYS-GAME-ENEMY,敌人与 Boss,SYS-GAME-SESSION,SYS-CORE-ECL,not-started,none,,28 个 BOSS 编号
-SYS-GAME-CARD,卡牌系统,SYS-GAME-SESSION,,not-started,none,,85 张卡 + Cost 系统
+SYS-GAME-CARD,卡牌系统,SYS-GAME-SESSION,,in-progress,observed,,"卡牌表 VA 0x4CA370 共 87 项（68字节/项）已完全解出；ID 0=BLANK、66=NITORI 即强制 BOSS 触发卡；Cost 字段疑似 +0x30 未验证；见 docs/CARDS.md"
 SYS-GAME-MARKET,黑市与经济,SYS-GAME-CARD,,not-started,none,,双货币 funds / bulletMoney
 SYS-GAME-ITEM,道具,,,not-started,none,,
 SYS-GAME-DIFFICULTY,难度数值表,,,not-started,none,,8 档（含 Little Hard / Over Drive）
