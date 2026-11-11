@@ -38,6 +38,8 @@ checks.push(
   // 探针自检需要 unicorn + capstone。缺依赖时跳过而不是判失败，
   // 但会在输出里明确提示，避免"CI 全绿"被误解为"探针可用"。
   { name: "probe", args: [resolve(here, "native", "probe.py"), "--selftest"], python: true },
+  // RNG 自检不需要 unicorn，纯算法验证。它锁死了 TH185 最关键的机制。
+  { name: "rng", args: [resolve(here, "native", "rng.py"), "--selftest"], python: true },
 );
 
 let failures = 0;
@@ -56,6 +58,15 @@ for (const check of checks) {
 
   // progress --stdout 正常时会输出整篇 markdown，太长，只保留摘要
   let output = ((result.stdout || "") + (result.stderr || "")).trim();
+  if (check.name === "rng") {
+    if (!ok) {
+      // 保留完整输出：RNG 失败意味着算法被动过
+    } else {
+      const summary = output.split("\n").filter((line) =>
+        line.startsWith("自检通过") || line.includes("seed = "));
+      output = summary.join("\n");
+    }
+  }
   if (check.name === "probe") {
     if (!ok && /No module named/.test(output)) {
       console.log("         (跳过：缺少 unicorn/capstone，pip install unicorn capstone)");

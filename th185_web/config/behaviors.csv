@@ -1,1 +1,4 @@
 id,subsystem,assertion,source,evidence_level,status,test_ref,notes
+BHV-RNG-001,SYS-CORE-RNG,"种子 0x1234 连续 16 次推进，输出序列与探针逐位一致",original,behavioral,verified,"th185_web/scripts/native/rng.py --selftest","前 8 个值硬编码在自检里，锁死算法"
+BHV-RNG-002,SYS-CORE-RNG,"返回值 EAX = (edi << 16) | ebx，高16位与低16位是两次独立随机值",original,behavioral,verified,"th185_web/scripts/native/rng.py --probe","8 次调用 EAX 与种子全部匹配"
+BHV-RNG-003,SYS-CORE-RNG,"取模用 32 位 EAX 而非 16 位种子",original,observed,implemented,"","依据 RVA 0x3D068 的 div 指令；实际 limit 都小于 65536 故两者等价"

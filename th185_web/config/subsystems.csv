@@ -2,7 +2,7 @@ id,title,parent,deps,status,evidence_level,owner,notes
 SYS-CORE-ARCHIVE,档案层（PBG4 解包）,,,in-progress,observed,,已确证:算法表+密钥流解析式(key+i*step)；未完成:明文需位流解压(0x71E70)；探针 probe.py/unpack.py 可用；见 docs/PBG4.md 9
 SYS-CORE-ANM,ANM 动画解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,与 th11 同族，可参考其 AnmInterpreter
 SYS-CORE-ECL,ECL 脚本解释器,SYS-CORE-ARCHIVE,SYS-CORE-ARCHIVE,not-started,none,,ThModern_ECLGetSub 确证与 TH18 同格式
-SYS-CORE-RNG,随机数发生器,,,not-started,none,,TH185 随机权重极大，必须逐位一致
+SYS-CORE-RNG,随机数发生器,,,complete,observed,,RVA 0x2800；16位xorshift变体 A=0x9630 B=0x6553；返回(edi<<16)|ebx 一次两个值；全局实例0x4D7AA8；16种子与探针逐位一致；见 docs/RNG.md
 SYS-CORE-FILE,文件与路径层,,,not-started,none,,th185.dat / thbgm.dat / scoreth185.dat / th185.cfg
 SYS-RENDER-ANM,ANM 渲染,SYS-CORE-ANM,SYS-CORE-ANM,not-started,none,,可复用 th11 的 AnmGeometry / AnmProjection
 SYS-RENDER-TEXT,文字渲染,,,not-started,none,,thcrap 的文本框尺寸 / 居中 / ruby 算法可参考
