@@ -37,3 +37,6 @@ score*.dat
 *.log
 .env
 .npmrc
+
+# _references 下的第三方源码是 MIT 许可的参考资料，允许入库
+# 但其中若有二进制/数据文件仍按上面的规则排除
