@@ -113,3 +113,6 @@ BHV-WAVE-017,SYS-GAME-WAVE,"EnemyManager 三个数组各 444 字节（111*4）�
 BHV-WAVE-018,SYS-GAME-WAVE,"C++ EnemyManager::recompute 实现权重公式 weights_b=value_b/(count+1)-count，负数结果过滤为 0 并计为不可选",original,observed,verified,"th185_web/scripts/native/enemymanager_cpp_check.py --selftest","15 项校验全 PASS"
 BHV-WAVE-019,SYS-GAME-WAVE,"每抽中一个模板就递增其 counter 并记录 skip_index（对应 RVA 0x3D243 的 inc [eax+esi*4+0x168]）",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","真实会话 drawn==slots 全部吻合"
 BHV-WAVE-020,SYS-GAME-WAVE,"GameSession::select_waves_from_state 已自给自足：无需调用方提供权重数组",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","8 个场景全部走此路径"
+BHV-WAVE-021,SYS-GAME-WAVE,"RVA 0x40090 是通用 ECL 参数读取器（231 处调用），不是权重专用函数；其数据链为 ECL上下文+0x1018 -> +0x1218 -> +0x10c",original,observed,implemented,"","修正了初版文档的不准确表述"
+BHV-WAVE-022,SYS-GAME-WAVE,"+0x1218 由 RVA 0x3521D 从 EM+0x4F34 载入；该指针指向 268 字节（67 个 u32）关卡数据块，由 0x34B72 循环遍历",original,observed,implemented,"","0x10C 即块大小"
+BHV-WAVE-023,SYS-GAME-WAVE,"权重填充代码在跳转表 0x3D5DC..0x3D8A8（180 项）的 [163] 项，但 ECL 操作码 163 实测出现 0 次——表索引不是操作码本身",original,observed,implemented,"","映射关系未确定"

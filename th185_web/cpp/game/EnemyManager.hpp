@@ -23,10 +23,15 @@
 // `counter` is incremented every time template i is drawn (RVA 0x3D243), which
 // is what makes heavily drawn templates less likely over time.
 //
-// IMPORTANT: `value_a` and `value_b` come from two accessor calls (RVA 0x40090)
-// that read a session object we have not reconstructed. They are therefore an
-// INPUT here, not something this class can derive. Everything else -- the
-// counter bookkeeping, the formula, the negative-result filter -- is exact.
+// IMPORTANT: `value_a` and `value_b` are INPUTS. The original obtains them via
+// RVA 0x40090, which is a GENERAL ECL parameter reader (231 call sites across
+// the interpreter, not a weight-specific accessor). That reader walks
+// ECL-context -> 0x1018 -> 0x1218 -> 0x10c, and 0x1218 is loaded from
+// EM + 0x4F34 (a 268-byte stage data block) at RVA 0x3521D.
+//
+// So these values come from stage data plus ECL runtime variables, which we
+// have not reconstructed. Everything else -- the counter bookkeeping, the
+// formula, the negative-result filter -- is exact.
 
 #include "Types.hpp"
 #include "WaveSelector.hpp"

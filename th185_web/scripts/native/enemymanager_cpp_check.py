@@ -169,8 +169,8 @@ def main() -> int:
         failures += 1
 
     # 6. Documented honesty: value_a / value_b are inputs, not derived here.
-    ok = "INPUT" in hpp and "0x40090" in hpp
-    print("[%s] header states value_a/value_b are inputs from RVA 0x40090"
+    ok = "INPUT" in hpp and "0x40090" in hpp and "GENERAL ECL parameter reader" in hpp
+    print("[%s] header states value_a/value_b are inputs (general ECL reader)"
           % ("PASS" if ok else "FAIL"))
     if not ok:
         failures += 1
