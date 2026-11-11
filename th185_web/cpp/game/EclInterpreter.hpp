@@ -27,6 +27,7 @@
 // The interpreter therefore exposes unsupported_count so a run can state
 // exactly how much of a script it actually understood.
 
+#include "EclContext.hpp"
 #include "EclResource.hpp"
 #include "Types.hpp"
 
@@ -105,6 +106,11 @@ struct EclRunStats {
 // into that stream, matching how TH11 resolves them.
 class EclInterpreter {
 public:
+    // Variable storage and reference resolution. StoreInt/StoreFloat need it;
+    // a run without a context reports those ops as unsupported instead of
+    // writing somewhere arbitrary.
+    EclContext context;
+
     // Run at most step_budget instructions (0 = unlimited).
     EclRunResult run(const std::vector<u8>& code, u32 step_budget = 0);
 

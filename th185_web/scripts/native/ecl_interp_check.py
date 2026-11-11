@@ -27,14 +27,14 @@ sys.path.insert(0, str(HERE))
 
 # Opcodes the C++ skeleton implements (mirrors EclInterpreter.hpp).
 IMPLEMENTED = {
-    0, 1, 10, 12, 13, 14, 30, 40, 41, 42, 44, 83,
+    0, 1, 10, 12, 13, 14, 30, 40, 41, 42, 43, 44, 83,
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
     68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 79, 80, 88,
 }
 
 # Deliberately reported unsupported (needs the ECL context/owner object).
 NEEDS_CONTEXT = {
-    11, 15, 16, 17, 18, 19, 20, 21, 43, 45, 78, 81, 82, 86, 87,
+    11, 15, 16, 17, 18, 19, 20, 21, 45, 78, 81, 82, 86, 87,
 }
 
 INSTRUCTION_HEADER = 8
@@ -94,16 +94,16 @@ def selftest() -> int:
 
     implemented_share = sum(c for op, c in counts.items() if op in IMPLEMENTED)
     needs_share = sum(c for op, c in counts.items() if op in NEEDS_CONTEXT)
-    # 43.82% is the honest ceiling for a pure stack machine: StoreInt/StoreFloat
-    # (1393 instructions), Call (364) and Spawn (126) all need an ECL context
-    # object for reference resolution / subroutine calls / thread management.
-    ok = 0.40 <= implemented_share / total <= 0.50
+    # StoreInt/StoreFloat are now implemented via EclContext (reference
+    # resolution). What remains blocked is Call (subroutine calls) and
+    # Spawn (thread management), which need an owner object.
+    ok = 0.44 <= implemented_share / total <= 0.52
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:
         failures += 1
 
-    ok = 0.08 <= needs_share / total <= 0.15
+    ok = 0.03 <= needs_share / total <= 0.10
     print('[%s] needs-context opcodes cover %.2f%% (blocked on EclContext)'
           % ('PASS' if ok else 'FAIL', 100.0 * needs_share / total))
     if not ok:
@@ -201,7 +201,51 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 7. Report the honest coverage split so the number cannot drift silently.
+    # 7. Reference encoding: a negative argument maps to a builtin slot via
+    #    (value + 10000), and a non-negative one is a 4-aligned frame offset.
+    #    Both rules are asserted on real data so they cannot drift.
+    builtin_refs = 0
+    frame_refs = 0
+    bad_refs = []
+    for resource in resources:
+        for sub in resource['subs']:
+            for ins in sub['instructions']:
+                if ins['id'] != 43:
+                    continue
+                payload = ins.get('payload', b'')
+                if len(payload) < ARGUMENT_BIAS + 4:
+                    continue
+                target = int.from_bytes(
+                    payload[ARGUMENT_BIAS:ARGUMENT_BIAS + 4], 'little', signed=True)
+                def decodes(v):
+                    if v < 0:
+                        index = v + 10000
+                        return 0 <= index < 111
+                    return v % 4 == 0 and v + 4 <= 256
+
+                if decodes(target):
+                    if target < 0:
+                        builtin_refs += 1
+                    else:
+                        frame_refs += 1
+
+                else:
+                    bad_refs.append((sub.get('name', '?'), ins['offset'], target))
+    ok = not bad_refs
+    print('[%s] every Store reference decodes (%d builtin, %d frame-local, %d bad)'
+          % ('PASS' if ok else 'FAIL', builtin_refs, frame_refs, len(bad_refs)))
+    if not ok:
+        for item in bad_refs[:5]:
+            print('       %s' % (item,))
+        failures += 1
+
+    ok = builtin_refs > 0 and frame_refs > 0
+    print('[%s] both reference kinds occur in real data'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
+    # 8. Report the honest coverage split so the number cannot drift silently.
     print()
     print('       coverage breakdown:')
     print('         total instructions : %d' % total)

@@ -1051,3 +1051,124 @@ TH185 可能扩展过（注意 `Call` 的 size 从 32 到 100 有 15 种不同�
 
 > 这是 `corroborated` 而非 `exact` 的证据等级——
 > 编号一致是强证据，但语义等价需要运行时验证。
+
+---
+
+## 13. ★ 变量引用编码（EclContext）
+
+### 13.1 为什么需要它
+
+`StoreInt`(948 条) 和 `StoreFloat`(445 条) 需要一个「目标地址」。
+上一轮把这两个都归为「缺 EclContext」而跳过，导致覆盖率只有 43.82%。
+
+本轮解出了引用编码，`StoreInt` 完全打通。
+
+### 13.2 ★ 引用编码规则（实测验证）
+
+指令头第 4 个 u16 是 `param_mask`（+0x06）。它的**低 8 位**是逐参数引用掩码。
+
+参数值本身按符号解码：
+
+```c
+if (value < 0) {
+    // 引擎内置变量槽
+    index = value + 10000;      // 范围 0..110
+} else {
+    // 栈帧内字节偏移
+    // 必须是 4 的倍数，范围 0..252
+}
+```
+
+**`+10000` 这个基准正好对应 dispatcher 的 `cmp eax, 0x6e`（110）**，
+这是两条独立证据互相印证。
+
+实测（`StoreInt` 的 948 个引用）：
+
+| 类型 | 数量 | 验证 |
+|---|---|---|
+| builtin 槽 | 411 | 全部落在 0..110 ✓ |
+| 栈帧偏移 | 537 | 全部是 4 的倍数且在 0..60 ✓ |
+| 异常 | **0** | — |
+
+### 13.3 已标注的 builtin 索引
+
+| 索引 | 语义 |
+|---|---|
+| 41 | 难度 |
+| 47..50 | `is_difficulty_0..3` |
+| 51..54 | `EM+0x3c/0x40/0x44/0x4f44` |
+| 110 | 关卡号 - 2 |
+
+其余槽位**语义未知，读取返回 0 而不是猜测值**。
+
+### 13.4 ★ 数据推翻了「op45 = StoreFloat」
+
+TH11 把 opcode 45 叫 `StoreFloat`，我照搬了。**数据不同意**：
+
+| 操作码 | payload[4] 解为引用的比例 | payload[8] |
+|---|---|---|
+| 43 `StoreInt` | **948 / 948 = 100%** | 恒为 0 |
+| 45（TH11 叫 StoreFloat） | **137 / 445 = 31%** | 0 或 1 |
+| 44 `PushFloat` | 0 / 1760 | 0 或 1 |
+
+那 308 个「异常」值按 float 解读全部有意义：
+
+```
+0x40800000 = 4.0f
+0x41400000 = 12.0f
+0xC0800000 = -4.0f
+```
+
+**op45 的 payload 形状与 `PushFloat` 一致，与 `StoreInt` 不一致。**
+所以 op45 在 TH185 中**很可能不是 StoreFloat**。
+
+处理方式：**回退为 unsupported**。
+
+> 猜一个目标地址会污染任意变量，比拒绝执行更糟。
+
+### 13.5 `param_mask` 不足以判定参数性质
+
+`StoreInt` 的 `param_mask` 全是 `0xFF`——看起来能用来判定「都是引用」。
+但 `PushFloat`/`op45` 的 `param_mask` **也是 `0xFF`**，却存字面值。
+
+**所以掩码只说明「这个位置可以是引用」，不说明「这个值一定是引用」。**
+必须结合 payload 内容解码。
+
+### 13.6 覆盖率变化
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 纯栈 + StoreInt | 10415 (43.82%) | **11363 (47.80%)** |
+| 需 EclContext | 2612 (10.99%) | 1664 (7.00%) |
+| TH185 独有 | 10743 (45.19%) | 10743 (45.19%) |
+
+### 13.7 新增文件
+
+| 文件 | 内容 |
+|---|---|
+| `cpp/game/EclContext.hpp` | 引用编码常量 + 槽位 + 解析接口 |
+| `cpp/game/EclContext.cpp` | 引用解码 + 帧栈管理 |
+
+### 13.8 验证（8 项）
+
+```
+[PASS] implemented opcodes cover 47.80% of instructions
+[PASS] needs-context opcodes cover 7.00%
+[PASS] implemented and needs-context sets are disjoint
+[PASS] every jump target is a boundary or past the subroutine end (0 bad, 34 exits)
+[PASS] instruction offsets are contiguous (0 bad)
+[PASS] 1 subroutine(s) use only implemented opcodes
+[PASS] every Store reference decodes (411 builtin, 537 frame-local, 0 bad)
+[PASS] both reference kinds occur in real data
+```
+
+### 13.9 仍然缺失
+
+| 项 | 状态 |
+|---|---|
+| `StoreInt` | ✅ 完全打通 |
+| **op45 真实语义** | ❌ 不是 StoreFloat，待定 |
+| **`Call`(364)** | ❌ 需要子程序调用机制 |
+| **`Spawn`(126)** | ❌ 需要线程管理 |
+| **builtin 槽语义** | ❌ 只有 9 个已知，其余读 0 |
+| **TH185 独有 10743 条** | ❌ 未开始 |

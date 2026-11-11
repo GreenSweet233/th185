@@ -125,3 +125,8 @@ BHV-ECL-111,SYS-CORE-ECL,"跳转指令的操作数是相对当前指令起点的
 BHV-ECL-112,SYS-CORE-ECL,"指令 payload 的第一个 u32 恒为 0 是保留字，真实参数从 payload+4 开始",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","误读 payload[0] 会导致所有跳转目标变成 0"
 BHV-ECL-113,SYS-CORE-ECL,"StoreInt(948)/StoreFloat(445)/Call(364)/Spawn(126) 共 2612 条(10.99%) 需要 EclContext 才能执行：引用解析/子程序调用/线程管理",original,observed,implemented,"","这些是纯栈机器无法覆盖的部分"
 BHV-ECL-114,SYS-CORE-ECL,"TH185 独有操作码 10743 条(45.19%) 完全未实现：族 300..399/400..499/500..699/1000..1026 + op23(1704) + op1013(1021)",original,observed,implemented,"","下一阶段目标"
+BHV-ECL-120,SYS-CORE-ECL,"ECL 引用编码：负值 v 表示 builtin 槽（索引 = v + 10000，范围 0..110，匹配 dispatcher 的 cmp eax,0x6e）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","411 个样本全部验证通过"
+BHV-ECL-121,SYS-CORE-ECL,"ECL 引用编码：非负值 v 表示栈帧内字节偏移（必须是 4 的倍数，范围 0..252）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","537 个样本全部验证通过"
+BHV-ECL-122,SYS-CORE-ECL,"StoreInt(43) 的 948 个引用全部可解码（411 builtin + 537 frame），0 异常",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","C++ EclContext::write_int_ref"
+BHV-ECL-123,SYS-CORE-ECL,"★ op45 在 TH185 中不是 StoreFloat：payload[4] 只有 137/445 是引用，其余 308 是字面 float（0x40800000=4.0f）且 payload[8] 为 0/1 标志——与 op44 PushFloat 同形，与 StoreInt 不同形",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","数据推翻了 TH11 的编号假设"
+BHV-ECL-124,SYS-CORE-ECL,"param_mask(+0x06) 低 8 位是逐参数引用掩码：StoreInt 全为 0xFF；但 op44/op45 也是 0xFF 却存字面值，所以该掩码不足以判定参数性质",original,observed,implemented,"","需要结合 payload 内容解码"

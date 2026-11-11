@@ -156,6 +156,10 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
         const u8* instruction = code.data() + pc;
         const u16 opcode = read_u16(instruction);
         const u16 size = read_u16(instruction + 2);
+        // rank_mask at +4, param_mask at +6. The low 8 bits of param_mask flag
+        // which arguments are references rather than literals.
+        const u16 param_mask = read_u16(instruction + 6);
+        (void)param_mask;  // reserved for opcodes with mixed literal/reference args
         ++stats_.instructions;
         if (stack_.depth() > stats_.max_stack_depth) {
             stats_.max_stack_depth = stack_.depth();
@@ -226,6 +230,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
+            // Keep the variable frame in step with the operand frame.
+            context.push_frame();
             break;
         }
 
@@ -234,6 +240,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
+            context.pop_frame();
             break;
 
         case EclOp::PushInt:
@@ -250,17 +257,46 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
             }
             break;
 
-        // StoreInt / StoreFloat need a destination reference resolver, which
-        // lives in the ECL context object we have not reconstructed. Report
-        // them as unsupported rather than writing somewhere arbitrary.
-        case EclOp::StoreInt:
+        case EclOp::StoreInt: {
+            u32 bits = 0;
+            EclValue::Type type = EclValue::Type::Integer;
+            if (!stack_.pop(bits, type)) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const i32 target = arg_i32(payload, 0);
+            const i32 value = (type == EclValue::Type::Float)
+                                  ? i32(as_float(bits))
+                                  : as_int(bits);
+            if (!context.write_int_ref(target, value)) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            break;
+        }
+
+        // Opcode 45 was assumed to be StoreFloat because TH11 numbers it that
+        // way. The data contradicts that:
+        //
+        //   op 43 StoreInt   payload[4] decodes as a REFERENCE in 948/948 cases
+        //                    (negative -> builtin slot via +10000, else a
+        //                    4-aligned frame offset). Clean.
+        //   op 45 (TH11 calls it StoreFloat)
+        //                    payload[4] decodes as a reference in only 137/445
+        //                    cases. The other 308 hold literal floats
+        //                    (0x40800000 = 4.0f, 0x41400000 = 12.0f) with a
+        //                    0/1 flag in payload[8] -- the SAME shape as op 44
+        //                    PushFloat, not the shape of a store.
+        //
+        // So op 45 in TH185 is very likely NOT StoreFloat. Guessing a target
+        // would corrupt an arbitrary variable, which is worse than refusing.
+        // Left unsupported until the real semantics are established.
         case EclOp::StoreFloat:
             ++stats_.unsupported_count;
             if (stats_.first_unsupported_opcode == 0) {
                 stats_.first_unsupported_opcode = opcode;
             }
             return EclRunResult::Unsupported;
-
         case EclOp::AddInt:
         case EclOp::SubtractInt:
         case EclOp::MultiplyInt:
