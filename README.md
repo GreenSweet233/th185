@@ -55,15 +55,27 @@ Generated build outputs are written below `th185_web/artifacts/` and are intenti
 |---|---|
 | 目标指纹与版本考证 | ✅ 完成 |
 | 目录/文档/脚本骨架 | ✅ 完成 |
+| **逆向 `.rpy` 格式（恢复验证能力）** | ⬜ **P0 最高风险** |
 | 资源解包（PBG4） | ⬜ 待办 |
+| RNG 逆向 | ⬜ 待办 |
 | ANM / STD / MSG / SHT 资源层 | ⬜ 待办 |
-| ECL 脚本解释器 | ⬜ 待办 |
-| 自机、弹幕、敌人、Boss | ⬜ 待办 |
-| 卡牌 / 黑市系统 | ⬜ 待办 |
+| ECL 脚本解释器（可复用 TH18） | ⬜ 待办 |
+| **波次随机系统（110 模板 × 50 槽位）** | ⬜ 待办 |
+| 自机（仅魔理沙）、弹幕、敌人、Boss（28 编号） | ⬜ 待办 |
+| **卡牌（85 张 + Cost）/ 黑市 / 双货币** | ⬜ 待办 |
+| **8 档难度数值表** | ⬜ 待办 |
 | 菜单、对话、结局 | ⬜ 待办 |
-| 存档与录像 | ⬜ 待办 |
+| 存档 `scoreth185.dat` | ⬜ 待办 |
 | SDL3 / WebGL2 运行时 | ⬜ 待办 |
 | 启动器接入（eagler-touhou/1） | ⬜ 待办 |
+
+## 三个必须先知道的事实
+
+**① 这是全球首例。** GitHub 全站搜索（`th185` / `"100th Black Market"` / `touhou 18.5` / `th185 in:readme`）只找到 Mod、随机化工具和资源编译器，**没有任何 TH185 的重建或反编译项目**。Eagler Touhou 进度表里 th185 标为 `Unassigned`。
+
+**② Replay 被取消了。** THBWiki 原文「本作取消了Replay系统」——但引擎层代码还在（`th185_%.2d.rpy` 字符串 + `0x468764` 的 `ReplayManager::OnTick`）。这意味着 **TH11 那套「原版录像逐帧比对」的核心验证手段不可直接用**，必须先逆向出 `.rpy` 格式自建录像。详见 [docs/RECONSTRUCTION.md](th185_web/docs/RECONSTRUCTION.md) §3.3。
+
+**③ 规模约为 TH11 的 3~3.5 倍。** 9 场景 × 50 波次槽位、110 条波次模板池、28 个 BOSS 编号、87 个卡牌类、8 档难度。自机砍到 1 人（仅魔理沙）是唯一减项。
 
 ## Assets and licensing
 

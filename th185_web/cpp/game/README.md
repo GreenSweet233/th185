@@ -26,10 +26,14 @@ TH185 的具名游戏管理器。目录结构与 `../th11/th11_web/cpp/game/` �
 
 ## TH185 相对 TH11 的结构差异
 
-1. **关卡是「关卡 × 波次」两层**，不是「面 × 阶段」。thprac 有 9 个 warps 文件（stage 0–8），每关内是 WAVE_1..N + BOSS。
-2. **卡牌系统独立成管理器**，85 张卡，涉及主动卡（C 键使用）、被动卡、商店购买。
-3. **随机性是核心机制**，不是装饰。RNG 必须与原版逐位一致。
-4. **难度有 6 档**（Very Easy / Easy / Normal / Hard / Very Hard / Over Drive），比 TH11 多一档 Over Drive。
+1. **关卡是「场景 × 波次」两层**，不是「面 × 阶段」。thprac 有 9 个 warps 文件（stage 0–8），每场景内是 WAVE_1..N + BOSS，**没有传统 Extra**。
+2. **波次敌编成是随机抽取的**，模板池上限 **110 条**（权重数组在 EnemyManager(0x4d7af4)+0x324，名字表 0x4B5D50）。这是本作核心机制，TH11/TH18 都没有。
+3. **BOSS 是候选池**：28 个 BOSS 编号，每场景 4~5 选 1（Challenge Market 是 6 组 Boss Rush）。
+4. **卡牌系统独立成管理器**：85 张可用卡（86 含背面，87 个 RTTI 类），含 **Cost 系统**（TH18 没有）、**双货币**（funds + bulletMoney）、**黑市 3 次购买**、**可叠卡**。
+5. **随机性是核心机制**，不是装饰。RNG 必须与原版逐位一致。
+6. **难度有 8 档**：Very Easy / Easy / Normal / **Little Hard** / Hard / Very Hard / Lunatic / **Over Drive**。TH11 只有 4 档，TH18 没有 Little Hard。
+7. **自机只有 1 组**（雾雨魔理沙），靠卡牌组合产生玩法分化。这是相对 TH11 的**减项**。
+8. **Replay 在游戏层被取消**，验证体系需另建（见 docs/RECONSTRUCTION.md §3.3）。
 
 ## 可复用来源
 

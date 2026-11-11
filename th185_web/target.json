@@ -27,5 +27,47 @@
     "file": "custom.exe",
     "sha256": "AFA0747120A4B7EA97478D04A61908236CC82FE3B377248088DF71E29673D83C",
     "size": 128512
+  },
+  "versionInfo": {
+    "officialVersions": [
+      "1.00a"
+    ],
+    "note": "TH185 正式版只有 v1.00a 一个（readme.txt 更新履历仅「2022/08/14 ver 1.00a 初期版」；thcrap-tsa versions.js 里 th185 的 latest 数组只有 v1.00a）。",
+    "releases": {
+      "steam": {
+        "appid": "2097720",
+        "sha256": "41DE6934B12986AFBC80C3484B452339CE02359737FC8A2AAB0843A414D14B28",
+        "note": "带 SteamStub + SteamDRM 双层壳"
+      },
+      "dlsite": {
+        "sha256": "76BBF844E962C16004B64F1B2EF3551593056BAA43EA53B9A5DF45AD731345C7",
+        "note": "无壳，本仓库基准"
+      }
+    },
+    "evidenceUrl": "https://raw.githubusercontent.com/thpatch/thcrap-tsa/master/base_tsa/versions.js"
+  },
+  "gameplayFacts": {
+    "scenes": 9,
+    "waveSlots": 50,
+    "waveTemplatePool": 110,
+    "bossIds": 28,
+    "abilityCards": 85,
+    "abilityCardRttiClasses": 87,
+    "difficulties": [
+      "Very Easy",
+      "Easy",
+      "Normal",
+      "Little Hard",
+      "Hard",
+      "Very Hard",
+      "Lunatic",
+      "Over Drive"
+    ],
+    "playableCharacters": [
+      "Marisa"
+    ],
+    "hasReplay": false,
+    "replayNote": "游戏层取消（THBWiki），引擎层残留 ReplayManager @0x468764",
+    "note": "以上为调研确证数据，来源见 docs/BUILD.md 与 docs/RECONSTRUCTION.md"
   }
 }
