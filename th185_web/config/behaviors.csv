@@ -91,3 +91,8 @@ BHV-SESSION-002,SYS-GAME-SESSION,"加载的场景与 Python 参考解析器的 e
 BHV-SESSION-003,SYS-GAME-SESSION,"强制 BOSS 规则在组合链路中生效：stage 5 + card 0 → 模板 27（Boss26），其他关卡不触发",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","端到端验证而非单元测试"
 BHV-SESSION-004,SYS-GAME-SESSION,"评分上限 = cap[Normal] × stage，随关卡线性增长",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","cap[2]=1500000"
 BHV-SESSION-005,SYS-GAME-SESSION,"波次选择具有确定性：同一种子两次运行结果完全相同",original,observed,verified,"th185_web/scripts/native/cpp_session_runtime.py --selftest","哈希一致"
+BHV-SAVE-001,SYS-SAVE-SCORE,"存档头 24 字节：magic \"581T\"(0x54313835) + u32 文件大小 + u16 版本6 + u16 保留 + u32 常量0x100 + u32 压缩大小 + u32 解压大小",original,observed,verified,"th185_web/scripts/native/save.py --selftest","实测 20819/6/256/20795/158240"
+BHV-SAVE-002,SYS-SAVE-SCORE,"存档复用 PBG4 的解密与 LZSS：key=0xAC step=0x35 block=0x10，limit=压缩大小（RVA 0x69440 反汇编确证）",original,observed,verified,"th185_web/scripts/native/save.py --selftest","LZSS 精确产出 158240 字节"
+BHV-SAVE-003,SYS-SAVE-SCORE,"解压后是自描述记录序列：[u16 magic][u16 version][u32 value][u32 length]；CR=0x5243 ST=0x5453",original,observed,verified,"th185_web/scripts/native/save.py --selftest","78176+78176+1888=158240 精确填满"
+BHV-SAVE-004,SYS-SAVE-SCORE,"CR 记录从 +0x10 起是 32 字节槽位：u32 分数 + u8 flag_a + u8 flag_b + char[8] 名字 + 20 字节附加",original,observed,verified,"th185_web/scripts/native/save.py --selftest","flag_a 是槽位类型不是 u16 标志"
+BHV-SAVE-005,SYS-SAVE-SCORE,"flag_a=1 是空榜条目（6 组 × 10 档，组内分数递减 100000..10000，名字 \"--------\"）；flag_a=7 是真实成绩",original,observed,verified,"th185_web/scripts/native/save.py --selftest","实测 60 空槽 + 2 实绩槽"

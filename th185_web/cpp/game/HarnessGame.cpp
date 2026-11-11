@@ -11,6 +11,7 @@
 #include "EclResource.hpp"
 #include "GameSession.hpp"
 #include "Rng.hpp"
+#include "SaveFile.hpp"
 #include "StageScript.hpp"
 #include "WaveSelector.hpp"
 
@@ -207,6 +208,40 @@ void emit_session(const std::vector<u8>& file) {
     }
 }
 
+void emit_save(const char* path) {
+    // The save file lives outside the archive, so it is passed separately.
+    std::vector<u8> blob;
+    if (!read_file(path, blob)) {
+        std::printf("SAVE READ_ERROR %s\n", path);
+        return;
+    }
+    SaveFile save;
+    std::string error;
+    if (!save.parse(std::move(blob), &error)) {
+        std::printf("SAVE PARSE_ERROR %s\n", error.c_str());
+        return;
+    }
+    std::printf("SAVE header %u %u %u %u %u %u\n",
+                save.header.magic, save.header.file_size,
+                unsigned(save.header.version), save.header.constant,
+                save.header.compressed_size, save.header.decompressed_size);
+    std::printf("SAVE records %zu consumed %u total %zu cr %u st %u\n",
+                save.records.size(), save.consumed, save.raw.size(),
+                save.cr_count(), save.st_count());
+    for (const SaveRecord& record : save.records) {
+        u32 hash = 2166136261u;
+        for (const SaveSlot& slot : record.slots) {
+            hash = (hash ^ slot.score) * 16777619u;
+            hash = (hash ^ slot.flag_a) * 16777619u;
+            hash = (hash ^ slot.flag_b) * 16777619u;
+            for (char ch : slot.name) hash = (hash ^ u8(ch)) * 16777619u;
+        }
+        std::printf("SAVE rec %04X %u %u %u %zu %08X\n",
+                    unsigned(record.magic), unsigned(record.version),
+                    record.value, record.length, record.slots.size(), hash);
+    }
+}
+
 void emit_tables() {
     // Card table digest.
     u32 card_hash = 2166136261u;
@@ -265,5 +300,7 @@ int main(int argc, char** argv) {
     emit_std(file);
     emit_session(file);
     emit_tables();
+    // Optional third argument: the save file (lives outside the archive).
+    if (argc >= 3) emit_save(argv[2]);
     return 0;
 }

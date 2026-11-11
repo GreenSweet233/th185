@@ -48,6 +48,7 @@ checks.push(
   { name: "lzss", args: [resolve(here, "native", "lzss.py"), "--selftest"], python: true },
   { name: "difficulty", args: [resolve(here, "native", "difficulty.py"), "--selftest"], python: true },
   { name: "pbg4", args: [resolve(here, "native", "pbg4.py"), "--selftest"], python: true },
+  { name: "save", args: [resolve(here, "native", "save.py"), "--selftest"], python: true },
   { name: "std", args: [resolve(here, "native", "std.py"), "--selftest"], python: true },
   { name: "ecl", args: [resolve(here, "native", "ecl.py"), "--selftest"], python: true },
   { name: "ecl-builtins", args: [resolve(here, "native", "ecl_builtins.py"), "--selftest"], python: true },
