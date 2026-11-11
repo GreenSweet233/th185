@@ -36,7 +36,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
-WINDOW_SIZE = 4096
+WINDOW_SIZE = 8192   # 原版 and 0x1fff
 WINDOW_MASK = 0x1FFF
 
 
@@ -83,13 +83,23 @@ class BitReader:
 def decompress(src: bytes, dst_size: int) -> bytes:
     """LZSS 解压。返回最多 dst_size 字节。
 
-    对应原版 RVA 0x71E70。窗口是一个 4096 字节的环形缓冲，
-    写指针 `dst_pos` 同时用作环形索引（`and 0x1FFF`）。
+    对应原版 RVA 0x71E70。关键：**先读偏移，再读长度**。
+
+    反汇编证据（0x7200A-0x72034）：
+        07200A: mov ebx, [ebp+0xc]      ; ebx = 第一次读的 8 位 = 偏移
+        072013: lea eax, [esi + ebx]    ; eax = 计数 + 偏移  ← 偏移是基址
+        072017: and eax, 0x1fff
+        07201C: mov al, [eax + 0x527e80]  ; window[偏移+计数]
+        072029: mov [ecx], al             ; 输出
+        072032: cmp esi, edi              ; 计数 <= 长度
+        072034: jle 0x72013
+
+    窗口大小 8192（and 0x1fff），初始写指针 = 1（0x71EB0: mov [ebp-0x1c], 1）。
     """
     reader = BitReader(src)
     window = bytearray(WINDOW_SIZE)
     out = bytearray()
-    dst_pos = 0
+    dst_pos = 1
 
     while len(out) < dst_size:
         if reader.exhausted():
@@ -99,23 +109,21 @@ def decompress(src: bytes, dst_size: int) -> bytes:
             literal = reader.bits(8)
             out.append(literal)
             window[dst_pos & WINDOW_MASK] = literal
-            dst_pos += 1
+            dst_pos = (dst_pos + 1) & WINDOW_MASK
         else:
-            # 匹配：8 位长度 + 12 位偏移
-            length = reader.bits(8)
-            if length == 0:
-                # 原版：长度 0 时跳出（`test edi,edi; je 0x7204a`）
+            # 匹配：8 位偏移 + 8 位长度
+            offset = reader.bits(8)
+            if offset == 0:
+                # 原版 0x71FBB: test edi,edi; je 0x7204a —— 偏移 0 即终止
                 break
-            length += 2
-            offset = reader.bits(12)
+            length = reader.bits(8) + 2
             for i in range(length):
                 if len(out) >= dst_size:
                     break
-                src_index = (offset + i) & WINDOW_MASK
-                byte = window[src_index]
+                byte = window[(offset + i) & WINDOW_MASK]
                 out.append(byte)
                 window[dst_pos & WINDOW_MASK] = byte
-                dst_pos += 1
+                dst_pos = (dst_pos + 1) & WINDOW_MASK
     return bytes(out)
 
 
@@ -152,9 +160,9 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 3. 字面量 + 匹配
-    # 先输出 "ABC"，再用匹配复制（offset=0, length=3）得到 "ABCABC"
-    # 注意：长度字段 0 = 终止符；字段 1 -> 解码长度 3（最小匹配）
+    # 3. 字面量 + 匹配（注意字段顺序：先 8 位偏移，再 8 位长度）
+    # 窗口初始写指针 = 1，所以第 1 个字面量落在 window[1]。
+    # 偏移按 (offset + i) & 0x1FFF 取，offset=0 是终止符，offset=1 才能读到 window[1]。
     bits = []
     for ch in b"ABC":
         bits.append(0)
@@ -162,9 +170,9 @@ def selftest() -> int:
             bits.append((ch >> i) & 1)
     bits.append(1)                      # flag = 匹配
     for i in range(7, -1, -1):
+        bits.append((1 >> i) & 1)       # 偏移 = 1 -> 指向 window[1] = 'A'
+    for i in range(7, -1, -1):
         bits.append((1 >> i) & 1)       # 长度字段 = 1 -> 解码 1+2 = 3
-    for i in range(11, -1, -1):
-        bits.append((0 >> i) & 1)       # offset = 0
     packed = bytearray()
     for i in range(0, len(bits), 8):
         byte = 0
@@ -177,14 +185,14 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 4. 长度字段 0 = 终止符
+    # 4. 偏移字段 0 = 终止符
     bits = []
     bits.append(0)                      # 字面量 'X'
     for i in range(7, -1, -1):
         bits.append((ord("X") >> i) & 1)
     bits.append(1)                      # flag = 匹配
     for i in range(7, -1, -1):
-        bits.append(0)                  # 长度字段 = 0 -> 终止
+        bits.append(0)                  # 偏移 = 0 -> 终止
     packed = bytearray()
     for i in range(0, len(bits), 8):
         byte = 0
@@ -193,7 +201,7 @@ def selftest() -> int:
         packed.append(byte)
     out = decompress(bytes(packed), 100)
     ok = out == b"X"
-    print("[%s] 长度字段 0 -> 终止，输出 %r（期望 b'X'）" % ("PASS" if ok else "FAIL", out))
+    print("[%s] 偏移字段 0 -> 终止，输出 %r（期望 b'X'）" % ("PASS" if ok else "FAIL", out))
     if not ok:
         failures += 1
 
