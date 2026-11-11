@@ -16,7 +16,7 @@ SYS-GAME-ENEMY,敌人与 Boss,SYS-GAME-SESSION,SYS-CORE-ECL,not-started,none,,28
 SYS-GAME-CARD,卡牌系统,SYS-GAME-SESSION,,in-progress,observed,,"卡牌表 VA 0x4CA370 共 87 项（68字节/项）已完全解出；ID 0=BLANK、66=NITORI 即强制 BOSS 触发卡；Cost 字段疑似 +0x30 未验证；见 docs/CARDS.md"
 SYS-GAME-MARKET,黑市与经济,SYS-GAME-CARD,,not-started,none,,双货币 funds / bulletMoney
 SYS-GAME-ITEM,道具,,,not-started,none,,
-SYS-GAME-DIFFICULTY,难度数值表,,,not-started,none,,8 档（含 Little Hard / Over Drive）
+SYS-GAME-DIFFICULTY,难度数值表,,,in-progress,observed,,"8档难度索引在0x4D1038(VeryEasy..OverDrive含LittleHard);分数上限表5项[500000,1000000,1500000,2000000,1000000]在VA 0x4BCB00;访问器函数族0x3E735-0x3E7C5;只有is_difficulty_0..3四个判断函数说明仅前4档有特殊分支;见 docs/DIFFICULTY.md"
 SYS-UI-TITLE,标题与菜单,,,not-started,none,,
 SYS-UI-PAUSE,暂停菜单,,,not-started,none,,
 SYS-UI-DIALOGUE,对话,,,not-started,none,,

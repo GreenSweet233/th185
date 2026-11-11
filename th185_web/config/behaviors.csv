@@ -13,3 +13,6 @@ BHV-CARD-002,SYS-GAME-CARD,"ID 0 = BLANK（空白卡牌），是关卡 5 强制 
 BHV-CARD-003,SYS-GAME-CARD,"ID 66 = NITORI（荷取），是关卡 7 强制 Boss27 的触发条件",original,observed,verified,"th185_web/scripts/native/cards.py --selftest","与 THBWiki 剧情「从荷取手里获得卡牌」完全吻合"
 BHV-ARCHIVE-001,SYS-CORE-ARCHIVE,"LZSS 解压器结构：1位flag + 8位字面量 或 8位长度+12位偏移，长度=字段+2，长度字段0为终止",original,observed,verified,"th185_web/scripts/native/lzss.py --selftest","从 RVA 0x71E70 反汇编翻译，4 项自检通过"
 BHV-ARCHIVE-002,SYS-CORE-ARCHIVE,"RVA 0x1E90 与输入完全无关，是纯密钥流生成器（三组不同输入产出相同输出）",original,observed,verified,"th185_web/scripts/native/unpack.py --selftest","全0/全FF/真实密文 三种输入输出均为 125598db..."
+BHV-DIFF-001,SYS-GAME-DIFFICULTY,"难度共 8 档，索引 0..7，索引 3 是 Little Hard（TH185 独有），索引 7 是 Over Drive",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","exe 字符串实测 + thprac difficulties[8]"
+BHV-DIFF-002,SYS-GAME-DIFFICULTY,"分数上限表为 5 项 [500000,1000000,1500000,2000000,1000000]，来源常量 VA 0x4BCB00 + 立即数 0xF4240",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","RVA 0x3107C-0x310AC"
+BHV-DIFF-003,SYS-GAME-DIFFICULTY,"只有 is_difficulty_0..3 四个判断函数，说明游戏逻辑仅对前 4 档做特殊分支",original,observed,verified,"th185_web/scripts/native/difficulty.py --selftest","RVA 0x3E757/0x3E768/0x3E77A/0x3E78C"
