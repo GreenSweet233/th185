@@ -137,11 +137,16 @@ void AnmManager::collect() {
     }
 }
 
-u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
-                       u32 texture_count, float view_x, float view_y) const {
+u32 AnmManager::render_bank(SoftwareRaster& target, const AnmResource* resource,
+                            const DecodedImage* textures, u32 texture_count,
+                            float view_x, float view_y) const {
     u32 submitted = 0;
     for (const auto& slot : pool_) {
         if (!slot || !slot->alive) continue;
+        // Only instances from this bank: a sprite index is meaningful only
+        // inside the resource it came from.
+        if (resource && slot->resource != resource) continue;
+
         const AnmVisual& visual = slot->interpreter.visual();
         if (!visual.visible()) continue;
 
@@ -163,24 +168,17 @@ u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
         const float sine = float(std::sin(double(angle)));
 
         AnmQuad quad;
-        // Corner order matches AnmQuad's documented clockwise-from-top-left.
         const float local_x[4] = {-half_w, half_w, half_w, -half_w};
         const float local_y[4] = {-half_h, -half_h, half_h, half_h};
         for (u32 i = 0; i < 4; ++i) {
             const float rx = local_x[i] * cosine - local_y[i] * sine;
             const float ry = local_x[i] * sine + local_y[i] * cosine;
-            // Animation space has its origin at the playfield centre; the
-            // target's origin is top-left, so translate by the view offset.
-            // The instance's own translation is added because scripts address
-            // positions relative to wherever they were spawned.
             quad.x[i] = view_x + slot->translate_x + variables.position.x + rx;
             quad.y[i] = view_y + slot->translate_y + variables.position.y + ry;
         }
 
         // UVs come from the SELECTED SPRITE, not from 0..1: an ANM sprite is a
-        // sub-rectangle of an atlas, and the interpreter stores which sprite
-        // was chosen. Using 0..1 samples the whole atlas, which is why the
-        // first render produced plain white squares.
+        // sub-rectangle of an atlas.
         float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
         const AnmResource* source = slot->resource;
         if (source && visual.sprite >= 0 &&
@@ -207,9 +205,7 @@ u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
         quad.blend = blend_mode_from_flags(visual.flags);
         quad.nearest = (visual.render_flags & 0x800u) != 0;
 
-        // Texture: the SPRITE names its texture; the sprite index is not a
-        // texture index. An atlas holds many sprites, so indexing textures by
-        // sprite would be out of range for most of them.
+        // The SPRITE names its texture; the sprite index is not a texture index.
         if (textures && source && visual.sprite >= 0 &&
             u32(visual.sprite) < source->sprites.size()) {
             const u32 texture_index = source->sprites[u32(visual.sprite)].texture;
@@ -224,4 +220,8 @@ u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
     return submitted;
 }
 
+u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
+                       u32 texture_count, float view_x, float view_y) const {
+    return render_bank(target, nullptr, textures, texture_count, view_x, view_y);
+}
 }  // namespace th185

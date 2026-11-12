@@ -47,9 +47,10 @@ bool Application::initialize(std::vector<u8> archive_bytes) {
         phase_ = Phase::Failed;
         return false;
     }
-    // A missing animation bank is not fatal: the logic side still works, and
-    // the shell can show an empty frame.
-    load_animation_bank("enemy.anm");
+    // The scene file names its own animation bank, so load THAT instead of a
+    // hardcoded one. Falling back to enemy.anm keeps the shell showing
+    // something when a scene names a bank we cannot decode.
+    load_scene_banks();
     raster_.resize(640, 480);
     render();
     phase_ = Phase::Idle;
@@ -126,10 +127,10 @@ bool Application::register_stage_scripts(u32 stage_index) {
     return true;
 }
 
-bool Application::load_animation_bank(const char* name) {
-    // Load one .anm as the animation source and decode all its textures.
-    // A stage normally uses several banks; one is enough for the shell to
-    // show something real while the rest is wired up.
+bool Application::load_animation_bank(const char* name, u32 script_limit) {
+    // Load one .anm and decode its textures. A scene needs several banks:
+    // worldNN.anm is the BACKGROUND (one sprite), enemy.anm holds the enemies.
+    // Sprites are numbered per bank, so each bank keeps its own texture array.
     std::size_t entry = archive_.entries.size();
     for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
         if (archive_.entries[i].name == name) { entry = i; break; }
@@ -138,30 +139,51 @@ bool Application::load_animation_bank(const char* name) {
 
     std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &error_);
     if (blob.empty()) return false;
-    if (!animation_.parse(std::move(blob), &error_)) return false;
 
-    animation_textures_.clear();
-    animation_textures_.reserve(animation_.textures.size());
-    for (const AnmTexture& texture : animation_.textures) {
-        animation_textures_.push_back(decode_texture(
-            texture.format, texture.width, texture.height,
-            animation_.data.data() + texture.offset + 16, texture.size));
+    banks_.push_back(AnimationBank{});
+    AnimationBank& bank = banks_.back();
+    bank.name = name;
+    if (!bank.resource.parse(std::move(blob), &error_)) {
+        banks_.pop_back();
+        return false;
     }
 
-    // Start every script so the frame has content. A real stage would pick
-    // specific ones; for now the point is that the pipeline runs end to end.
-    animations_ = AnmManager{};
-    const u32 limit = u32(animation_.script_list.size() < 32 ?
-                          animation_.script_list.size() : 32);
+    bank.textures.reserve(bank.resource.textures.size());
+    for (const AnmTexture& texture : bank.resource.textures) {
+        bank.textures.push_back(decode_texture(
+            texture.format, texture.width, texture.height,
+            bank.resource.data.data() + texture.offset + 16, texture.size));
+    }
+
+    if (script_limit == 0) return true;
+
+    // Lay this bank's roots out on a grid. Banks are drawn in load order, so
+    // the background (loaded first) ends up behind the enemies.
+    const u32 limit = u32(bank.resource.script_list.size() < script_limit
+                          ? bank.resource.script_list.size() : script_limit);
     const u32 columns = 8;
+    const float row_base = float(banks_.size() - 1) * 2.0f - 1.5f;
     for (u32 s = 0; s < limit; ++s) {
         const float column = float(s % columns);
         const float row = float(s / columns);
-        animations_.create(&animation_, i32(s), 0, 0xFFFFFFFFu,
+        animations_.create(&bank.resource, i32(s), 0, 0xFFFFFFFFu,
                            (column - float(columns - 1) * 0.5f) * 64.0f,
-                           (row - 1.5f) * 64.0f);
+                           (row + row_base - 1.0f) * 64.0f);
     }
+
+    if (!animation_bank_.empty()) animation_bank_ += '+';
+    animation_bank_ += name;
     return true;
+}
+void Application::load_scene_banks() {
+    banks_.clear();
+    animations_ = AnmManager{};
+    animation_bank_.clear();
+
+    // Background first so it is drawn behind everything else.
+    load_animation_bank(session_.stage.anm_name.c_str(), 1);
+    // Then the enemies, which is where the visible content actually lives.
+    load_animation_bank("enemy.anm", 32);
 }
 
 void Application::render() {
@@ -171,12 +193,19 @@ void Application::render() {
     // Opaque dark clear: a transparent framebuffer composites to white in
     // every viewer and hides the geometry.
     raster_.clear(Rgba8{24, 24, 48, 255});
-    stats_.quads = animations_.render(
-        raster_,
-        animation_textures_.empty() ? nullptr : animation_textures_.data(),
-        u32(animation_textures_.size()),
-        float(raster_.width()) * 0.5f,
-        float(raster_.height()) * 0.5f);
+    // AnmVm knows which bank it came from, so it can resolve its own texture;
+    // the manager only needs a way to ask. Passing a null array makes it draw
+    // untextured, which is why the banks are handed over individually.
+    u32 quads = 0;
+    for (const AnimationBank& bank : banks_) {
+        quads += animations_.render_bank(
+            raster_, &bank.resource,
+            bank.textures.empty() ? nullptr : bank.textures.data(),
+            u32(bank.textures.size()),
+            float(raster_.width()) * 0.5f,
+            float(raster_.height()) * 0.5f);
+    }
+    stats_.quads = quads;
     stats_.pixels_written = raster_.pixels_written;
     stats_.live_animations = animations_.live_count();
 }
@@ -184,11 +213,20 @@ void Application::render() {
 bool Application::load_stage(u32 stage_index) {
     if (!session_.load_stage(stage_index, &error_)) return false;
     stage_index_ = stage_index;
-    return register_stage_scripts(stage_index);
+    if (!register_stage_scripts(stage_index)) return false;
+
+    // Each scene names its own animation bank; load it so the picture matches
+    // the stage rather than whatever was loaded before.
+    load_scene_banks();
+    render();
+    return true;
 }
 
 bool Application::tick(u32 held) {
-    (void)held;  // No input subsystem yet.
+    // Input is recorded but not yet consumed: no player entity exists, so there
+    // is nothing to steer. Keeping the parameter plumbed means the shell can
+    // already send it and wiring the player will not change this signature.
+    stats_.held_buttons = held;
     if (phase_ == Phase::Failed) return false;
     if (phase_ != Phase::Running) return true;
 

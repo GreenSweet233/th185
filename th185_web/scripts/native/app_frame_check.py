@@ -87,6 +87,8 @@ def selftest() -> int:
         quads = int(fields.get('quads', '0'))
     except ValueError:
         quads = 0
+    # 32 enemy roots plus the scene background; the exact count is data-driven
+    # so only the lower bound is asserted.
     ok = quads >= 30
     print('[%s] at least 30 quads drawn (%d)' % ('PASS' if ok else 'FAIL', quads))
     if not ok:

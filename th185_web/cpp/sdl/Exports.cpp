@@ -135,6 +135,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_live_animations() {
     return th185::app::instance().stats().live_animations;
 }
 
+EMSCRIPTEN_KEEPALIVE const char* th185_animation_bank() {
+    return th185::app::instance().animation_bank().c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_index() {
+    return th185::app::instance().session().stage_index;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

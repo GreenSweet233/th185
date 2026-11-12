@@ -66,6 +66,8 @@ struct FrameStats {
     u32 quads = 0;
     u32 pixels_written = 0;
     u32 live_animations = 0;
+    // Last button bitmask received from the shell.
+    u32 held_buttons = 0;
 };
 
 class Application {
@@ -93,6 +95,9 @@ public:
     const FrameStats& stats() const { return stats_; }
     const GameSession& session() const { return session_; }
 
+    // Names of the animation banks currently loaded, joined by '+'.
+    const std::string& animation_bank() const { return animation_bank_; }
+
     // Number of subroutines currently registered and runnable.
     u32 runnable_subroutines() const { return runnable_; }
 
@@ -108,7 +113,9 @@ public:
 
 private:
     bool register_stage_scripts(u32 stage_index);
-    bool load_animation_bank(const char* name);
+    bool load_animation_bank(const char* name, u32 script_limit);
+    // Loads the background bank named by the scene, then the enemy bank.
+    void load_scene_banks();
 
     Archive archive_;
     std::vector<u8> archive_bytes_;
@@ -118,9 +125,16 @@ private:
 
     // Animation state. `animation_textures_` must outlive the manager because
     // AnmVm holds pointers into it.
-    AnmResource animation_;
+    // One .anm per bank. A scene needs at least two: the background
+    // (worldNN.anm, a single sprite) and the enemies (enemy.anm).
+    struct AnimationBank {
+        AnmResource resource;
+        std::vector<DecodedImage> textures;
+        std::string name;
+    };
+    std::vector<AnimationBank> banks_;
     AnmManager animations_;
-    std::vector<DecodedImage> animation_textures_;
+    std::string animation_bank_;
     SoftwareRaster raster_;
     Rng rng_;
 

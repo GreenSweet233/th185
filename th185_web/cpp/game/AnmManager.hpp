@@ -96,6 +96,13 @@ public:
     u32 render(SoftwareRaster& target, const DecodedImage* textures,
                u32 texture_count, float view_x, float view_y) const;
 
+    // Draws only the instances that belong to `resource`. A scene loads several
+    // banks (background + enemies) and each instance must be sampled from its
+    // OWN bank's textures, so the manager has to filter.
+    u32 render_bank(SoftwareRaster& target, const AnmResource* resource,
+                    const DecodedImage* textures, u32 texture_count,
+                    float view_x, float view_y) const;
+
     // Frees finished animations and compacts the pool.
     void collect();
 
