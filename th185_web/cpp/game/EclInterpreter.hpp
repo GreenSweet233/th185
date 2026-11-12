@@ -60,6 +60,7 @@ enum class EclOp : u16 {
     // TH185-only opcodes. Payload structure is determined; semantics inferred.
     // Declared here so the switch can be exhaustive over them.
     Op23Timer = 23,          // u32 prefix, u32 timer value
+    Op1011WaveTemplate = 1011, // one argument: wave template index (-1..104)
     Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
     Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved
     Op300CallNamed = 300,    // u32 flag, u32 name_len, char name[], args
@@ -107,6 +108,7 @@ enum class EclRunResult : u8 {
     Returned,        // hit Return with an empty frame stack
     Unsupported,     // hit an opcode this skeleton does not implement
     Fault,           // stack under/overflow, bad jump target, etc.
+    Running,         // coroutine suspended on a wait; call again next frame
 };
 
 struct EclRunStats {
@@ -134,10 +136,23 @@ public:
     // to. Jump operands are absolute file offsets, so a run over a sliced
     // buffer must pass the slice start or every jump lands out of range.
     // Passing 0 means code already starts at file offset 0.
+    // `start_pc` begins execution at that buffer index instead of 0.
+    // When `out_pc` is non-null it receives the pc to resume at, and when
+    // `out_wait` is non-null an op23 wait is reported there instead of being
+    // ignored.
     EclRunResult run(const std::vector<u8>& code, u32 step_budget = 0,
-                     u32 code_base = 0);
+                     u32 code_base = 0, u32 start_pc = 0,
+                     u32* out_pc = nullptr, u32* out_wait = nullptr);
 
     const EclRunStats& stats() const { return stats_; }
+
+    // Runs `code` as a COROUTINE: resumes at the saved pc, stops at op23
+    // (wait N frames) by recording the wait, and returns Running. Call it once
+    // per frame; it advances `wait_frames` internally.
+    //
+    // `key` identifies the coroutine in context.coroutines.
+    EclRunResult run_coroutine(const std::string& key,
+                               const std::vector<u8>& code, u32 code_base);
     const EclStack& stack() const { return stack_; }
 
     // Human-readable name for an opcode, or empty when not shared with TH11.

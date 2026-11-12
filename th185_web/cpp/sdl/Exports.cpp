@@ -254,6 +254,29 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_hostile_bullets_alive() {
     return count;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_wave_templates() {
+    return unsigned(th185::app::instance().ecl().wave_templates.size());
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_last_wave_template() {
+    return th185::app::instance().last_wave_template();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_first_unsupported() {
+    return th185::app::instance().stats().ecl_first_unsupported;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_calls_made() {
+    return unsigned(th185::app::instance().ecl().calls_made.size());
+}
+
+// Name of the i-th recorded Call target, for diagnostics.
+EMSCRIPTEN_KEEPALIVE const char* th185_call_name(unsigned index) {
+    const auto& calls = th185::app::instance().ecl().calls_made;
+    if (index >= calls.size()) return "";
+    return calls[index].c_str();
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

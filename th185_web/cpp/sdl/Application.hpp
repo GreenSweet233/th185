@@ -65,6 +65,7 @@ struct FrameStats {
     u32 ecl_instructions = 0;
     u32 ecl_faults = 0;
     u32 ecl_unsupported = 0;
+    u32 ecl_first_unsupported = 0;
     u32 max_stack_depth = 0;
     // Rendering.
     u32 quads = 0;
@@ -122,6 +123,7 @@ public:
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
+    i32 last_wave_template() const { return ecl_.last_wave_template; }
     const EnemyPool& enemies() const { return enemies_; }
     const BulletPool& bullets() const { return bullets_; }
 

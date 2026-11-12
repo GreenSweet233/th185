@@ -237,7 +237,19 @@ void Application::consume_schedules() {
             const u32 pair = schedule.slot / 4;
             const float x = (float(pair) - 2.0f) * 60.0f;
             const float y = -180.0f;
-            enemies_.spawn(x, y, 0.0f, 0.30f, 16.0f, 2, 0);
+
+            // The wave template selected by op1011 picks the sprite and the
+            // drift speed. Falling back to template 0 keeps the game playable
+            // for scenes that do not declare one.
+            const i32 wave = ecl_.last_wave_template;
+            const u32 template_index = wave >= 0 ? u32(wave) : 0u;
+            // The enemy bank has 120 sprites; the template is used modulo that
+            // so every template gets a distinct look without an explicit table.
+            const u32 sprite = template_index % 120u;
+            // Higher templates drift a little faster, which makes the wave
+            // progression visible without inventing per-template data.
+            const float speed = 0.30f + float(template_index % 8u) * 0.05f;
+            enemies_.spawn(x, y, 0.0f, speed, 16.0f, 2, sprite);
         }
     }
     stats_.enemies_alive = enemies_.stats().alive;
@@ -255,6 +267,7 @@ void Application::reset_scenario() {
     }
     stats_.collision_hits = 0;
     stats_.player_hits_taken = 0;
+    ecl_.coroutines.clear();
     fired_schedule_keys_.clear();
     stats_.schedules_fired = 0;
     stats_.player_lives = player_.lives();
@@ -335,11 +348,14 @@ void Application::render() {
         quad.blend = AnmBlendMode::Alpha;
         quad.nearest = true;
 
-        // Use the first sprite of the enemy bank as a stand-in: ECL is what
-        // normally selects which sprite an enemy shows.
+        // The wave template chose the sprite, so draw THAT one.
         if (enemy_bank && !enemy_bank->textures.empty() &&
             !enemy_bank->resource.sprites.empty()) {
-            const AnmSprite& sprite = enemy_bank->resource.sprites[0];
+            const u32 sprite_index =
+                enemy.sprite < enemy_bank->resource.sprites.size()
+                    ? enemy.sprite : 0u;
+            const AnmSprite& sprite =
+                enemy_bank->resource.sprites[sprite_index];
             quad.u[0] = sprite.u0;
             quad.v[0] = sprite.v0;
             quad.u[1] = sprite.u1;
@@ -449,14 +465,38 @@ bool Application::tick(u32 held) {
         const auto found = ecl_.subroutines.find(name);
         if (found == ecl_.subroutines.end()) continue;
 
+        // Coroutine entry: survives op23 waits so the scene controller can
+        // advance past its wait loops. A plain run() restarts at instruction 0
+        // every frame and therefore never leaves the wait.
         EclInterpreter runner;
         runner.context = ecl_;
-        runner.run(found->second.code, 4096, found->second.code_base);
+        runner.run_coroutine(name, found->second.code,
+                             found->second.code_base);
         ecl_ = runner.context;
 
         stats_.ecl_instructions += runner.stats().instructions;
         stats_.ecl_faults += runner.stats().fault_count;
         stats_.ecl_unsupported += runner.stats().unsupported_count;
+        if (stats_.ecl_first_unsupported == 0 &&
+            runner.stats().unsupported_count > 0) {
+            stats_.ecl_first_unsupported = runner.stats().first_unsupported_opcode;
+        }
+        // One-shot diagnostic: report which subroutines the controller reached.
+        static bool reported_calls = false;
+        if (!reported_calls && !ecl_.calls_made.empty() && stats_.ticks > 5) {
+            reported_calls = true;
+            std::printf("ECL_MISSING %zu:", ecl_.missing_calls.size());
+            for (const std::string& miss : ecl_.missing_calls) {
+                std::printf(" %s", miss.c_str());
+            }
+            std::printf("\n");
+            std::printf("ECL_CALLS %zu:", ecl_.calls_made.size());
+            for (const std::string& call : ecl_.calls_made) {
+                std::printf(" %s", call.c_str());
+            }
+            std::printf("\n");
+        }
+
         if (runner.stats().max_stack_depth > stats_.max_stack_depth) {
             stats_.max_stack_depth = runner.stats().max_stack_depth;
         }

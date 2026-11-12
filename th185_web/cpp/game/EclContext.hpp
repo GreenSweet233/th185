@@ -123,6 +123,38 @@ struct EclContext {
     };
     std::vector<SpawnSchedule> schedules;
 
+    // --- op 1011: wave template selector ---------------------------------
+    //
+    // Payload: one argument. Measured across all 187 occurrences: values span
+    // -1..104 with 102 distinct values, which lines up with the 111-entry wave
+    // name table at VA 0x4B5D50 (docs/WAVES.md). Read as "this wave script
+    // generates template N".
+    //
+    // -1 appears as a sentinel (no template / keep current).
+    // Subroutine names reached through Call, for diagnostics.
+    std::vector<std::string> calls_made;
+
+    // --- coroutine state ------------------------------------------------
+    //
+    // The interpreter is a REPLAY interpreter: it restarts a subroutine from
+    // instruction 0 every time run() is called. That is correct for decoding
+    // and for stack-balance checks, but it cannot express `op23` (wait N
+    // frames), because a restart forgets where it was.
+    //
+    // The scene controller needs the coroutine behaviour: it must stop at the
+    // wait, resume after N frames, and continue from the NEXT instruction.
+    // This state makes that possible without changing run()'s contract --
+    // when `yield_on_wait` is false (the default) nothing here is consulted.
+    struct CoroutineState {
+        u32 pc = 0;             // resume point, a buffer index
+        u32 wait_frames = 0;    // frames still to wait; 0 = not waiting
+        bool started = false;
+    };
+    std::unordered_map<std::string, CoroutineState> coroutines;
+    std::vector<std::string> missing_calls;
+    std::vector<i32> wave_templates;
+    i32 last_wave_template = -1;
+
     // --- op 23: timer / wait value -------------------------------------
     //
     // Structure: u32 reserved(0), then one argument (frame-like integers:

@@ -39,6 +39,7 @@ bool EnemyPool::spawn(float x, float y, float vx, float vy, float radius,
     enemy.vy = vy;
     enemy.radius = radius > 0.0f ? radius : 16.0f;
     enemy.hp = hp > 0 ? hp : 1;
+    enemy.sprite = script;   // the caller passes the sprite index here
     enemy.script = script;
     enemy.handle = handle;
     // Stagger the first shot so a whole wave does not fire on the same frame.

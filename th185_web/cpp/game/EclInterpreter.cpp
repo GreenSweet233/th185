@@ -163,6 +163,37 @@ const NetEffect kInferredNet[] = {
     // data-only opcodes already established (net 0)
     {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0}, {600, 0},
     {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
+    // op1004 closes the schedule block (always follows op1013, payload
+    // [0][1][0][0]); without it the controller stops before its Calls.
+    {1004, 0}, {1008, 0},
+    // Status/query family around the schedule block. All four never touch the
+    // operand stack in the corpus:
+    //   op518 [0][-1 or -2][11][0], usually followed by op519
+    //   op519 [0][11][0], always follows op518
+    //   op520 [0][11][0], always follows op1015
+    //   op511 [0][large int][0][0], always follows op502
+    // They gate the controller's progress, so leaving them unsupported stops
+    // the scene before its Call instructions run.
+    {511, 0}, {518, 0}, {519, 0}, {520, 0},
+    // op1010/op1012 bracket the wave block the same way op1009/op1004 do:
+    // every wave subroutine starts with 40, 1010, 1011, 1012 and op1010 always
+    // carries 0 while op1012 carries 0/1/258/512. They mark the wave envelope,
+    // not a stack operation.
+    {1010, 0}, {1012, 0},
+    // Wave-envelope metadata. op1021 chains with itself (prev=1021 x14) and
+    // carries two integers; op1022 carries one; op554 is always the LAST
+    // instruction of a subroutine; op555 always follows op12. None touch the
+    // operand stack in any of the 105 observed occurrences.
+    {554, 0}, {555, 0}, {1021, 0}, {1022, 0},
+    // Timer/phase markers. All carry zero or a fixed sentinel and never touch
+    // the operand stack across 253 occurrences:
+    //   op1019 (42) prev=13 next=12, payload all zero
+    //   op1017 (37) prev=12 next=12, payload all zero
+    //   op1018 (76) always follows op1015, payload [0][-10008][0]
+    //   op1005 (49) follows op23, payload all zero
+    //   op1008 (49) between op1002/op1003, payload all zero
+    {1005, 0}, {1008, 0}, {1017, 0}, {1018, 0}, {1019, 0},
+
     // Scene-controller preamble. `main` starts with 40, 502, 23, 524, 1009 and
     // only then reaches its op1013 schedules, so an unsupported opcode here
     // stops the controller before any wave is scheduled.
@@ -295,11 +326,13 @@ float arg_float(const u8* payload, u32 index) {
 }  // namespace
 
 EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
-                                 u32 code_base) {
+                                 u32 code_base, u32 start_pc, u32* out_pc,
+                                 u32* out_wait) {
     stats_ = EclRunStats{};
     stack_ = EclStack{};
 
-    u32 pc = 0;
+    // start_pc is the resume point for coroutine execution; 0 for a fresh run.
+    u32 pc = start_pc;
     while (pc + INSTRUCTION_HEADER <= code.size()) {
         if (step_budget != 0 && stats_.instructions >= step_budget) {
             return EclRunResult::Finished;
@@ -659,14 +692,27 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const std::string key(target.name, target.name_length);
             const auto found = context.subroutines.find(key);
             if (found == context.subroutines.end()) {
-                // A call to an unknown subroutine is not a crash: the ECL file
-                // may legitimately reference one that lives elsewhere. Report
-                // it so the caller knows coverage is incomplete.
+                // A missing target must NOT abort the caller. TH185 calls
+                // subroutines that live in other ECL files (WaveSync lives in
+                // default.ecl), and aborting here stopped `main` before it
+                // reached its WorldWave01/02/03 calls -- which is why op1011
+                // recorded nothing even though every opcode was implemented.
+                //
+                // Record the miss and continue; the caller's remaining
+                // instructions are still meaningful.
                 ++stats_.unsupported_count;
                 if (stats_.first_unsupported_opcode == 0) {
                     stats_.first_unsupported_opcode = opcode;
                 }
-                return EclRunResult::Unsupported;
+                break;
+            }
+            // Record the call for diagnostics (deduplicated).
+            {
+                bool seen = false;
+                for (const std::string& existing : context.calls_made) {
+                    if (existing == key) { seen = true; break; }
+                }
+                if (!seen) context.calls_made.push_back(key);
             }
             if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
                 ++stats_.fault_count;
@@ -678,8 +724,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // meaningful. The nested result is propagated.
             EclInterpreter nested;
             nested.context = context;
-            const EclRunResult nested_result = nested.run(found->second.code, 0,
-                                                          found->second.code_base);
+            const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             // Preserve variable/frame state written by the callee.
             context = nested.context;
             --context.call_depth;
@@ -714,8 +759,34 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         // and the records are observable.
         case EclOp::Op23Timer: {
             // payload: u32 reserved, u32 value
-            context.last_timer_value = arg_u32(payload, 0);
+            //
+            // When running as a coroutine (out_wait non-null) this is a WAIT:
+            // the script suspends for `value` frames and resumes on the next
+            // instruction. Without that the scene controller's
+            // `op23 1000 / push 1 / JumpIfNonzero` loop spins forever, which is
+            // exactly why WorldWave01 never ran.
+            const u32 frames = arg_u32(payload, 0);
+            context.last_timer_value = frames;
             ++context.timer_writes;
+            if (out_wait && frames > 0) {
+                if (out_pc) *out_pc = u32(pc) + u32(size);
+                *out_wait = frames;
+                return EclRunResult::Running;
+            }
+            break;
+        }
+
+        case EclOp::Op1011WaveTemplate: {
+            // Wave template selector. See EclContext::wave_templates.
+            const i32 value = as_int(arg_u32(payload, 0));
+            context.last_wave_template = value;
+            // Deduplicate: the interpreter re-runs the script every tick, so
+            // appending blindly would grow this without bound.
+            bool seen = false;
+            for (i32 existing : context.wave_templates) {
+                if (existing == value) { seen = true; break; }
+            }
+            if (!seen) context.wave_templates.push_back(value);
             break;
         }
 
@@ -802,11 +873,19 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const std::string key(name, nul);
             const auto found = context.subroutines.find(key);
             if (found == context.subroutines.end()) {
+                // A missing named target must NOT abort the caller. TH185 calls
+                // subroutines that live in other ECL files (WaveSync lives in
+                // default.ecl, for instance), and aborting here stops the
+                // scene controller before it reaches its own wave calls -- which
+                // is why WorldWave01 never ran and op1011 recorded nothing.
+                //
+                // Record the miss and continue: the caller's remaining
+                // instructions are still meaningful.
                 ++stats_.unsupported_count;
                 if (stats_.first_unsupported_opcode == 0) {
                     stats_.first_unsupported_opcode = opcode;
                 }
-                return EclRunResult::Unsupported;
+                break;
             }
             if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
                 ++stats_.fault_count;
@@ -815,8 +894,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             ++context.call_depth;
             EclInterpreter nested;
             nested.context = context;
-            const EclRunResult nested_result = nested.run(
-                found->second.code, 0, found->second.code_base);
+            const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             context = nested.context;
             --context.call_depth;
             stats_.instructions += nested.stats().instructions;
@@ -933,7 +1011,41 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         if (!advanced) pc += size;
     }
 
+    if (out_pc) *out_pc = pc;
     return EclRunResult::Finished;
 }
 
+
+// --- Coroutine entry point -----------------------------------------------
+//
+// `run()` restarts from instruction 0, which is what the decoding checks want.
+// The scene controller needs the opposite: it must survive `op23` (wait N
+// frames) and resume on the NEXT instruction. This entry point provides that
+// by keeping a pc and a countdown per subroutine name.
+//
+// It deliberately reuses `run()` for the actual instruction loop by seeding
+// the start offset, so there is exactly one implementation of the opcode
+// semantics.
+EclRunResult EclInterpreter::run_coroutine(const std::string& key,
+                                           const std::vector<u8>& code,
+                                           u32 code_base) {
+    EclContext::CoroutineState& state = context.coroutines[key];
+
+    if (state.wait_frames > 0) {
+        --state.wait_frames;
+        return EclRunResult::Running;
+    }
+
+    // First call starts at 0; later calls resume where the wait left off.
+    if (!state.started) {
+        state.started = true;
+        state.pc = 0;
+    }
+
+    // Bound the work per frame: a loop with no wait inside would otherwise spin
+    // forever now that every opcode is implemented.
+    const EclRunResult result = run(code, 20000, code_base, state.pc, &state.pc,
+                                    &state.wait_frames);
+    return result;
+}
 }  // namespace th185

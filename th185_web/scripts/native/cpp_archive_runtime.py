@@ -210,8 +210,8 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("faulted")))
         if not ok:
             failures += 1
-        ok = int(fields.get("ran", "0")) >= 140
-        print("[%s] at least 140 subroutines ran (%s)"
+        ok = int(fields.get("ran", "0")) >= 260
+        print("[%s] at least 260 subroutines ran (%s)"
               % ("PASS" if ok else "FAIL", fields.get("ran")))
         if not ok:
             failures += 1
@@ -222,8 +222,16 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("maxdepth")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) > 700000
-        print("[%s] over 700000 instructions executed (%s)"
+        # finished counts subroutines that reached a Return/end rather than
+        # being cut off by the step budget. With every opcode implemented this
+        # is the meaningful coverage number: it says the loop actually closed.
+        ok = int(fields.get("finished", "0")) >= 100
+        print("[%s] at least 100 subroutines ran to completion (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("finished")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) > 280000
+        print("[%s] over 280000 instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

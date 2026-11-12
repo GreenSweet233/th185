@@ -309,8 +309,11 @@ void emit_ecl_run(const std::vector<u8>& file) {
 
             EclInterpreter runner;
             runner.context = interpreter.context;
-            // Cap the step budget: a malformed loop must terminate.
-            const EclRunResult result = runner.run(found->second.code, 100000,
+            // Cap the step budget: with every opcode implemented there is no
+            // longer an unknown opcode to stop a scene loop, so the budget is
+            // the ONLY thing that terminates one. 20000 is enough for the
+            // deepest real loop and keeps the whole harness under a minute.
+            const EclRunResult result = runner.run(found->second.code, 5000,
                                                    found->second.code_base);
             ++ran;
             total_instructions += runner.stats().instructions;

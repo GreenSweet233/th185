@@ -39,6 +39,8 @@ struct Enemy {
     i32 hp = 1;
     // Frames until this enemy fires again. 0 means "fire now".
     u16 fire_cooldown = 0;
+    // Which sprite of the enemy bank to draw. Selected by the wave template.
+    u32 sprite = 0;
     // Which bank script drives it (for the animation instance).
     u32 script = 0;
     // The animation instance owned by this enemy, or UINT32_MAX.
