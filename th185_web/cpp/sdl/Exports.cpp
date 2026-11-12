@@ -233,6 +233,27 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_shots() {
     return th185::app::instance().stats().enemy_shots;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedules_total() {
+    return th185::app::instance().stats().schedules_total;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedules_fired() {
+    return th185::app::instance().stats().schedules_fired;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_scripts_active() {
+    return th185::app::instance().active_script_count();
+}
+
+// Counts only enemy fire, so a test can subtract it from the total.
+EMSCRIPTEN_KEEPALIVE unsigned th185_hostile_bullets_alive() {
+    unsigned count = 0;
+    for (const th185::Bullet& b : th185::app::instance().bullets().bullets()) {
+        if (b.alive && b.hostile) ++count;
+    }
+    return count;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

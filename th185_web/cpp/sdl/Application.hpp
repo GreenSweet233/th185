@@ -46,6 +46,7 @@
 #include "../game/StageScript.hpp"
 #include "Types.hpp"
 
+#include <set>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,9 @@ struct FrameStats {
     u32 player_hits_taken = 0;
     u32 player_lives = 0;
     u32 enemy_shots = 0;
+    // ECL wave schedules consumed so far.
+    u32 schedules_total = 0;
+    u32 schedules_fired = 0;
 };
 
 class Application {
@@ -117,11 +121,13 @@ public:
 
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
+    const EclContext& ecl() const { return ecl_; }
     const EnemyPool& enemies() const { return enemies_; }
     const BulletPool& bullets() const { return bullets_; }
 
     // Number of subroutines currently registered and runnable.
     u32 runnable_subroutines() const { return runnable_; }
+    u32 active_script_count() const { return u32(active_scripts_.size()); }
 
     // The framebuffer `tick()` last produced, as tightly packed RGBA8.
     // Empty until the first tick after start().
@@ -147,6 +153,8 @@ private:
     bool load_animation_bank(const char* name, u32 script_limit);
     // Loads the background bank named by the scene, then the enemy bank.
     void load_scene_banks();
+    // Turns recorded op1013 schedules into actual enemies.
+    void consume_schedules();
 
     Archive archive_;
     std::vector<u8> archive_bytes_;
@@ -168,6 +176,11 @@ private:
     Player player_;
     BulletPool bullets_;
     EnemyPool enemies_;
+    // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
+    // per-index bitmap because the interpreter re-records the same schedules
+    // every tick (main is re-run from the start each frame).
+    std::set<u64> fired_schedule_keys_;
+    // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     std::string animation_bank_;
     SoftwareRaster raster_;
     Rng rng_;

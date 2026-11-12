@@ -10,6 +10,7 @@ Exit codes: 0 ok; 1 failed; 2 environment missing
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -81,9 +82,19 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # The probe reports both the total and the hostile count, because the scene
+    # controller now spawns enemies that fire. Only the player's own bullets are
+    # expected to be gone.
     retired = value('after 120f')
-    ok = retired.endswith('alive 0')
-    print('[%s] bullets retired after leaving the screen (%s)'
+    # "alive N (hostile M)" -- the player's bullets must all be gone, so N == M.
+    ok = False
+    match = re.search(r'alive (\d+) \(hostile (\d+)\)', retired)
+    if match:
+        total, hostile = int(match.group(1)), int(match.group(2))
+        ok = total == hostile
+    elif retired.endswith('alive 0'):
+        ok = True
+    print('[%s] player bullets retired after leaving the screen (%s)'
           % ('PASS' if ok else 'FAIL', retired or '-'))
     if not ok:
         failures += 1

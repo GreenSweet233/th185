@@ -163,6 +163,18 @@ const NetEffect kInferredNet[] = {
     // data-only opcodes already established (net 0)
     {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0}, {600, 0},
     {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
+    // Scene-controller preamble. `main` starts with 40, 502, 23, 524, 1009 and
+    // only then reaches its op1013 schedules, so an unsupported opcode here
+    // stops the controller before any wave is scheduled.
+    //
+    // op1009 is ALWAYS adjacent to op1013 (prev=524 or 14, next=1013 in every
+    // occurrence), so it reads as a marker that opens the schedule block.
+    // op524 appears 138 times in scattered contexts; its payload is all zero in
+    // the controller and it never leaves the stack unbalanced there.
+    //
+    // Both are treated as net 0 and recorded. If either turns out to pop, the
+    // harness stack-depth check will catch the drift.
+    {524, 0}, {1009, 0},
 };
 
 // Returns true and fills `net` when the opcode has an inferred effect.
@@ -714,7 +726,19 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             for (u32 i = 0; i < 8; ++i) {
                 schedule.times[i] = arg_u32(payload, 1 + i);
             }
-            context.schedules.push_back(schedule);
+            // The interpreter is not a coroutine: `main` restarts from the top
+            // every tick, so the same schedules are re-recorded each frame.
+            // Appending blindly grows the vector without bound (2500 entries
+            // after 500 frames in the first version). Deduplicating here keeps
+            // the recorded set equal to what the script actually declares.
+            bool duplicate = false;
+            for (const EclContext::SpawnSchedule& existing : context.schedules) {
+                if (existing.slot != schedule.slot) continue;
+                if (existing.times != schedule.times) continue;
+                duplicate = true;
+                break;
+            }
+            if (!duplicate) context.schedules.push_back(schedule);
             break;
         }
 

@@ -142,11 +142,21 @@ check('bullets are alive on screen', aliveAfter > 0);
 //
 // The field is cleared first because enemies now fire too: counting all bullets
 // would measure the enemy's output, not the retirement rule.
+// The scene controller keeps scheduling enemies, and enemies fire -- so this
+// test has to run with nothing else producing bullets. Clearing and then
+// ticking a short while is not enough: a scheduled enemy would fire again.
+//
+// Instead the player's own bullets are checked immediately after they leave the
+// field, before any enemy can spawn: 120 frames is longer than a shot's flight
+// time (it crosses ~400 units at 14/frame in ~29 frames) but the schedule's
+// first entry is at frame 60, so enemies do appear. The assertion therefore
+// counts only NON-hostile bullets.
 module._th185_reset_scenario();
 tick(0, 120);
 const aliveLater = module._th185_bullets_alive();
-console.log('after 120f  : alive ' + aliveLater);
-check('bullets retire when off-screen', aliveLater === 0);
+const hostileLater = module._th185_hostile_bullets_alive();
+console.log('after 120f  : alive ' + aliveLater + ' (hostile ' + hostileLater + ')');
+check('player bullets retire when off-screen', aliveLater - hostileLater === 0);
 
 // Collision: bullets must hit enemies, and enemies must die.
 //
@@ -213,6 +223,26 @@ check('enemies fired at the player', enemyShots > 0);
 check('the player took hits', hitsTaken > 0);
 check('the player lost lives', livesEnd < livesStart);
 check('invulnerability prevents instant death', hitsTaken < 10);
+
+// ECL-driven enemy spawning.
+//
+// op1013 in the scene controller is a wave schedule: "spawn wave slot at these
+// frame numbers". This is the first place the ECL data actually drives the game
+// instead of being merely recorded.
+module._th185_reset_scenario();
+const schedTotal = module._th185_schedules_total();
+console.log('schedules   : total=' + schedTotal);
+
+// The earliest schedule in world01t fires at frame 60, so 400 frames covers
+// several entries.
+tick(0, 400);
+const schedFired = module._th185_schedules_fired();
+const neSched = module._th185_enemies_alive();
+console.log('after 400f  : fired=' + schedFired + ' enemies=' + neSched);
+
+check('the scene controller declared schedules', schedTotal > 0);
+check('schedules fired over time', schedFired > 0);
+check('scheduled enemies exist', neSched > 0);
 
 console.log('');
 if (failures) {

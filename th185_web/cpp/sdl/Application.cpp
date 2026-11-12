@@ -117,7 +117,13 @@ bool Application::register_stage_scripts(u32 stage_index) {
                 break;
             }
         }
-        if (all_implemented) {
+        // `main` is the scene controller: it is where op1013 schedules live, so
+        // it has to run even when some of its opcodes are still unimplemented.
+        // The interpreter stops cleanly on an unsupported opcode, so a partial
+        // run still executes everything before that point -- which is where the
+        // schedules are emitted.
+        const bool is_controller = sub.name == "main";
+        if (all_implemented || is_controller) {
             active_scripts_.push_back(sub.name);
             ++runnable_;
         }
@@ -200,6 +206,42 @@ void Application::load_scene_banks() {
     }
 }
 
+void Application::consume_schedules() {
+    // op1013 carries a wave schedule: "spawn wave `slot` at these 8 frame
+    // numbers". The interpreter records them; this turns them into enemies.
+    //
+    // The interpreter is not a coroutine -- `main` is re-run from the start every
+    // tick and stops at its first unsupported opcode, so the SAME schedules get
+    // recorded again each frame. Keying on (slot, time) rather than on the vector
+    // index makes the firing idempotent, which is what the original does: a
+    // schedule entry is a one-shot timer, not a per-frame event.
+    const auto& schedules = ecl_.schedules;
+    stats_.schedules_total = u32(schedules.size());
+
+    for (const EclContext::SpawnSchedule& schedule : schedules) {
+        for (u32 i = 0; i < 8; ++i) {
+            const u32 due = schedule.times[i];
+            if (due == 0) continue;
+            if (stats_.ticks < due) continue;
+
+            // Pack (slot, time) into one key. Slot is < 32 and time < 2^27 for
+            // every observed value, so a u64 is enough and collisions cannot
+            // happen within the data.
+            const u64 key = (u64(schedule.slot) << 32) | u64(due);
+            if (fired_schedule_keys_.count(key)) continue;
+            fired_schedule_keys_.insert(key);
+            ++stats_.schedules_fired;
+
+            // Spread slots across the top of the field. Slots come in pairs
+            // (0/1, 4/5, 8/9, 12/13, 16/17), so the pair index gives a column.
+            const u32 pair = schedule.slot / 4;
+            const float x = (float(pair) - 2.0f) * 60.0f;
+            const float y = -180.0f;
+            enemies_.spawn(x, y, 0.0f, 0.30f, 16.0f, 2, 0);
+        }
+    }
+    stats_.enemies_alive = enemies_.stats().alive;
+}
 void Application::reset_scenario() {
     bullets_.clear();
     enemies_.clear();
@@ -213,6 +255,8 @@ void Application::reset_scenario() {
     }
     stats_.collision_hits = 0;
     stats_.player_hits_taken = 0;
+    fired_schedule_keys_.clear();
+    stats_.schedules_fired = 0;
     stats_.player_lives = player_.lives();
 }
 
@@ -429,6 +473,9 @@ bool Application::tick(u32 held) {
     stats_.collision_hits += enemies_.resolve_collisions(&bullets_);
     stats_.enemies_alive = enemies_.stats().alive;
     stats_.enemies_killed = enemies_.stats().killed;
+
+    // ECL schedules create enemies over time.
+    consume_schedules();
 
     // Enemies fire aimed shots at the player.
     enemies_.fire_at(&bullets_, player_.x(), player_.y());

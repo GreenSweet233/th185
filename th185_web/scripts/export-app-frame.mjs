@@ -45,8 +45,9 @@ if (!module._th185_start()) {
 // flight, and the player. reset_scenario first because initialise already
 // spawned a wave that a long run would have destroyed.
 const SHOOT = 1 << 0;
+// No spawn_test_wave: the enemies in this frame come from the ECL scene
+// controller's op1013 schedules, which is the real data path.
 module._th185_reset_scenario();
-module._th185_spawn_test_wave(12);
 // Long enough for the enemies to return fire, so the frame shows both sides.
 for (let i = 0; i < 90; ++i) {
   const held = i >= 20 ? SHOOT : 0;
@@ -67,6 +68,7 @@ console.log('quads      : ' + quads);
 console.log('animations : ' + live);
 console.log('bullets    : ' + module._th185_bullets_alive());
 console.log('enemies    : ' + module._th185_enemies_alive());
+console.log('schedules  : ' + module._th185_schedules_total() + ' fired ' + module._th185_schedules_fired());
 console.log('hits       : ' + module._th185_collision_hits());
 console.log('enemyShots : ' + module._th185_enemy_shots());
 console.log('lives      : ' + module._th185_player_lives());
