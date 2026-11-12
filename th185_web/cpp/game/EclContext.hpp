@@ -34,6 +34,7 @@
 
 #include <array>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace th185 {
@@ -48,6 +49,14 @@ constexpr u32 ECL_BUILTIN_COUNT = 111;
 // Frame-local storage: 64 slots of 4 bytes = 256 bytes of addressable offset.
 constexpr u32 ECL_FRAME_BYTES = 256;
 
+// One callable subroutine: its name plus the instruction stream to run.
+// Named EclCallable to avoid colliding with EclSubroutine in EclResource.hpp,
+// which describes the parsed form of the same thing.
+struct EclCallable {
+    std::string name;
+    std::vector<u8> code;
+};
+
 struct EclContext {
     // Engine builtin slots, addressed by (value + ECL_BUILTIN_BASE).
     std::array<u32, ECL_BUILTIN_COUNT> builtins{};
@@ -57,6 +66,17 @@ struct EclContext {
 
     // Difficulty mask used by the rank check (op-level, not per-instruction).
     u8 difficulty_mask = 0xFF;
+
+    // Callable subroutines, keyed by name. Call (op 11) resolves through here.
+    std::unordered_map<std::string, EclCallable> subroutines;
+
+    // Call depth guard: the original has a stack limit too, and an unbounded
+    // recursion would hang the interpreter instead of failing.
+    static constexpr u32 MAX_CALL_DEPTH = 32;
+    u32 call_depth = 0;
+
+    // Register a subroutine so Call can find it.
+    void add_subroutine(std::string name, std::vector<u8> code);
 
     // Push a fresh zeroed frame. Returns its index.
     u32 push_frame();

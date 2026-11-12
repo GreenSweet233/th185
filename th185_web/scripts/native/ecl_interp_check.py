@@ -27,14 +27,14 @@ sys.path.insert(0, str(HERE))
 
 # Opcodes the C++ skeleton implements (mirrors EclInterpreter.hpp).
 IMPLEMENTED = {
-    0, 1, 10, 12, 13, 14, 30, 40, 41, 42, 43, 44, 83,
+    0, 1, 10, 11, 12, 13, 14, 30, 40, 41, 42, 43, 44, 83,
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
     68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 79, 80, 88,
 }
 
 # Deliberately reported unsupported (needs the ECL context/owner object).
 NEEDS_CONTEXT = {
-    11, 15, 16, 17, 18, 19, 20, 21, 45, 78, 81, 82, 86, 87,
+    15, 16, 17, 18, 19, 20, 21, 45, 78, 81, 82, 86, 87,
 }
 
 INSTRUCTION_HEADER = 8
@@ -97,7 +97,7 @@ def selftest() -> int:
     # StoreInt/StoreFloat are now implemented via EclContext (reference
     # resolution). What remains blocked is Call (subroutine calls) and
     # Spawn (thread management), which need an owner object.
-    ok = 0.44 <= implemented_share / total <= 0.52
+    ok = 0.48 <= implemented_share / total <= 0.56
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:
@@ -245,7 +245,54 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 8. Report the honest coverage split so the number cannot drift silently.
+    # 8. Call target parsing: the name starts at 8 + prefix_length, where
+    #    prefix_length is payload[0]. All 364 occurrences must parse, because a
+    #    wrong offset silently calls the wrong subroutine.
+    call_total = 0
+    call_bad = []
+    call_names = collections.Counter()
+    for resource in resources:
+        for sub in resource['subs']:
+            for ins in sub['instructions']:
+                if ins['id'] != 11:
+                    continue
+                call_total += 1
+                payload = ins.get('payload', b'')
+                if len(payload) < 8:
+                    call_bad.append((sub.get('name', '?'), ins['offset'], 'short'))
+                    continue
+                prefix = int.from_bytes(payload[0:4], 'little')
+                name_length = int.from_bytes(payload[4:8], 'little')
+                start = 8 + prefix
+                if name_length < 2 or start + name_length > len(payload):
+                    call_bad.append((sub.get('name', '?'), ins['offset'], 'range'))
+                    continue
+                region = payload[start:start + name_length]
+                nul = region.find(b'\x00')
+                if nul <= 0:
+                    call_bad.append((sub.get('name', '?'), ins['offset'], 'nul'))
+                    continue
+                name = region[:nul]
+                if not all(32 <= b < 127 for b in name):
+                    call_bad.append((sub.get('name', '?'), ins['offset'], 'ascii'))
+                    continue
+                call_names[name.decode('ascii')] += 1
+    ok = call_total == 364 and not call_bad
+    print('[%s] all %d Call targets parse (%d bad)'
+          % ('PASS' if ok else 'FAIL', call_total, len(call_bad)))
+    if not ok:
+        for item in call_bad[:5]:
+            print('       %s' % (item,))
+        failures += 1
+
+    ok = len(call_names) > 20
+    print('[%s] %d distinct call targets (most frequent: %s)'
+          % ('PASS' if ok else 'FAIL', len(call_names),
+             call_names.most_common(1)[0] if call_names else 'none'))
+    if not ok:
+        failures += 1
+
+    # 9. Report the honest coverage split so the number cannot drift silently.
     print()
     print('       coverage breakdown:')
     print('         total instructions : %d' % total)

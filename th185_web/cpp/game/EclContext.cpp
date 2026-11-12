@@ -2,6 +2,13 @@
 
 namespace th185 {
 
+void EclContext::add_subroutine(std::string name, std::vector<u8> code) {
+    EclCallable entry;
+    entry.name = std::move(name);
+    entry.code = std::move(code);
+    subroutines[entry.name] = std::move(entry);
+}
+
 u32 EclContext::push_frame() {
     frames.emplace_back();
     frames.back().fill(0);

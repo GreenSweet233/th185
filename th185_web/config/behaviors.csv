@@ -130,3 +130,8 @@ BHV-ECL-121,SYS-CORE-ECL,"ECL 引用编码：非负值 v 表示栈帧内字节�
 BHV-ECL-122,SYS-CORE-ECL,"StoreInt(43) 的 948 个引用全部可解码（411 builtin + 537 frame），0 异常",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","C++ EclContext::write_int_ref"
 BHV-ECL-123,SYS-CORE-ECL,"★ op45 在 TH185 中不是 StoreFloat：payload[4] 只有 137/445 是引用，其余 308 是字面 float（0x40800000=4.0f）且 payload[8] 为 0/1 标志——与 op44 PushFloat 同形，与 StoreInt 不同形",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","数据推翻了 TH11 的编号假设"
 BHV-ECL-124,SYS-CORE-ECL,"param_mask(+0x06) 低 8 位是逐参数引用掩码：StoreInt 全为 0xFF；但 op44/op45 也是 0xFF 却存字面值，所以该掩码不足以判定参数性质",original,observed,implemented,"","需要结合 payload 内容解码"
+BHV-ECL-130,SYS-CORE-ECL,"Call(11) payload 结构：[u32 前缀长度][u32 名字区长度][前缀][NUL 终止名字][4对齐][参数描述符]；名字起点 = 8 + 前缀长度",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","364/364 全部解析成功"
+BHV-ECL-131,SYS-CORE-ECL,"Call 参数描述符 = u16 tag + u16 保留 + u32 值；tag 0x6666=float、0x6969=int",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","float 256 次、int 221 次"
+BHV-ECL-132,SYS-CORE-ECL,"Call 的前缀长度取值为 0/8/16/24（8 的倍数），非零时名字前有额外数据；忽略它会导致 173/364 解析失败",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","191/364 -> 364/364"
+BHV-ECL-133,SYS-CORE-ECL,"156 个不同的调用目标，最频繁 EffChargePoint2(57)、WorldWave01(38)、WaveSync(31)、BossInterval(11)",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","C++ EclContext::subroutines 注册表"
+BHV-ECL-134,SYS-CORE-ECL,"实现 Call 后完全可执行子程序从 1 个提升到 11 个（Wave14Loop/Wave16Loop/Wave17Loop/Wave19Loop 等）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","端到端验证能力显著提升"

@@ -135,6 +135,49 @@ u32 arg_u32(const u8* payload, u32 index) {
     return read_u32(payload + ARGUMENT_BIAS + index * 4);
 }
 
+// Call (op 11) payload layout, verified on all 364 occurrences:
+//   u32 prefix_length;     // extra bytes before the name (0/8/16/24)
+//   u32 name_length;       // length of the name region including NUL and pad
+//   u8  prefix[prefix_length];
+//   char name[];           // NUL-terminated, starts at 8 + prefix_length
+//   then zero or more argument descriptors: u16 tag, u16 reserved, u32 value
+//   where tag 0x6666 = float and 0x6969 = int.
+//
+// The first version assumed the name starts at payload[0] offset 8 and got
+// 191/364. Reading the prefix length from payload[0] and starting the name at
+// 8 + prefix_length gets 364/364 -- which is why this is parsed rather than
+// guessed.
+struct CallTarget {
+    const char* name = nullptr;
+    u32 name_length = 0;
+    u32 prefix_length = 0;
+    bool valid = false;
+};
+
+CallTarget parse_call(const u8* payload, u32 payload_size) {
+    CallTarget target;
+    if (payload_size < 8) return target;
+    const u32 prefix_length = read_u32(payload);
+    const u32 name_length = read_u32(payload + 4);
+    const u32 start = 8 + prefix_length;
+    if (start + 2 > payload_size) return target;
+    if (name_length < 2 || start + name_length > payload_size) return target;
+    const char* name = reinterpret_cast<const char*>(payload + start);
+    // Must be NUL-terminated inside the declared region.
+    u32 nul = 0;
+    while (nul < name_length && name[nul] != 0) ++nul;
+    if (nul == 0 || nul >= name_length) return target;
+    for (u32 i = 0; i < nul; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (ch < 32 || ch > 126) return target;
+    }
+    target.name = name;
+    target.name_length = nul;
+    target.prefix_length = prefix_length;
+    target.valid = true;
+    return target;
+}
+
 i32 arg_i32(const u8* payload, u32 index) { return as_int(arg_u32(payload, index)); }
 
 float arg_float(const u8* payload, u32 index) {
@@ -457,8 +500,54 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
             break;
         }
 
+        case EclOp::Call: {
+            const CallTarget target = parse_call(payload, u32(size - INSTRUCTION_HEADER));
+            if (!target.valid) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const std::string key(target.name, target.name_length);
+            const auto found = context.subroutines.find(key);
+            if (found == context.subroutines.end()) {
+                // A call to an unknown subroutine is not a crash: the ECL file
+                // may legitimately reference one that lives elsewhere. Report
+                // it so the caller knows coverage is incomplete.
+                ++stats_.unsupported_count;
+                if (stats_.first_unsupported_opcode == 0) {
+                    stats_.first_unsupported_opcode = opcode;
+                }
+                return EclRunResult::Unsupported;
+            }
+            if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            ++context.call_depth;
+            // Nested runs share the context (and therefore the stack and the
+            // variables) but keep their own stats so the outer counters stay
+            // meaningful. The nested result is propagated.
+            EclInterpreter nested;
+            nested.context = context;
+            const EclRunResult nested_result = nested.run(found->second.code);
+            // Preserve variable/frame state written by the callee.
+            context = nested.context;
+            --context.call_depth;
+            stats_.instructions += nested.stats().instructions;
+            stats_.unsupported_count += nested.stats().unsupported_count;
+            stats_.fault_count += nested.stats().fault_count;
+            if (stats_.max_stack_depth < nested.stats().max_stack_depth) {
+                stats_.max_stack_depth = nested.stats().max_stack_depth;
+            }
+            if (nested_result == EclRunResult::Unsupported) {
+                return EclRunResult::Unsupported;
+            }
+            if (nested_result == EclRunResult::Fault) {
+                return EclRunResult::Fault;
+            }
+            break;
+        }
+
         // Everything else needs the ECL context/owner object.
-        case EclOp::Call:
         case EclOp::Spawn:
         case EclOp::SpawnNamed:
         case EclOp::CancelThread:

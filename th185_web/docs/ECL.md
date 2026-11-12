@@ -1172,3 +1172,151 @@ TH11 把 opcode 45 叫 `StoreFloat`，我照搬了。**数据不同意**：
 | **`Spawn`(126)** | ❌ 需要线程管理 |
 | **builtin 槽语义** | ❌ 只有 9 个已知，其余读 0 |
 | **TH185 独有 10743 条** | ❌ 未开始 |
+
+---
+
+## 14. ★ Call 子程序调用（364 条）
+
+### 14.1 payload 结构
+
+```c
+struct CallPayload {
+    uint32 prefix_length;    // 0 / 8 / 16 / 24
+    uint32 name_length;      // 名字区长度（含 NUL 与填充）
+    uint8  prefix[prefix_length];
+    char   name[];           // NUL 终止，起点 = 8 + prefix_length
+    // 之后是 0..N 个参数描述符
+};
+
+struct CallArgument {
+    uint16 tag;              // 0x6666 = float, 0x6969 = int
+    uint16 reserved;
+    uint32 value;
+};
+```
+
+### 14.2 ★ 关键：前缀长度不能忽略
+
+我的第一版假设名字从 `payload[8]` 开始，**191/364 成功**。
+
+失败样本：
+
+```
+wave01t.ecl off=640  payload = 00000000 10000000 "Wave01tSub01" ...
+                       ^prefix  ^nlen
+```
+
+`nlen = 0x10 = 16`，但 `"Wave01tSub01"` 只有 12 字符 + NUL = 13，
+对齐到 16。名字**确实**从 8 开始——那为什么失败？
+
+再看真正失败的样本：
+
+```
+boss15.ecl off=6248  payload = 08000000 14000000 "Boss15BossCard1_at" ...
+                       ^prefix=8  ^nlen=20
+```
+
+`prefix = 8`，名字实际从 `8 + 8 = 16` 开始。
+
+**改用 `start = 8 + prefix_length` 后：364/364 全部成功。**
+
+前缀长度的取值分布：
+
+| 值 | 次数 |
+|---|---|
+| 0 | 355 |
+| 8 | 4 |
+| 16 | 1 |
+| 24 | 4 |
+
+**只有 9 个非零，但忽略它们会导致 2.5% 的调用解析错。**
+
+### 14.3 参数统计
+
+| 参数个数 | 次数 |
+|---|---|
+| 0 | 226 |
+| 5 | 71 |
+| 1 | 20 |
+| 2 | 20 |
+| 3 | 14 |
+| 4 / 6 | 4 |
+
+| tag | 含义 | 次数 |
+|---|---|---|
+| `0x6666` | float | 256 |
+| `0x6969` | int | 221 |
+
+### 14.4 被调用最多的子程序
+
+| 子程序 | 次数 |
+|---|---|
+| `EffChargePoint2` | 57 |
+| `WorldWave01` | 38 |
+| `WaveSync` | 31 |
+| `BossInterval` | 11 |
+| `WorldWaveB00` | 8 |
+
+共 **156 个不同目标**。
+
+### 14.5 ★ 端到端能力显著提升
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 覆盖率 | 47.80% | **49.34%** |
+| **完全可执行子程序** | **1 个** | **11 个** |
+
+新增可执行的包括 `Wave14Loop`/`Wave16Loop`/`Wave17Loop`/`Wave19Loop`
+（各 5 条指令）——这些是真实的关卡循环逻辑。
+
+**这比覆盖率数字更重要**：从「只有一个 1 条指令的测试桩」
+到「11 个含真实循环的子程序」，验证能力是质变。
+
+### 14.6 实现要点
+
+```cpp
+case EclOp::Call: {
+    const CallTarget target = parse_call(payload, size - INSTRUCTION_HEADER);
+    if (!target.valid) return EclRunResult::Fault;
+    const auto found = context.subroutines.find(key);
+    if (found == context.subroutines.end()) {
+        // 未知目标是覆盖不足，不是崩溃
+        return EclRunResult::Unsupported;
+    }
+    if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+        return EclRunResult::Fault;   // 递归上限 32
+    }
+    // 嵌套运行共享 context（栈与变量），但独立统计
+    EclInterpreter nested;
+    nested.context = context;
+    nested.run(found->second.code);
+    context = nested.context;   // 保留被调用方写入的变量
+}
+```
+
+**调用深度上限 32**：无上限的递归会让解释器挂起而不是失败。
+
+### 14.7 验证（10 项）
+
+```
+[PASS] implemented opcodes cover 49.34% of instructions
+[PASS] needs-context opcodes cover 5.47%
+[PASS] implemented and needs-context sets are disjoint
+[PASS] every jump target is a boundary or past the subroutine end (0 bad, 34 exits)
+[PASS] instruction offsets are contiguous (0 bad)
+[PASS] 11 subroutine(s) use only implemented opcodes
+[PASS] every Store reference decodes (411 builtin, 537 frame-local, 0 bad)
+[PASS] both reference kinds occur in real data
+[PASS] all 364 Call targets parse (0 bad)
+[PASS] 156 distinct call targets (most frequent: ('EffChargePoint2', 57))
+```
+
+### 14.8 仍然缺失
+
+| 项 | 状态 |
+|---|---|
+| `Call` | ✅ 364/364 解析 |
+| **op45 真实语义** | ❌ 不是 StoreFloat |
+| **`Spawn`(126)** | ❌ 需要线程管理 |
+| **TH185 独有 10743 条** | ❌ 未开始（45.19%） |
+| **builtin 槽语义** | ❌ 只有 9 个已知 |
