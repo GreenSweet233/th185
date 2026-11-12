@@ -78,6 +78,10 @@ CipherParams cipher_for(const std::string& name) noexcept;
 // entry table (the only case the archive reader depends on) but over-decrypts
 // trailing bytes of some entries. Those bytes sit past the LZSS end-of-stream
 // marker, so extraction results are unaffected. See docs/PBG4.md.
+// Number of leading bytes the original decryption actually writes. Bytes past
+// this stay ciphertext; the LZSS stage depends on that.
+u32 decrypt_extent(u32 size, u32 block) noexcept;
+
 void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block, u32 limit) noexcept;
 
 // LZSS decompression — mirrors RVA 0x71E70.

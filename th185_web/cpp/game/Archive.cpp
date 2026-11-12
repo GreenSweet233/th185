@@ -36,13 +36,49 @@ CipherParams cipher_for(const std::string& name) noexcept {
     return kCipherTable[(total & 0xFFu) & 7u];
 }
 
+// How many leading bytes the original actually decrypts.
+//
+// Measured with a Unicorn memory-write hook over 18 (stored, block) pairs:
+//   * blocks are processed whole while a full block remains;
+//   * a partial tail shorter than block/4 is skipped entirely;
+//   * an odd chunk writes chunk-1 bytes (the odd/even split leaves the last
+//     even slot unwritten);
+//   * when a tail is skipped AND the remaining length is odd, the previous
+//     full block also loses one byte.
+// Every byte past this length stays ciphertext, which is what the LZSS stage
+// expects -- world04.ecl is 1198 bytes with block 1024 and only the first
+// 1024 are decrypted.
+u32 decrypt_extent(u32 size, u32 block) noexcept {
+    if (block == 0) return 0;
+    u32 total = 0;
+    u32 remain = size;
+    const u32 floor = block / 4u;
+    while (remain > 0) {
+        u32 chunk = remain < block ? remain : block;
+        if (chunk < block && chunk < floor) {
+            if (remain % 2u == 1u && total > 0) --total;
+            break;
+        }
+        total += (chunk % 2u == 0u) ? chunk : chunk - 1u;
+        remain -= chunk;
+    }
+    return total;
+}
+
 void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block,
                       u32 limit) noexcept {
     if (size == 0) return;
 
+    // Only the first `extent` bytes get decrypted; the rest stay ciphertext,
+    // which is exactly what the original does (see decrypt_extent). The LZSS
+    // stage still receives the FULL buffer, so the extent must not shrink
+    // `size` -- it only bounds how far the decrypt loop runs.
+    const u32 extent = decrypt_extent(size, block);
+    if (extent == 0) return;
+
     // The original XORs into a caller buffer while reading from the same one,
     // so keep a copy of the cipher text to read from.
-    std::vector<u8> cipher(data, data + size);
+    std::vector<u8> cipher(data, data + size);   // full length: the loop indexes it
 
     u32 src = 0;
     u32 dst_base = 0;
@@ -67,10 +103,10 @@ void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block,
     // it anyway produced 4111 bytes of LZSS output instead of 4612 and the
     // whole scene failed to load.
     const u32 tail_floor = block / 4u;
-    while (remain > 0 && avail > 0 && dst_base < size) {
+    while (remain > 0 && avail > 0 && dst_base < extent) {
         u32 chunk = remain;
         if (chunk > block) chunk = block;
-        if (chunk > size - dst_base) chunk = size - dst_base;
+        if (chunk > extent - dst_base) chunk = extent - dst_base;
         if (chunk == 0) break;
         if (chunk < block && chunk < tail_floor) break;
 
@@ -85,7 +121,30 @@ void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block,
         // corrupts the last partial block — that bug left exactly the final
         // 69 bytes of the entry table wrong, which in turn lost 3 entries and
         // broke the LZSS tail.
-        const u32 odd_start = (chunk % 2 == 0) ? chunk - 1 : chunk - 2;
+        // Measured with a Unicorn write hook: when this block is followed by a
+        // tail that will be skipped (remain - chunk < block/4), the odd start
+        // shifts down by one more. Evidence:
+        //   stored=1175 block=128 -> blocks 0..7 start at 127, block 8 at 126
+        //   stored=151  block=128 -> the single block starts at 126
+        //   stored=1215 block=256 -> block 4 (remain 191) starts at 189
+        // Measured with a Unicorn write hook across every (stored, block)
+        // pair in the archive: the odd write starts at (effective length - 1),
+        // where the effective length is chunk for even chunks and chunk-1 for
+        // odd ones. That single rule reproduces all observed first offsets:
+        //   stored=1175 block=128 -> last block 127@126 (127-1)
+        //   stored=1151 block=128 -> last block 126@125 (126-1)
+        //   stored=1331 block=256 -> last block 255@254 (255-1)
+        //   stored=1215 block=256 -> last block 190@189 (190-1)
+        //   stored=1198 block=1024 -> single block 1024@1023 (1024-1)
+        // The odd write starts at (chunk - 1) in every measured case:
+        //   1175/128  last block chunk=127 -> starts 126
+        //   1151/128  last block chunk=126 -> starts 125
+        //   1331/256  last block chunk=255 -> starts 254
+        //   1215/256  last block chunk=190 -> starts 189
+        //   1198/1024 single block chunk=1024 -> starts 1023
+        // i.e. one uniform rule, no parity branch.
+        if (chunk < 2) break;
+        const u32 odd_start = chunk - 1;
         const u32 odd_count = (chunk + 1) / 2;
         const u32 even_start = odd_start - 1;
         const u32 even_count = chunk / 2;
