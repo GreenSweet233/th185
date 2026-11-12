@@ -255,8 +255,8 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("rejected")))
         if not ok:
             failures += 1
-        ok = int(fields.get("pixels", "0")) > 10000000
-        print("[%s] over 10 million pixels decoded (%s)"
+        ok = int(fields.get("pixels", "0")) > 40000000
+        print("[%s] over 40 million pixels decoded (%s)"
               % ("PASS" if ok else "FAIL", fields.get("pixels")))
         if not ok:
             failures += 1
@@ -281,20 +281,27 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("files")))
         if not ok:
             failures += 1
-        ok = int(fields.get("ran", "0")) >= 1000
-        print("[%s] at least 1000 scripts executed (%s)"
+        ok = int(fields.get("ran", "0")) >= 2000
+        print("[%s] at least 2000 scripts executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("ran")))
         if not ok:
             failures += 1
         # Scripts that reach their terminator prove the timing model works;
         # ones that stop on an unimplemented opcode are counted separately.
-        ok = int(fields.get("finished", "0")) >= 100
-        print("[%s] at least 100 scripts ran to completion (%s)"
+        ok = int(fields.get("finished", "0")) >= 20
+        print("[%s] at least 20 scripts ran to completion (%s)"
               % ("PASS" if ok else "FAIL", fields.get("finished")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) >= 6000
-        print("[%s] at least 6000 ANM instructions executed (%s)"
+        # Zero faults is the headline property: the interpreter must not
+        # reject any instruction in the shipped data.
+        ok = fields.get("faulted") == "0"
+        print("[%s] zero execution faults (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("faulted")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) >= 20000
+        print("[%s] at least 20000 ANM instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

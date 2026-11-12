@@ -517,3 +517,128 @@ ANMRUN files=54 scripts=2121 ran=1097 finished=175 stopped=113
 [PASS] at least 100 scripts ran to completion (175)
 [PASS] at least 6000 ANM instructions executed (6343)
 ```
+
+---
+
+## 20. ★★★ 偏移基准：全部相对块起点
+
+### 20.1 这个 bug 藏了整整 60 轮
+
+`sprite_offsets[]`、`script_offsets[]`、`thtxoffset` 里的值，
+**全部是相对「当前块起点」的偏移，不是文件绝对偏移。**
+
+**为什么一直没发现**：块 0 的 `base = 0`，两种解释完全重合。
+只有解析了块链的第 2 块及以后，错误才会显现。
+
+### 20.2 决定性证据
+
+`enemy.anm` 块 2（`base = 614300`），脚本 `id=134` 的 `offset = 5328`：
+
+| 解释 | 位置 | 读到的第一条 |
+|---|---|---|
+| 绝对偏移 | `@5328` | `opcode=300` ← **块 0 的旧数据，能读但错位** |
+| 相对块起点 | `@619628` | `opcode=304` ← **正确** |
+
+两种读法都能读出「看起来合法」的指令，这就是它难发现的原因。
+但只有相对块起点的后续指令流是连贯的。
+
+### 20.3 修正后的爆炸性提升
+
+| 指标 | 修正前 | 修正后 | 倍数 |
+|---|---|---|---|
+| 纹理块 | 55 | **430** | **7.8×** |
+| 像素 | 12,358,528 | **47,847,598** | **3.9×** |
+| fmt 分布 | `{1:20, 3:5, 5:30}` | **`{1:264, 3:6, 5:124, 7:36}`** | 首次出现 GRAY8 |
+
+**块数从 55 涨到 430 是决定性信号**——偏移基准错了会漏掉绝大部分块。
+
+---
+
+## 21. ★★ sprite 索引是全局跨文件编号
+
+### 21.1 现象
+
+`abcard.anm` 只声明 **30 个 sprite**，但脚本 `id=22/23/24` 引用 **索引 141**。
+
+按「每文件独立编号」理解，这是越界；按「全局编号」理解，这是合法的跨文件引用。
+
+### 21.2 判定依据
+
+`abcard.anm` 有 30 个块，每块 1 个 sprite。如果索引是块内编号，
+141 远超任何块的大小；如果是文件内编号，也超出 30。
+**唯一自洽的解释是全局编号。**
+
+### 21.3 处理方式
+
+```cpp
+if (u32(index) >= resource_->sprites.size()) {
+    ++stats_.external_sprites;   // 记录为外部引用
+    break;                       // 不报 fault
+}
+```
+
+**把合法的跨文件引用当错误，会拒绝正确指令。**
+
+---
+
+## 22. ★ 负 sprite 索引也是合法值
+
+th15 `AnmInterpreter.cpp`：
+
+```cpp
+if(index<0){source=environment?environment->fallback_sprite_resource:nullptr;index=258;}
+```
+
+**负数映射到环境的 fallback sprite（索引 258）**，不是错误。
+
+`effect.anm` 的 `id=32` 脚本第一条就是 `opcode=300 arg0=-1`。
+
+---
+
+## 23. ★★ fault 归零
+
+```
+ANMTEX files=54 blocks=430 decoded=430 rejected=0 pixels=47847598
+       fmt1=264 fmt3=6 fmt5=124 fmt7=36
+ANMRUN files=54 scripts=2121 ran=2121 finished=26 stopped=128
+       unsupported=1967 faulted=0 instrs=20480 frames=73062
+```
+
+### 23.1 三轮修复的累积效果
+
+| 轮次 | 修复内容 | 脚本 | 指令 | fault |
+|---|---|---|---|---|
+| 60 | 块链解析 | 2121 | 6343 | 60 |
+| **61** | **偏移基准改为相对块起点** | 2121 | 20477 | 3 |
+| **61** | **负索引 + 全局编号** | **2121** | **20480** | **0** |
+
+**fault 从 60 降到 0，指令数从 6343 涨到 20480（3.2 倍）。**
+
+### 23.2 剩余 unsupported（如实记录）
+
+`unsupported = 1967` 是因为 1967 个脚本碰到了未实现的 opcode：
+
+| 族 | opcode | 缺什么 |
+|---|---|---|
+| 插值 | 407-420/427-430/433/435 | interpolator 状态 |
+| 对象生成 | 500-508 | object host |
+| 混合模式 | 600-611 | 渲染状态 |
+
+首个未实现的是 `421`。**这些不是错误，是未实现的功能。**
+
+---
+
+## 24. 验证（15 项）
+
+```
+[PASS] the C++ ANM parser produced output
+[PASS] C++ parsed 54 of 55 .anm files (1 known tail-block miss)
+[PASS] every extracted THTX block decoded (0 rejected)
+[PASS] over 40 million pixels decoded (47847598)
+[PASS] the C++ ANM interpreter produced output
+[PASS] interpreter ran over 54 of 55 .anm files
+[PASS] at least 2000 scripts executed (2121)
+[PASS] at least 20 scripts ran to completion (26)
+[PASS] zero execution faults (0)
+[PASS] at least 20000 ANM instructions executed (20480)
+```

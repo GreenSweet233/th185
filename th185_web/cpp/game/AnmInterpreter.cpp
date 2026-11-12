@@ -307,11 +307,26 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
 
         case 300: {
             visual_.flags |= 1u;
-            const i32 index = integer(0);
+            i32 index = integer(0);
+            // A NEGATIVE index is not an error: th15 maps it to the
+            // environment's fallback sprite (index 258). We have no
+            // environment, so record the marker and leave the size alone
+            // instead of reporting a fault -- failing here would reject a
+            // perfectly valid instruction.
+            if (index < 0) {
+                visual_.sprite = -1;
+                break;
+            }
             visual_.sprite = index;
             if (resource_) {
-                if (index < 0 || u32(index) >= resource_->sprites.size()) {
-                    return fail("sprite index out of range");
+                if (u32(index) >= resource_->sprites.size()) {
+                    // Sprite indices are GLOBAL across the archive, not
+                    // per-file: abcard.anm declares 30 sprites yet its
+                    // scripts reference index 141. Treating that as a fault
+                    // rejects a valid instruction, so record it as an
+                    // unresolved external reference instead.
+                    ++stats_.external_sprites;
+                    break;
                 }
                 const AnmSprite& sprite = resource_->sprites[u32(index)];
                 visual_.size = Vec2{sprite.w, sprite.h};
@@ -325,10 +340,15 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
             const u32 count = u32(integer(1));
             if (count == 0) return fail("sprite range is zero");
             const i32 index = first + signed_bits(rng.next32() % count);
+            if (index < 0) {
+                visual_.sprite = -1;
+                break;
+            }
             visual_.sprite = index;
             if (resource_) {
-                if (index < 0 || u32(index) >= resource_->sprites.size()) {
-                    return fail("sprite index out of range");
+                if (u32(index) >= resource_->sprites.size()) {
+                    ++stats_.external_sprites;
+                    break;
                 }
                 const AnmSprite& sprite = resource_->sprites[u32(index)];
                 visual_.size = Vec2{sprite.w, sprite.h};

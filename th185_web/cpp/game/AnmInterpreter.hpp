@@ -82,6 +82,8 @@ struct AnmRunStats {
     u32 unsupported = 0;
     u32 faults = 0;
     u16 first_unsupported = 0;
+    // Sprite references that point outside this file (indices are global).
+    u32 external_sprites = 0;
 };
 
 class AnmInterpreter {

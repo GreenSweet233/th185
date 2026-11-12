@@ -90,7 +90,10 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
         for (u32 i = 0; i < block_sprites; ++i) {
             const std::size_t table_at = base + ANM_HEADER_SIZE + std::size_t(i) * 4;
             if (table_at + 4 > data.size()) break;
-            const std::size_t at = read_u32(data.data() + table_at);
+            // Sprite offsets are relative to THIS BLOCK's base, not the file.
+            // Block 0 has base 0 so both readings coincide there, which is why
+            // the bug only showed up once chained blocks were parsed.
+            const std::size_t at = base + read_u32(data.data() + table_at);
             if (at + ANM_SPRITE_SIZE > data.size()) break;
             AnmSprite sprite;
             sprite.id = read_u32(data.data() + at);
@@ -104,21 +107,46 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
         // Script table, right after the sprite offset array.
         const std::size_t script_table =
             base + ANM_HEADER_SIZE + std::size_t(block_sprites) * 4;
+
+        // A script has NO explicit terminator-based extent: thtk's thanm.c
+        // computes its end from the NEXT script's offset --
+        //
+        //     limit += script_offsets[s + 1].offset;
+        //
+        // Stopping at the first malformed length instead truncates the slice,
+        // which is what produced the "invalid jump" and "invalid instruction
+        // length" faults: jump targets pointed past the truncated buffer.
         for (u32 i = 0; i < block_scripts; ++i) {
             const std::size_t at = script_table + std::size_t(i) * 8;
             if (at + 8 > data.size()) break;
             AnmScriptEntry script;
             script.id = read_u32(data.data() + at);
-            script.offset = read_u32(data.data() + at + 4);
+            // Relative to this block's base (see the sprite note above).
+            script.offset = u32(base + read_u32(data.data() + at + 4));
             if (script.offset >= data.size()) break;
+
+            // Upper bound: the next script's offset, or the end of this chunk's
+            // script region for the last one.
+            std::size_t limit = data.size();
+            if (i + 1 < block_scripts) {
+                const std::size_t next_at = at + 8;
+                if (next_at + 8 <= data.size()) {
+                    const std::size_t next_offset =
+                        base + read_u32(data.data() + next_at + 4);
+                    if (next_offset > script.offset && next_offset <= data.size()) {
+                        limit = next_offset;
+                    }
+                }
+            }
 
             std::size_t pos = script.offset;
             u32 guard = 0;
-            while (pos + INSTRUCTION_HEADER <= data.size() && guard++ < 100000) {
+            while (pos + INSTRUCTION_HEADER <= limit && guard++ < 100000) {
                 const u16 opcode = read_u16(data.data() + pos);
                 const u16 length = read_u16(data.data() + pos + 2);
-                if (opcode == 0xFFFF || length < INSTRUCTION_HEADER ||
-                    (length % 4) != 0 || pos + length > data.size()) {
+                if (opcode == 0xFFFF) break;
+                if (length < INSTRUCTION_HEADER || (length % 4) != 0 ||
+                    pos + length > limit) {
                     break;
                 }
                 AnmInstruction ins;
@@ -133,7 +161,7 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
         }
 
         // THTX blocks in this chunk.
-        std::size_t at = thtx_offset;
+        std::size_t at = base + thtx_offset;
         u32 guard = 0;
         while (at + 16 <= data.size() && guard++ < 4096) {
             if (std::memcmp(data.data() + at, "THTX", 4) != 0) break;
