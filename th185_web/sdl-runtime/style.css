@@ -1,0 +1,189 @@
+/* TH185 web shell styles.
+ *
+ * Deliberately small: the canvas carries the game, everything else is chrome
+ * for loading, pausing and touch input. Colours match the game's dark UI so
+ * the transition from loading screen to playfield is not jarring. */
+
+:root {
+  --bg: #14142a;
+  --panel: #1e1e3a;
+  --text: #e8e8f0;
+  --muted: #9090a8;
+  --accent: #7a9cff;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  overflow: hidden;
+}
+
+#stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 8px;
+}
+
+#canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: 4 / 3;
+  background: #000;
+  image-rendering: pixelated;
+  outline: none;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+#welcome, #pause-panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(20, 20, 42, 0.92);
+  backdrop-filter: blur(4px);
+  text-align: center;
+  padding: 24px;
+}
+
+#welcome[hidden], #pause-panel[hidden], #error[hidden], #touch[hidden], #progress[hidden] {
+  display: none;
+}
+
+#welcome h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+#welcome p, #status {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+button {
+  appearance: none;
+  border: 1px solid rgba(122, 156, 255, 0.35);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.95rem;
+  padding: 10px 22px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+button:hover:not(:disabled) {
+  background: #262650;
+  border-color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+#progress {
+  width: min(320px, 80vw);
+  height: 6px;
+  appearance: none;
+  border: none;
+  border-radius: 3px;
+  background: var(--panel);
+}
+
+#progress::-webkit-progress-bar {
+  background: var(--panel);
+  border-radius: 3px;
+}
+
+#progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+#progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 3px;
+}
+
+footer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+footer button {
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
+#health {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+#touch {
+  position: absolute;
+  right: 12px;
+  bottom: 56px;
+  display: grid;
+  grid-template-columns: repeat(3, 56px);
+  gap: 8px;
+}
+
+#touch button {
+  padding: 0;
+  height: 56px;
+  border-radius: 50%;
+  font-size: 0.8rem;
+  opacity: 0.75;
+}
+
+#error {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 56px;
+  padding: 12px 16px;
+  border-radius: 6px;
+  background: #4a1e1e;
+  border: 1px solid #a04040;
+  color: #ffd0d0;
+  font-size: 0.85rem;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 640px) {
+  #welcome h1 { font-size: 1.35rem; }
+  #stage { padding: 0; }
+  #canvas { border-radius: 0; }
+}

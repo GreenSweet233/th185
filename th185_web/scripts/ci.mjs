@@ -74,6 +74,9 @@ checks.push(
   // The application module is what the web shell loads, so its render is the
   // end-to-end check that everything below it is wired correctly.
   { name: "app-frame", args: [resolve(here, "native", "app_frame_check.py")], python: true, timeoutMs: 900000 },
+  // No browser automation here, so the shell is checked by CONTRACT: exports,
+  // element ids, asset paths. Those are the failures that actually happen.
+  { name: "shell-contract", args: [resolve(here, "native", "shell_contract_check.py")], python: true },
 );
 
 let failures = 0;
