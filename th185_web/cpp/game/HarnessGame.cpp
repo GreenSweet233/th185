@@ -12,6 +12,7 @@
 #include "GameSession.hpp"
 #include "EnemyManager.hpp"
 #include "AnmInterpreter.hpp"
+#include "AnmManager.hpp"
 #include "AnmResource.hpp"
 #include "AnmTexture.hpp"
 #include "EclInterpreter.hpp"
@@ -498,6 +499,83 @@ void emit_anm_scripts(const std::vector<u8>& file) {
                 total_instructions, total_frames, unsigned(first_unsupported));
 }
 
+void emit_anm_objects(const std::vector<u8>& file) {
+    // Drive real ANM scripts through the object manager: create a root per
+    // script, then run a bounded frame loop and report the tree it built.
+    //
+    // This proves the scheduler works: spawns materialise, depth is bounded,
+    // and instances retire. It does NOT prove anything is drawn.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) {
+        std::printf("ANMOBJ ARCHIVE_ERROR %s\n", error.c_str());
+        return;
+    }
+
+    u32 files = 0;
+    u32 scripts = 0;
+    u32 roots = 0;
+    u64 total_ticks = 0;
+    u32 total_spawned = 0;
+    u32 total_detached = 0;
+    u32 total_retired = 0;
+    u32 peak_live = 0;
+    u32 depth_capped = 0;
+    u32 live_capped = 0;
+    u32 bad_script = 0;
+    u32 faults = 0;
+    u32 frames = 0;
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".anm") != 0) continue;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) continue;
+        AnmResource resource;
+        if (!resource.parse(std::move(blob), &error)) continue;
+        ++files;
+
+        // One root per script, but cap it so the harness stays fast.
+        const u32 limit = u32(resource.script_list.size() < 64 ?
+                              resource.script_list.size() : 64);
+        scripts += u32(resource.script_list.size());
+
+        AnmManager manager;
+        Rng rng;
+        rng.seed = u16(0x1234);
+        rng.calls = 0;
+
+        for (u32 s = 0; s < limit; ++s) {
+            if (manager.create(&resource, i32(s)) != 0xFFFFFFFFu) ++roots;
+        }
+
+        // 120 frames is enough to exercise spawning without a long run.
+        for (u32 frame = 0; frame < 120; ++frame) {
+            manager.update(rng, 1.0f);
+            ++frames;
+        }
+
+        total_ticks += manager.stats().ticks;
+        total_spawned += manager.stats().spawned;
+        total_detached += manager.stats().detached_spawned;
+        total_retired += manager.stats().retired;
+        depth_capped += manager.stats().depth_capped;
+        live_capped += manager.stats().live_capped;
+        bad_script += manager.stats().bad_script;
+        faults += manager.stats().faults;
+        if (manager.stats().peak_live > peak_live) peak_live = manager.stats().peak_live;
+    }
+
+    std::printf("ANMOBJ files=%u scripts=%u roots=%u ticks=%llu spawned=%u"
+                " detached=%u retired=%u peak=%u depth_cap=%u live_cap=%u"
+                " bad=%u faults=%u frames=%u\n",
+                files, scripts, roots,
+                static_cast<unsigned long long>(total_ticks),
+                total_spawned, total_detached, total_retired, peak_live,
+                depth_capped, live_capped, bad_script, faults, frames);
+}
+
 void emit_save(const char* path) {
     // The save file lives outside the archive, so it is passed separately.
     std::vector<u8> blob;
@@ -590,6 +668,7 @@ int main(int argc, char** argv) {
     emit_ecl_run(file);
     emit_anm_textures(file);
     emit_anm_scripts(file);
+    emit_anm_objects(file);
     emit_std(file);
     emit_session(file);
     emit_tables();

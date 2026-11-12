@@ -813,11 +813,32 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
         case 503:
         case 504:
         case 505:
-        case 506:
-            ++stats_.spawn_requests;
+        case 506: {
+            // th15:
+            //   child = (504||506) ? spawn_detached(...)
+            //                     : spawn_child(..., 501?4:502?2:503?6:0)
+            //   if (505||506) { child->child_anchor = {floating(1), floating(2)} }
+            AnmRunStats::SpawnRequest request;
+            request.script = integer(0);
+            request.detached = (opcode == 504 || opcode == 506);
+            request.ordering = opcode == 501 ? 4u
+                                : opcode == 502 ? 2u
+                                : opcode == 503 ? 6u
+                                                : 0u;
+            if (opcode == 505 || opcode == 506) {
+                request.has_anchor = true;
+                request.anchor_x = floating(1);
+                request.anchor_y = floating(2);
+            }
+            stats_.spawn_requests.push_back(request);
+            ++stats_.spawn_count;
             break;
+        }
         case 508:
-            ++stats_.spawn_requests;
+            // spawn_effect needs an effect host; there is none, so the request
+            // is counted but not queued (queueing it would create a child that
+            // the effect system, not the animation tree, is supposed to own).
+            ++stats_.spawn_count;
             break;
 
         // ----------------------------------------------------------------

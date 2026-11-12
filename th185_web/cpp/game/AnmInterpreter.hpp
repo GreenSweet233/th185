@@ -104,10 +104,21 @@ struct AnmRunStats {
     u16 first_unsupported = 0;
     // Sprite references that point outside this file (indices are global).
     u32 external_sprites = 0;
-    // Object spawns requested by opcode 500-506 / 508. The interpreter has no
-    // frame scheduler, so children are RECORDED rather than run; this counter
-    // makes that visible instead of silent.
-    u32 spawn_requests = 0;
+    // Object spawns requested by opcode 500-506 / 508. The interpreter itself
+    // has no frame scheduler, so a request is recorded here and the manager
+    // materialises it on the next frame. Recording only a COUNT would be
+    // useless -- the child needs to know which script to run -- so each
+    // request keeps its script index, ordering and optional anchor.
+    struct SpawnRequest {
+        i32 script = 0;
+        u32 ordering = 0;
+        bool detached = false;
+        bool has_anchor = false;
+        float anchor_x = 0.0f;
+        float anchor_y = 0.0f;
+    };
+    std::vector<SpawnRequest> spawn_requests;
+    u32 spawn_count = 0;   // total ever requested, never cleared
     // Geometry allocations requested by opcode 600-611.
     u32 geometry_allocations = 0;
     // TH185-only opcodes (439/440/612/614) encountered. Format known, meaning
@@ -130,6 +141,8 @@ public:
     const AnmVariables& variables() const { return variables_; }
     const AnmVisual& visual() const { return visual_; }
     const AnmRunStats& stats() const { return stats_; }
+    // Mutable access so the manager can drain spawn requests.
+    AnmRunStats& mutable_stats() { return stats_; }
     const std::string& error() const { return error_; }
     float timer() const { return timer_; }
 

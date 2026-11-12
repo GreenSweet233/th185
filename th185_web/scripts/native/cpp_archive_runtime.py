@@ -313,6 +313,50 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # 9. The object scheduler must build real animation trees.
+    anmobj = None
+    for line in lines:
+        if line.startswith("ANMOBJ files="):
+            anmobj = line
+            break
+    ok = anmobj is not None
+    print("[%s] the C++ ANM object manager produced output" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in anmobj.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        ok = int(fields.get("roots", "0")) >= 1000
+        print("[%s] at least 1000 root animations created (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("roots")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("spawned", "0")) >= 2000
+        print("[%s] at least 2000 child animations spawned (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("spawned")))
+        if not ok:
+            failures += 1
+        # Spawned minus retired must equal what is still alive, and the pool
+        # must never have been exhausted or depth-capped.
+        ok = int(fields.get("retired", "0")) > 2000
+        print("[%s] over 2000 animations retired (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("retired")))
+        if not ok:
+            failures += 1
+        ok = fields.get("live_cap") == "0" and fields.get("depth_cap") == "0"
+        print("[%s] pool and depth limits never hit (live=%s depth=%s)"
+              % ("PASS" if ok else "FAIL", fields.get("live_cap"),
+                 fields.get("depth_cap")))
+        if not ok:
+            failures += 1
+        ok = fields.get("faults") == "0"
+        print("[%s] zero scheduler faults (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("faults")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)
