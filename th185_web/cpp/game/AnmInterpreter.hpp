@@ -67,6 +67,12 @@ struct AnmVisual {
     u32 secondary_color = 0xFFFFFFFFu;
     i32 layer = 0;
     i32 sprite = -1;
+    // Vertex count requested by the geometry family (600-611). The renderer
+    // would allocate that many vertices; here it is recorded so the value is
+    // not lost, and so a later renderer can size its buffers.
+    u32 geometry_count = 0;
+    // True when the geometry family asked for the trail variant (opcode 609/610).
+    bool geometry_trail = false;
     bool visible() const { return (flags & 1u) != 0; }
 };
 
@@ -98,6 +104,15 @@ struct AnmRunStats {
     u16 first_unsupported = 0;
     // Sprite references that point outside this file (indices are global).
     u32 external_sprites = 0;
+    // Object spawns requested by opcode 500-506 / 508. The interpreter has no
+    // frame scheduler, so children are RECORDED rather than run; this counter
+    // makes that visible instead of silent.
+    u32 spawn_requests = 0;
+    // Geometry allocations requested by opcode 600-611.
+    u32 geometry_allocations = 0;
+    // TH185-only opcodes (439/440/612/614) encountered. Format known, meaning
+    // unknown; counted so the gap stays visible.
+    u32 th185_extensions = 0;
 };
 
 class AnmInterpreter {

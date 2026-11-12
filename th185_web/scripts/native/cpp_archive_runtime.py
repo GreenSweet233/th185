@@ -288,8 +288,8 @@ def main() -> int:
             failures += 1
         # Scripts that reach their terminator prove the timing model works;
         # ones that stop on an unimplemented opcode are counted separately.
-        ok = int(fields.get("finished", "0")) >= 900
-        print("[%s] at least 900 scripts ran to completion (%s)"
+        ok = int(fields.get("finished", "0")) >= 1300
+        print("[%s] at least 1300 scripts ran to completion (%s)"
               % ("PASS" if ok else "FAIL", fields.get("finished")))
         if not ok:
             failures += 1
@@ -300,8 +300,15 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("faulted")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) >= 250000
-        print("[%s] at least 250000 ANM instructions executed (%s)"
+        # MILESTONE: every opcode that appears in the shipped data is
+        # implemented, so no script may stop for an unknown instruction.
+        ok = fields.get("unsupported") == "0"
+        print("[%s] zero unimplemented opcodes (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("unsupported")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) >= 350000
+        print("[%s] at least 350000 ANM instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

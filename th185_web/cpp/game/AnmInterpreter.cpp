@@ -58,8 +58,12 @@ u32 argument_count(i16 opcode) {
     if (opcode == 417) return 2;
     if (opcode == 420) return 10;
     if (opcode >= 500 && opcode <= 508) {
+        // 505/506 carry the child anchor as two floats after the script index.
         return (opcode == 505 || opcode == 506) ? 3 : 1;
     }
+    if (opcode == 439) return 3;   // [u32][f32][f32]
+    if (opcode == 440) return 0;
+    if (opcode == 612 || opcode == 614) return 2;
     if (opcode >= 600 && opcode <= 611) {
         if (opcode == 611) return 3;
         if (opcode >= 603 && opcode <= 608) return 2;
@@ -380,6 +384,48 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
                 *out = value;
             }
 
+            instruction_offset_ += i32(length);
+            continue;
+        }
+
+        // ----------------------------------------------------------------
+        // Conditional jump family (opcode 202..213). th15 also handles this
+        // outside the switch:
+        //
+        //     const u32 compare = (opcode - 202) / 2;
+        //     if (opcode & 1) { float comparison } else { int comparison }
+        //     if (take) jump(arg(2), arg(3));
+        //
+        // compare 0..5 = ==, !=, <, <=, >, >=
+        // ----------------------------------------------------------------
+        if (opcode >= 202 && opcode <= 213) {
+            const u32 compare = u32((opcode - 202) / 2);
+            bool take = false;
+            if (opcode & 1) {
+                const float a = floating(0);
+                const float b = floating(1);
+                if (compare == 0) take = a == b;
+                else if (compare == 1) take = a != b;
+                else if (compare == 2) take = a < b;
+                else if (compare == 3) take = a <= b;
+                else if (compare == 4) take = a > b;
+                else take = a >= b;
+            } else {
+                const i32 a = integer(0);
+                const i32 b = integer(1);
+                if (compare == 0) take = a == b;
+                else if (compare == 1) take = a != b;
+                else if (compare == 2) take = a < b;
+                else if (compare == 3) take = a <= b;
+                else if (compare == 4) take = a > b;
+                else take = a >= b;
+            }
+            if (take) {
+                if (!jump(read_u32(arg(2)), read_i32(arg(3)))) {
+                    return fail("invalid conditional jump");
+                }
+                continue;
+            }
             instruction_offset_ += i32(length);
             continue;
         }
@@ -746,6 +792,117 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
         case 438:
             visual_.render_flags = (visual_.render_flags & ~0xC0000u) |
                                    ((u32(integer(0)) & 3u) << 18);
+            break;
+
+        case 507:
+            bits(visual_.render_flags, u32(integer(0)), 16, 0x10000u);
+            break;
+
+        // ----------------------------------------------------------------
+        // Object spawning (500-506, 508). These need an object host: th15 calls
+        // object_host->spawn_child / spawn_detached / spawn_effect, which
+        // creates a child AnmVm that the frame loop then ticks.
+        //
+        // This interpreter has no frame scheduler, so a spawned child would
+        // never advance. Recording the request and continuing is the honest
+        // choice: the instruction is understood, only its effect is deferred.
+        // ----------------------------------------------------------------
+        case 500:
+        case 501:
+        case 502:
+        case 503:
+        case 504:
+        case 505:
+        case 506:
+            ++stats_.spawn_requests;
+            break;
+        case 508:
+            ++stats_.spawn_requests;
+            break;
+
+        // ----------------------------------------------------------------
+        // Blend / geometry family (600-611). The mode goes into flags bits
+        // 25..29; opcode 600/601/602/609/610 additionally request a vertex
+        // count, and 603-608/611 set the sprite size.
+        // ----------------------------------------------------------------
+        case 600:
+        case 601:
+        case 602:
+        case 609:
+        case 610: {
+            const u32 mode = opcode == 600 ? 9u
+                             : opcode == 601 ? 13u
+                             : opcode == 602 ? 14u
+                             : opcode == 609 ? 24u
+                                             : 25u;
+            visual_.flags = (visual_.flags & ~((mode ^ 31u) << 25)) | (mode << 25);
+            visual_.geometry_count = u32(integer(0));
+            visual_.geometry_trail = opcode >= 609;
+            ++stats_.geometry_allocations;
+            break;
+        }
+        case 603:
+        case 606:
+        case 607:
+        case 608: {
+            const u32 mode = opcode == 603 ? 16u
+                             : opcode == 606 ? 20u
+                             : opcode == 607 ? 21u
+                                             : 22u;
+            visual_.flags = (visual_.flags & ~((mode ^ 31u) << 25)) | (mode << 25);
+            visual_.size = Vec2{floating(0), floating(1)};
+            break;
+        }
+        case 604:
+        case 605: {
+            const u32 mode = opcode == 604 ? 17u : 18u;
+            visual_.flags = (visual_.flags & ~((mode ^ 31u) << 25)) | (mode << 25);
+            visual_.size.x = floating(0);
+            variables_.integers[0] = integer(1);
+            break;
+        }
+        case 611:
+            visual_.flags = (visual_.flags & 0xE7FFFFFFu) | 0x26000000u;
+            visual_.size = Vec2{floating(0), floating(1)};
+            variables_.integers[0] = integer(2);
+            break;
+
+        // ----------------------------------------------------------------
+        // TH185 additions with no counterpart in th15.
+        //
+        // thtk's th18_patch table exists precisely for these: it overrides
+        // opcode 439 from "S" to "Sff". So the FORMAT is known from the
+        // vendored table and verified against the bytes below; the MEANING is
+        // not, and is recorded as unknown rather than guessed.
+        //
+        //   op 439  b7011400 00000000 01000000 00003443 00001643
+        //           -> [u32 1][f32 180.0][f32 150.0]   (20 bytes)
+        //   op 440  b8010800 80000000
+        //           -> no arguments, time = 128        (8 bytes)
+        //   op 612  64021000 00000000 00004843 00000041
+        //           -> [f32 200.0][f32 8.0]            (16 bytes)
+        //   op 614  66021000 00000000 00002044 0000803f
+        //           -> [f32 640.0][f32 1.0]            (16 bytes)
+        // ----------------------------------------------------------------
+        case 439:
+            // [u32 id][f32][f32]. Both floats read 180/150 in the only
+            // sample, which looks like a sprite size, but one sample is not
+            // enough to claim that.
+            variables_.integers[0] = read_i32(arg(0));
+            variables_.floats[0] = read_f32(arg(1));
+            variables_.floats[1] = read_f32(arg(2));
+            ++stats_.th185_extensions;
+            break;
+        case 440:
+            // No arguments: a pure timing marker.
+            ++stats_.th185_extensions;
+            break;
+        case 612:
+        case 614:
+            // [f32][f32]. 612 reads 200.0/8.0, 614 reads 640.0/1.0.
+            variables_.floats[0] = read_f32(arg(0));
+            variables_.floats[1] = read_f32(arg(1));
+            ++stats_.th185_extensions;
             break;
 
         case 509:
