@@ -228,6 +228,39 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # 7. The C++ ANM parser + texture decoder must agree with the data.
+    anmtex = None
+    for line in lines:
+        if line.startswith("ANMTEX files="):
+            anmtex = line
+            break
+    ok = anmtex is not None
+    print("[%s] the C++ ANM parser produced output" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in anmtex.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        # 54 of 55 files: title_v.anm hits the documented tail-block
+        # decryption limitation in Archive.hpp, so it cannot be extracted.
+        ok = fields.get("files") == "54"
+        print("[%s] C++ parsed %s of 55 .anm files (1 known tail-block miss)"
+              % ("PASS" if ok else "FAIL", fields.get("files")))
+        if not ok:
+            failures += 1
+        ok = fields.get("rejected") == "0"
+        print("[%s] every extracted THTX block decoded (%s rejected)"
+              % ("PASS" if ok else "FAIL", fields.get("rejected")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("pixels", "0")) > 10000000
+        print("[%s] over 10 million pixels decoded (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("pixels")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)

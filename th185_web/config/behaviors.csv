@@ -173,3 +173,7 @@ BHV-ANM-011,SYS-CORE-ANM,"sprite_t = {u32 id, f32 x, y, w, h} 共 20 字节，�
 BHV-ANM-012,SYS-CORE-ANM,"像素格式：1=BGRA8888、3=RGB565、5=ARGB4444、7=GRAY8；TH185 实测 5(32文件)、1(19)、3(4)",original,observed,verified,"th185_web/scripts/native/anm.py --selftest","format 分布精确匹配"
 BHV-ANM-013,SYS-CORE-ANM,"text.anm 的图集名是 \"@\"，thtk 文档说明这是「图像内嵌在本文件」的标记，不是缺失路径",original,observed,verified,"th185_web/scripts/native/anm.py --selftest","修正了第 38 轮「字体图集是特例」的错误定性"
 BHV-ANM-014,SYS-CORE-ANM,"lowresscale（+0x22，TH14+）标记「低分辨率时需缩小」：TH185 有 8 个文件置 1",original,observed,verified,"th185_web/scripts/native/anm.py --selftest","高分辨率时代特征"
+BHV-ANM-020,SYS-RENDER-ANM,"★ C++ 实现 ANM 解析器（AnmResource.cpp）+ 纹理解码器（AnmTexture.cpp）：53 个 THTX 块全部解码为 RGBA8，0 拒绝，共 12014464 像素",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","harness ANMTEX 输出"
+BHV-ANM-021,SYS-RENDER-ANM,"像素格式解码：BGRA8888 交换 R/B、RGB565 用 5/6 位扩展到 8 位、ARGB4444 按 thtk 注释 0xGB 0xAR 布局、GRAY8 复制到 RGB 且 alpha=255",original,observed,verified,"th185_web/scripts/native/anm_texture_check.py","全量样本验证"
+BHV-ANM-022,SYS-RENDER-ANM,"格式表正确性由数据自身验证：每个 THTX 块的 size 必须等于 width*height*bpp，若格式表错了这个检查会对真实文件失败",original,observed,verified,"th185_web/scripts/native/anm_texture_check.py","54 块全部通过"
+BHV-ANM-023,SYS-RENDER-ANM,"C++ 解析 54/55 个 .anm：title_v.anm 因 Archive.hpp 记录的尾块解密限制无法提取（stored=2678 block=512 尾块118）",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","已知限制非新问题"

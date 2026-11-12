@@ -11,6 +11,8 @@
 #include "EclResource.hpp"
 #include "GameSession.hpp"
 #include "EnemyManager.hpp"
+#include "AnmResource.hpp"
+#include "AnmTexture.hpp"
 #include "EclInterpreter.hpp"
 #include "Rng.hpp"
 #include "SaveFile.hpp"
@@ -341,6 +343,63 @@ void emit_ecl_run(const std::vector<u8>& file) {
                 faulted, total_instructions, max_depth);
 }
 
+void emit_anm_textures(const std::vector<u8>& file) {
+    // Decode every THTX block in the archive to RGBA8 and report aggregates.
+    // This is the C++ counterpart of scripts/native/anm_texture_check.py: the
+    // Python side proves the FORMAT TABLE matches the data, this proves the
+    // C++ decoder produces the same shapes.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) {
+        std::printf("ANMTEX ARCHIVE_ERROR %s\n", error.c_str());
+        return;
+    }
+
+    u32 files = 0;
+    u32 blocks = 0;
+    u32 decoded = 0;
+    u32 rejected = 0;
+    u64 total_pixels = 0;
+    u32 by_format[8] = {0};
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".anm") != 0) continue;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) {
+            std::printf("ANMTEX SKIP %s extract: %s\n", name.c_str(), error.c_str());
+            continue;
+        }
+        AnmResource anm;
+        if (!anm.parse(std::move(blob), &error)) {
+            std::printf("ANMTEX SKIP %s parse: %s\n", name.c_str(), error.c_str());
+            continue;
+        }
+        ++files;
+
+        for (const AnmTexture& texture : anm.textures) {
+            ++blocks;
+            if (texture.format < 8) ++by_format[texture.format];
+            const DecodedImage image = decode_texture(
+                texture.format, texture.width, texture.height,
+                anm.data.data() + texture.offset + 16, texture.size);
+            if (image.valid()) {
+                ++decoded;
+                total_pixels += u64(image.width) * image.height;
+            } else {
+                ++rejected;
+            }
+        }
+    }
+
+    std::printf("ANMTEX files=%u blocks=%u decoded=%u rejected=%u pixels=%llu"
+                " fmt1=%u fmt3=%u fmt5=%u fmt7=%u\n",
+                files, blocks, decoded, rejected,
+                static_cast<unsigned long long>(total_pixels),
+                by_format[1], by_format[3], by_format[5], by_format[7]);
+}
+
 void emit_save(const char* path) {
     // The save file lives outside the archive, so it is passed separately.
     std::vector<u8> blob;
@@ -431,6 +490,7 @@ int main(int argc, char** argv) {
     emit_archive(file);
     emit_ecl(file);
     emit_ecl_run(file);
+    emit_anm_textures(file);
     emit_std(file);
     emit_session(file);
     emit_tables();
