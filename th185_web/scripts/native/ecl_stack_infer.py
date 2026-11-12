@@ -223,6 +223,9 @@ def selftest() -> int:
 
 def report() -> int:
     loops = collect_loops()
+    # Same tight filter as the selftest: unfiltered solves produce impossible
+    # magnitudes because some loops deliberately change stack depth.
+    loops = [loop for loop in loops if abs(loop[3]) <= 4]
     solved, pending = solve(loops)
     print('loops analysed     : %d' % len(loops))
     print('opcodes solved     : %d' % len(solved))

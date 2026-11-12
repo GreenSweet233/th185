@@ -30,6 +30,8 @@ IMPLEMENTED = {
     0, 1, 10, 11, 12, 13, 14, 23, 30, 40, 41, 42, 43, 44, 78, 83, 1013, 1015,
     300, 302, 304,
     306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
+    # thread ops + position + comment
+    15, 16, 17, 18, 19, 20, 21, 500, 1006,
     # stack effects inferred from loop-balance constraints (ecl_stack_infer.py)
     45, 81, 82, 93, 94, 303, 313, 316, 319, 404, 405, 412, 422, 441, 445,
     535, 555, 601, 603, 604, 605, 609, 610, 615, 626, 627, 628, 1011, 1021,
@@ -39,7 +41,7 @@ IMPLEMENTED = {
 
 # Deliberately reported unsupported (needs the ECL context/owner object).
 NEEDS_CONTEXT = {
-    15, 16, 17, 18, 19, 20, 21, 86,
+    86,
 }
 
 INSTRUCTION_HEADER = 8
@@ -102,7 +104,7 @@ def selftest() -> int:
     # Almost everything is now reachable. What remains blocked is Spawn and the
     # thread ops (15..21) plus LengthSquared/AngleTo (86/87), which need an
     # owner object rather than just variable storage.
-    ok = 0.80 <= implemented_share / total <= 0.88
+    ok = 0.85 <= implemented_share / total <= 0.92
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:

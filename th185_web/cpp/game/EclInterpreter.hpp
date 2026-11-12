@@ -65,6 +65,10 @@ enum class EclOp : u16 {
     Op300CallNamed = 300,    // u32 flag, u32 name_len, char name[], args
     Op304CallNamedVariant = 304,  // same shape as op300
     Op302Set = 302,               // u32 reserved, u32 a, u32 b
+    Op500SetPosition = 500,       // u32 reserved, f32 x, f32 y, u32 reserved
+    Op1006Comment = 1006,         // u32 reserved, u32 len, char text[]
+    // Thread ops, now implementable because EclContext owns a thread table.
+    // (15/16/17..21 already exist in EclOp as Spawn/SpawnNamed/CancelThread/...)
 };
 
 // A value on the ECL stack. TH185 tags each slot with its type, same as TH11.

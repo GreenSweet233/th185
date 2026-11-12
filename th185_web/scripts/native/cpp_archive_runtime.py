@@ -222,8 +222,8 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("maxdepth")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) > 500000
-        print("[%s] over 500000 instructions executed (%s)"
+        ok = int(fields.get("instrs", "0")) > 700000
+        print("[%s] over 700000 instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

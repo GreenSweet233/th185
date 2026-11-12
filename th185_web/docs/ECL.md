@@ -2003,3 +2003,121 @@ payload 被记录下来供将来分析。
 | 按推断 net 实现 | **36（稳定）** | 假设对了 |
 
 **好的监控指标不是「有异常就报警」，而是「能区分两种假设的真假」。**
+
+---
+
+## 20. ★ EclOwner：线程管理器，结构性依赖全部消除
+
+### 20.1 为什么需要它
+
+上一轮结束时，413 条指令（1.74%）因为「需要 owner 对象」而无法执行：
+`Spawn`(15)、`SpawnNamed`(16)、线程操作(17..21)、`LengthSquared`(86)、`AngleTo`(87)。
+
+`EclOwner` 就是那个对象。
+
+### 20.2 实现
+
+```cpp
+struct EclThread {
+    i32 id;
+    std::string subroutine;
+    u32 flags;
+    u32 state;
+    bool alive;
+    u32 steps_run;
+};
+
+struct EclOwner {
+    static constexpr u32 MAX_THREADS = 256;
+    std::vector<EclThread> threads;
+    i32 next_id;
+
+    i32  spawn(const std::string&, i32 requested_id = -1);
+    EclThread* find(i32 id);
+    bool cancel(i32 id);
+    bool set_flag(i32 id, bool on);
+    bool set_state(i32 id, u32 state);
+    u32  cancel_secondary();
+};
+```
+
+### 20.3 op15 / op16 的结构
+
+它们与 `op300` **同形**（名字从 `payload + 8` 开始）：
+
+```
+op15: 00000000 14000000 "ItemCarryLilyAt0" ...   ← 前缀=0
+op16: 00000000 0c000000 "Wave01Loop" 01000000 ...  ← 名字后带线程 id
+```
+
+| 操作码 | 次数 | 说明 |
+|---|---|---|
+| `15` Spawn | 126 | 启动子程序线程 |
+| `16` SpawnNamed | 128 | 同上，名字后带线程 id |
+
+### 20.4 顺带解出两个高频操作码
+
+| 操作码 | 次数 | 结构 | 语义 |
+|---|---|---|---|
+| `op500` | 120 | `[保留][f32 x][f32 y][保留]` | **坐标设置** |
+| `op1006` | 104 | `[保留][长度][明文文本]` | **注释** |
+
+`op1006` 的文本是可读的：`"FairyWave Type 2way"`、`"Big Fairy Splash"`。
+存下来能让脚本 dump 自带说明。
+
+### 20.5 ★ 结构性依赖归零
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 覆盖率 | 85.24% | **87.92%** |
+| **`needs ECL context`** | **413（1.74%）** | **0** |
+| `TH185-only`（语义未知） | 3095 | 2871（12.08%） |
+| 实际执行子程序 | 147 | 147 |
+| 执行指令数 | 702362 | 702650 |
+| 执行故障 | 0 | **0** |
+| 栈深 | 36 | **36** |
+
+**「需要上下文」这一类已经清零。** 剩下的 12.08% 不是缺依赖，
+而是**语义尚未解出**的 TH185 独有操作码——性质完全不同。
+
+### 20.6 推断器的边界（如实记录）
+
+我试着用同样的循环约束方法推断剩余 79 种操作码，结果只解出 32 个。
+
+原因：剩余操作码在循环体里**同时出现多个未知项**，方程无法分离：
+
+```
+op 1005  in 9 loops    ← 每个循环里都有它和别的未知 op
+op 1019  in 9 loops
+op 1017  in 9 loops
+op 1008  in 8 loops
+```
+
+**这是方法的真实边界，不是实现缺陷。**
+要突破需要新手段（比如对分派器做动态追踪），不能靠继续加约束。
+
+### 20.7 局限
+
+`EclOwner` 只做**簿记**，不模拟帧时序：
+
+| 做了 | 没做 |
+|---|---|
+| 线程表、id 分配、存活状态 | 帧级调度 |
+| spawn / cancel / flag / state | 时间片轮转 |
+| 线程数上限 256 | 线程与渲染/输入的交互 |
+
+解释器是「跑到完成」而不是「跑到 yield」，
+所以 spawn 出来的线程被同步执行完。这是真实限制，已写入头文件注释。
+
+### 20.8 验证
+
+```
+[PASS] implemented opcodes cover 87.92% of instructions
+[PASS] implemented and needs-context sets are disjoint
+[PASS] 173 subroutine(s) use only implemented opcodes
+[PASS] the interpreter executed real ECL (yes)
+[PASS] zero execution faults (0)
+[PASS] at least 140 subroutines ran (147)
+[PASS] stack depth stays sane (36, limit 256)
+[PASS] over 700000 instructions executed (702650)
+```

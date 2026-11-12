@@ -30,6 +30,7 @@
 //   41 difficulty, 47..50 is_difficulty_0..3, 51..54 EM+0x3c/40/44/4f44,
 //   110 stage-2. Reading an unidentified slot yields 0 rather than a guess.
 
+#include "EclOwner.hpp"
 #include "Types.hpp"
 
 #include <array>
@@ -61,6 +62,9 @@ struct EclCallable {
 };
 
 struct EclContext {
+    // Thread table. Spawn/thread ops resolve through here.
+    EclOwner owner;
+
     // Engine builtin slots, addressed by (value + ECL_BUILTIN_BASE).
     std::array<u32, ECL_BUILTIN_COUNT> builtins{};
 
@@ -143,6 +147,12 @@ struct EclContext {
     u32 set_count = 0;
     u32 last_set_a = 0;
     u32 last_set_b = 0;
+
+    // op500: position pair. op1006: comment text.
+    float last_position_x = 0.0f;
+    float last_position_y = 0.0f;
+    u32 position_sets = 0;
+    std::vector<std::string> comments;
 
     // Push a fresh zeroed frame. Returns its index.
     u32 push_frame();

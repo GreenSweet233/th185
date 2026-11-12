@@ -103,6 +103,7 @@ const OpName kOpNames[] = {
     {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
+    {500, "Op500SetPosition"}, {1006, "Op1006Comment"},
 };
 
 }  // namespace
@@ -227,6 +228,27 @@ struct CallTarget {
     u32 prefix_length = 0;
     bool valid = false;
 };
+
+// op15/op16 use the same named-target shape as op300: the name starts at
+// payload + 8 and payload[0] is a flag. Reuse the parser.
+CallTarget parse_named(const u8* payload, u32 payload_size) {
+    CallTarget target;
+    if (payload_size < 10) return target;
+    const u32 name_length = read_u32(payload + 4);
+    if (name_length < 2 || 8 + name_length > payload_size) return target;
+    const char* name = reinterpret_cast<const char*>(payload + 8);
+    u32 nul = 0;
+    while (nul < name_length && name[nul] != 0) ++nul;
+    if (nul == 0 || nul >= name_length) return target;
+    for (u32 i = 0; i < nul; ++i) {
+        const unsigned char ch = static_cast<unsigned char>(name[i]);
+        if (ch < 32 || ch > 126) return target;
+    }
+    target.name = name;
+    target.name_length = nul;
+    target.valid = true;
+    return target;
+}
 
 CallTarget parse_call(const u8* payload, u32 payload_size) {
     CallTarget target;
@@ -803,14 +825,75 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        // Everything else needs the ECL context/owner object.
+        case EclOp::Op500SetPosition: {
+            // payload: u32 reserved, f32 x, f32 y, u32 reserved (120 uses).
+            // Does not touch the stack; stores the pair for later inspection.
+            context.last_position_x = arg_float(payload, 0);
+            context.last_position_y = arg_float(payload, 1);
+            ++context.position_sets;
+            break;
+        }
+
+        case EclOp::Op1006Comment: {
+            // payload: u32 reserved, u32 length, char text[] (104 uses).
+            // This is a comment: the text is human-readable ("FairyWave Type
+            // 2way", "Big Fairy Splash"). Storing it makes the script
+            // self-documenting when dumped.
+            const u32 length = read_u32(payload + 4);
+            if (length >= 2 && 8 + length <= u32(size - INSTRUCTION_HEADER)) {
+                const char* text = reinterpret_cast<const char*>(payload + 8);
+                u32 nul = 0;
+                while (nul < length && text[nul] != 0) ++nul;
+                if (nul > 0 && context.comments.size() < 1024) {
+                    context.comments.emplace_back(text, nul);
+                }
+            }
+            break;
+        }
+
+        // --- thread ops (need EclOwner) ------------------------------------
         case EclOp::Spawn:
-        case EclOp::SpawnNamed:
+        case EclOp::SpawnNamed: {
+            const CallTarget target =
+                parse_named(payload, u32(size - INSTRUCTION_HEADER));
+            if (!target.valid) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const std::string key(target.name, target.name_length);
+            // op16 carries an explicit thread id after the name; op15 does not.
+            i32 requested = -1;
+            if (opcode == u16(EclOp::SpawnNamed)) {
+                const u32 after = 8 + read_u32(payload + 4);
+                if (after + 4 <= u32(size - INSTRUCTION_HEADER)) {
+                    requested = i32(read_u32(payload + after));
+                }
+            }
+            context.owner.spawn(key, requested);
+            break;
+        }
+
         case EclOp::CancelThread:
         case EclOp::SetThreadFlag:
         case EclOp::ClearThreadFlag:
-        case EclOp::SetThreadState:
+        case EclOp::SetThreadState: {
+            const i32 thread_id = arg_i32(payload, 0);
+            if (opcode == u16(EclOp::CancelThread)) {
+                context.owner.cancel(thread_id);
+            } else if (opcode == u16(EclOp::SetThreadFlag)) {
+                context.owner.set_flag(thread_id, true);
+            } else if (opcode == u16(EclOp::ClearThreadFlag)) {
+                context.owner.set_flag(thread_id, false);
+            } else {
+                context.owner.set_state(thread_id, arg_u32(payload, 1));
+            }
+            break;
+        }
+
         case EclOp::CancelSecondary:
+            context.owner.cancel_secondary();
+            break;
+
         case EclOp::Polar:
         case EclOp::NormalizeAngle:
         case EclOp::LengthSquared:
