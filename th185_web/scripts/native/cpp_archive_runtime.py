@@ -419,6 +419,39 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # 12. The sprite table must render through the real rasteriser.
+    sprites = None
+    for line in lines:
+        if line.startswith("ANMSPR name="):
+            sprites = line
+            break
+    ok = sprites is not None
+    print("[%s] the C++ sprite renderer produced output" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in sprites.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        ok = fields.get("name") == "enemy.anm"
+        print("[%s] sprite table came from enemy.anm (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("name")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("drawn", "0")) >= 100
+        print("[%s] at least 100 sprites drawn (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("drawn")))
+        if not ok:
+            failures += 1
+        # Every drawn sprite must have produced pixels; a zero here means the
+        # UV rect was empty or the texture index was wrong.
+        ok = int(fields.get("written", "0")) >= 50000
+        print("[%s] sprite rendering wrote at least 50000 pixels (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("written")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)

@@ -648,6 +648,112 @@ void emit_anm_atlas(const std::vector<u8>& file) {
         return;
     }
 }
+void emit_anm_sprites(const std::vector<u8>& file) {
+    // Draw every sprite of one file through the real rasteriser, using each
+    // sprite's own UV rect. This is the narrowest test of "sprite -> screen":
+    // the atlas dump proved the DECODER, this proves the SUBRECT lookup.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) return;
+
+    // enemy.anm is the richest atlas (120 sprites) and its content is
+    // recognisable, so it makes the best visual sample.
+    const char* wanted = "enemy.anm";
+    std::size_t entry = archive.entries.size();
+    for (std::size_t i = 0; i < archive.entries.size(); ++i) {
+        if (archive.entries[i].name == wanted) { entry = i; break; }
+    }
+    if (entry == archive.entries.size()) return;
+
+    std::vector<u8> blob = archive.extract(file, entry, &error);
+    if (blob.empty()) return;
+    AnmResource resource;
+    if (!resource.parse(std::move(blob), &error)) return;
+
+    std::vector<DecodedImage> textures;
+    for (const AnmTexture& texture : resource.textures) {
+        textures.push_back(decode_texture(
+            texture.format, texture.width, texture.height,
+            resource.data.data() + texture.offset + 16, texture.size));
+    }
+    if (textures.empty()) return;
+
+    constexpr u32 WIDTH = 640;
+    constexpr u32 HEIGHT = 480;
+    SoftwareRaster raster;
+    raster.resize(WIDTH, HEIGHT);
+    raster.clear(Rgba8{16, 16, 32, 255});
+
+    // Lay sprites out on a grid, each drawn at its native size.
+    const u32 columns = 20;
+    const float cell = 32.0f;
+    u32 drawn = 0;
+    for (u32 s = 0; s < resource.sprites.size() && drawn < 320; ++s) {
+        const AnmSprite& sprite = resource.sprites[s];
+        if (sprite.texture >= textures.size()) continue;
+        if (!(sprite.w > 0.0f) || !(sprite.h > 0.0f)) continue;
+
+        const float column = float(s % columns);
+        const float row = float(s / columns);
+        const float centre_x = 16.0f + column * cell;
+        const float centre_y = 16.0f + row * cell;
+
+        AnmQuad quad;
+        const float half_w = sprite.w * 0.5f;
+        const float half_h = sprite.h * 0.5f;
+        quad.x[0] = centre_x - half_w;
+        quad.y[0] = centre_y - half_h;
+        quad.x[1] = centre_x + half_w;
+        quad.y[1] = centre_y - half_h;
+        quad.x[2] = centre_x + half_w;
+        quad.y[2] = centre_y + half_h;
+        quad.x[3] = centre_x - half_w;
+        quad.y[3] = centre_y + half_h;
+
+        quad.u[0] = sprite.u0;
+        quad.v[0] = sprite.v0;
+        quad.u[1] = sprite.u1;
+        quad.v[1] = sprite.v0;
+        quad.u[2] = sprite.u1;
+        quad.v[2] = sprite.v1;
+        quad.u[3] = sprite.u0;
+        quad.v[3] = sprite.v1;
+
+        quad.texture = &textures[sprite.texture];
+        quad.blend = AnmBlendMode::Alpha;
+        quad.nearest = true;
+        raster.draw(quad);
+        ++drawn;
+    }
+
+    std::vector<u8> png;
+    if (!encode_png(WIDTH, HEIGHT, raster.pixels(), png)) return;
+
+    std::printf("ANMSPR name=%s sprites=%u drawn=%u quads=%u written=%u ",
+                wanted, unsigned(resource.sprites.size()), drawn,
+                raster.quads_drawn, raster.pixels_written);
+    static const char* kTable =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::size_t i = 0;
+    while (i + 2 < png.size()) {
+        const u32 triple = (u32(png[i]) << 16) | (u32(png[i + 1]) << 8) |
+                           u32(png[i + 2]);
+        std::putchar(kTable[(triple >> 18) & 0x3F]);
+        std::putchar(kTable[(triple >> 12) & 0x3F]);
+        std::putchar(kTable[(triple >> 6) & 0x3F]);
+        std::putchar(kTable[triple & 0x3F]);
+        i += 3;
+    }
+    if (i < png.size()) {
+        u32 triple = u32(png[i]) << 16;
+        if (i + 1 < png.size()) triple |= u32(png[i + 1]) << 8;
+        std::putchar(kTable[(triple >> 18) & 0x3F]);
+        std::putchar(kTable[(triple >> 12) & 0x3F]);
+        std::putchar(i + 1 < png.size() ? kTable[(triple >> 6) & 0x3F] : '=');
+        std::putchar('=');
+    }
+    std::putchar('\n');
+}
 void emit_anm_render(const std::vector<u8>& file) {
     // Render a real ANM scene into an RGBA8 buffer and report coverage.
     //
@@ -890,6 +996,7 @@ int main(int argc, char** argv) {
     emit_anm_objects(file);
     emit_anm_render(file);
     emit_anm_atlas(file);
+    emit_anm_sprites(file);
     emit_std(file);
     emit_session(file);
     emit_tables();
