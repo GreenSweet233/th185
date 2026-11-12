@@ -30,13 +30,16 @@ IMPLEMENTED = {
     0, 1, 10, 11, 12, 13, 14, 23, 30, 40, 41, 42, 43, 44, 78, 83, 1013, 1015,
     300, 302, 304,
     306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
+    # stack effects inferred from loop-balance constraints (ecl_stack_infer.py)
+    45, 81, 82, 93, 94, 303, 313, 316, 319, 404, 405, 412, 422, 441, 445,
+    535, 555, 601, 603, 604, 605, 609, 610, 615, 626, 627, 628, 1011, 1021,
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
     68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 79, 80, 88,
 }
 
 # Deliberately reported unsupported (needs the ECL context/owner object).
 NEEDS_CONTEXT = {
-    15, 16, 17, 18, 19, 20, 21, 45, 81, 82, 86, 87,
+    15, 16, 17, 18, 19, 20, 21, 86,
 }
 
 INSTRUCTION_HEADER = 8
@@ -96,16 +99,16 @@ def selftest() -> int:
 
     implemented_share = sum(c for op, c in counts.items() if op in IMPLEMENTED)
     needs_share = sum(c for op, c in counts.items() if op in NEEDS_CONTEXT)
-    # StoreInt/StoreFloat are now implemented via EclContext (reference
-    # resolution). What remains blocked is Call (subroutine calls) and
-    # Spawn (thread management), which need an owner object.
-    ok = 0.68 <= implemented_share / total <= 0.76
+    # Almost everything is now reachable. What remains blocked is Spawn and the
+    # thread ops (15..21) plus LengthSquared/AngleTo (86/87), which need an
+    # owner object rather than just variable storage.
+    ok = 0.80 <= implemented_share / total <= 0.88
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:
         failures += 1
 
-    ok = 0.03 <= needs_share / total <= 0.10
+    ok = 0.00 <= needs_share / total <= 0.05
     print('[%s] needs-context opcodes cover %.2f%% (blocked on EclContext)'
           % ('PASS' if ok else 'FAIL', 100.0 * needs_share / total))
     if not ok:

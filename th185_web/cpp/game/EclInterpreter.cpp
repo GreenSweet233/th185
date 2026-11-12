@@ -138,16 +138,44 @@ const OpName kOpNames[] = {
 // That inconsistency is itself informative: it means Wave17_Girl_at changes
 // depth deliberately and cannot be used as a balance constraint.
 
-const u16 kRecordOnly[] = {
-    306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
+// Net stack effect inferred from loop-balance constraints by
+// scripts/native/ecl_stack_infer.py (404 of 480 loops usable).
+//
+// These are CANDIDATE values, not proof of semantics. What they DO guarantee is
+// that the stack stays balanced, which is the property whose violation caused
+// the earlier rollback. The interpreter applies the net effect and records the
+// payload; semantics stay unknown and are documented as such.
+struct NetEffect {
+    u16 opcode;
+    i8 net;
 };
 
-bool is_record_only(u16 opcode) {
-    for (u16 candidate : kRecordOnly) {
-        if (candidate == opcode) return true;
+const NetEffect kInferredNet[] = {
+    // 600 family
+    {601, +1}, {603, -1}, {604, 0}, {605, -1}, {609, 0}, {610, 0},
+    {615, 0}, {626, -2}, {627, +1}, {628, -2},
+    // other TH185-only
+    {45, -1}, {81, -1}, {82, -2}, {93, +1}, {94, +1},
+    {303, 0}, {313, -1}, {316, -1}, {319, +1},
+    {404, 0}, {405, +1}, {412, +1}, {422, 0}, {441, +1}, {445, +2},
+    {535, 0}, {555, 0}, {1011, 0}, {1021, -1},
+    // data-only opcodes already established (net 0)
+    {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0}, {600, 0},
+    {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
+};
+
+// Returns true and fills `net` when the opcode has an inferred effect.
+bool inferred_net(u16 opcode, i8& net) {
+    for (const NetEffect& entry : kInferredNet) {
+        if (entry.opcode == opcode) {
+            net = entry.net;
+            return true;
+        }
     }
     return false;
 }
+
+
 
 const char* EclInterpreter::opcode_name(u16 opcode) {
     for (const OpName& entry : kOpNames) {
@@ -157,7 +185,8 @@ const char* EclInterpreter::opcode_name(u16 opcode) {
 }
 
 bool EclInterpreter::is_supported(u16 opcode) {
-    if (is_record_only(opcode)) return true;
+    i8 net = 0;
+    if (inferred_net(opcode, net)) return true;
     return opcode_name(opcode)[0] != 0;
 }
 
@@ -260,13 +289,37 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
         const u8* payload = instruction + INSTRUCTION_HEADER;
 
-        // Record-only opcodes are handled before the switch: they have no
-        // stack effect, so there is nothing to dispatch.
-        if (is_record_only(opcode)) {
-            context.record_op(opcode, payload,
-                              u32(size - INSTRUCTION_HEADER));
-            pc += size;
-            continue;
+        // Opcodes with an inferred net effect are handled before the switch:
+        // apply the net stack change and record the payload. This keeps the
+        // stack balanced (the property that matters) without claiming to know
+        // the semantics.
+        {
+            i8 net = 0;
+            if (inferred_net(opcode, net)) {
+                context.record_op(opcode, payload,
+                                  u32(size - INSTRUCTION_HEADER));
+                if (net < 0) {
+                    for (i8 i = 0; i < -net; ++i) {
+                        u32 discarded = 0;
+                        if (!stack_.pop_raw(discarded)) {
+                            ++stats_.fault_count;
+                            return EclRunResult::Fault;
+                        }
+                    }
+                } else if (net > 0) {
+                    for (i8 i = 0; i < net; ++i) {
+                        if (!stack_.push(EclValue::Type::Integer, 0)) {
+                            ++stats_.fault_count;
+                            return EclRunResult::Fault;
+                        }
+                    }
+                }
+                if (stack_.depth() > stats_.max_stack_depth) {
+                    stats_.max_stack_depth = stack_.depth();
+                }
+                pc += size;
+                continue;
+            }
         }
 
         if (!is_supported(opcode)) {

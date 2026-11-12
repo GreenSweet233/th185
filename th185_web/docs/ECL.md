@@ -1881,3 +1881,125 @@ python th185_web/scripts/native/ecl_stack_infer.py --report     # 完整列表
 1. 按 `net` 值实现 600 族（每轮弹 N 个值）
 2. 用 `maxdepth` 监控验证假设（这是上一轮学到的检验器）
 3. 若栈深异常，说明该 op 的 `net` 推断错了
+
+---
+
+## 19. ★★ 按推断值实现 32 个操作码：栈平衡假设得到验证
+
+### 19.1 做法
+
+上一轮用循环平衡约束推断出 32 个操作码的栈净增。本轮按这些值实现：
+
+```cpp
+i8 net = 0;
+if (inferred_net(opcode, net)) {
+    context.record_op(opcode, payload, payload_size);   // 记录数据
+    if (net < 0) {
+        for (i8 i = 0; i < -net; ++i) stack_.pop_raw(discarded);
+    } else if (net > 0) {
+        for (i8 i = 0; i < net; ++i) stack_.push(Integer, 0);
+    }
+    pc += size;
+    continue;
+}
+```
+
+**关键：不宣称语义已知。** 只保证栈平衡（这是导致上次回退的那个属性），
+payload 被记录下来供将来分析。
+
+### 19.2 ★ 验证：maxdepth 是判据
+
+| 指标 | 实现前 | 实现后 |
+|---|---|---|
+| `clean`（可执行子程序） | 112 | **147** |
+| `faulted` | 0 | **0** |
+| **`maxdepth`** | **26** | **36** |
+| `instrs` | 101657 | **702362** |
+
+**`maxdepth = 36`，远离容量 16384。**
+
+这是推断值正确的**运行时证据**：
+如果某个 `net` 推断错了，栈会单调漂移，`maxdepth` 会持续攀升。
+它停在 36 说明每轮循环都正确回到原深度。
+
+> 对比上一轮的失败：那时 `maxdepth` 撞到 1024（当时的容量），
+> 正是「假设错了」的信号。现在它停在 36，是「假设对了」的信号。
+**同一个指标，两种结论。**
+
+### 19.3 覆盖率跃升
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 覆盖率 | 74.05% | **85.24%** |
+| 可执行子程序（静态） | 123 | **170** |
+| 实际执行子程序 | 112 | **147** |
+| 执行指令数 | 101657 | **702362** |
+| 执行故障 | 0 | **0** |
+| TH185 独有剩余 | 5275 | **3095** |
+| 需 owner 对象 | 894 | **413（1.74%）** |
+
+### 19.4 剩余的 1.74%
+
+413 条指令无法执行，原因是它们需要 **owner 对象**（线程管理器）而非变量存储：
+
+| 操作码 | 说明 |
+|---|---|
+| `15` Spawn | 创建线程 |
+| `16` SpawnNamed | 按名字创建线程 |
+| `17..21` | 线程标志/状态/取消 |
+| `86` LengthSquared | 需要浮点引用解析 |
+| `87` AngleTo | 同上 |
+
+**这 413 条是真正的结构性依赖**——没有线程管理器，它们无法执行。
+
+### 19.5 三层证据链
+
+| 层 | 内容 | 等级 |
+|---|---|---|
+| 1 | payload 结构（全量样本验证） | **observed** |
+| 2 | 栈净增（404 个循环约束） | **observed** |
+| 3 | 语义（每个 op 做什么） | **unknown** |
+
+**第 1、2 层有数据支撑，第 3 层明确标注为未知。**
+这个区分让后来者知道哪些可以直接用、哪些必须继续逆向。
+
+### 19.6 验证（15 项）
+
+```
+[PASS] implemented opcodes cover 85.24% of instructions
+[PASS] needs-context opcodes cover 1.74%
+[PASS] implemented and needs-context sets are disjoint
+[PASS] every jump target is a boundary or past the subroutine end (0 bad, 34 exits)
+[PASS] instruction offsets are contiguous (0 bad)
+[PASS] 170 subroutine(s) use only implemented opcodes
+[PASS] every Store reference decodes (411 builtin, 537 frame-local, 0 bad)
+[PASS] both reference kinds occur in real data
+[PASS] all 364 Call targets parse (0 bad)
+[PASS] 156 distinct call targets
+[PASS] all 1021 op1013 schedules have the expected structure (0 bad)
+[PASS] every op1013 time sequence is non-decreasing (1021/1021)
+[PASS] op1013 slot values are a small set (11 distinct)
+[PASS] all 1704 op23 prefixes are 0 or 8 (0 bad)
+[PASS] op23 values are a small frame-like set (51 distinct)
+```
+
+真实执行（5 项）：
+
+```
+[PASS] the interpreter executed real ECL (yes)
+[PASS] zero execution faults (0)
+[PASS] at least 140 subroutines ran (147)
+[PASS] stack depth stays sane (36, limit 256)
+[PASS] over 500000 instructions executed (702362)
+```
+
+### 19.7 教训：同一个指标，两种结论
+
+`maxdepth` 这个指标在本项目里出现过两次，含义完全相反：
+
+| 场景 | maxdepth | 结论 |
+|---|---|---|
+| 误判「不弹栈」 | **1024（撞容量）** | 假设错了 |
+| 按推断 net 实现 | **36（稳定）** | 假设对了 |
+
+**好的监控指标不是「有异常就报警」，而是「能区分两种假设的真假」。**

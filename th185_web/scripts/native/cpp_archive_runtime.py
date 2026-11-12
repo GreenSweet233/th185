@@ -210,8 +210,8 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("faulted")))
         if not ok:
             failures += 1
-        ok = int(fields.get("ran", "0")) >= 100
-        print("[%s] at least 100 subroutines ran (%s)"
+        ok = int(fields.get("ran", "0")) >= 140
+        print("[%s] at least 140 subroutines ran (%s)"
               % ("PASS" if ok else "FAIL", fields.get("ran")))
         if not ok:
             failures += 1
@@ -222,8 +222,8 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("maxdepth")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) > 100000
-        print("[%s] over 100000 instructions executed (%s)"
+        ok = int(fields.get("instrs", "0")) > 500000
+        print("[%s] over 500000 instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

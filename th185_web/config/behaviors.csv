@@ -155,3 +155,7 @@ BHV-ECL-170,SYS-CORE-ECL,"★ 栈效果推断器：用「循环体净增为零�
 BHV-ECL-171,SYS-CORE-ECL,"推断出 32 个操作码的栈效果，全部 |net| <= 4；其中 600 族 10 个（601+1、604 0、609 0、605-1、603-1、626-2、627+1、628-2、610 0、615 0）",original,observed,verified,"th185_web/scripts/native/ecl_stack_infer.py --selftest","这些是候选值不是证明"
 BHV-ECL-172,SYS-CORE-ECL,"★ 推断器有明确局限：只有「真正平衡」的循环才能用；不加 |残差|<=4 过滤时求解器会给出 ±17 这种不可能的单个指令效果",original,observed,verified,"th185_web/scripts/native/ecl_stack_infer.py --selftest","过滤是结果可用的关键"
 BHV-ECL-173,SYS-CORE-ECL,"Wave17_Girl_at 的循环推入 8 个值仅弹出 1 个，需要未知 op 贡献 -7，但推断给出 +1 和 0——证明该循环是「故意改变栈深」的非平衡循环，被过滤器正确排除",original,observed,verified,"th185_web/scripts/native/ecl_stack_infer.py --selftest","这个不自洽本身是信息"
+BHV-ECL-180,SYS-CORE-ECL,"★ 按推断的 net 值实现 32 个操作码后，栈平衡假设得到验证：maxdepth 26→36（远离容量 16384）",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","推断值正确性的运行时证据"
+BHV-ECL-181,SYS-CORE-ECL,"覆盖率 74.05%→85.24%；实际执行子程序 112→147 个；执行指令 101657→702362；故障仍为 0",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","TH185 独有剩余 5275→3095"
+BHV-ECL-182,SYS-CORE-ECL,"实现方式：对推断出 net 的操作码，按 net 弹栈或压占位值，同时记录 payload；不宣称语义已知",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","结构 observed，语义 unknown"
+BHV-ECL-183,SYS-CORE-ECL,"仅剩 1.74% 指令（413 条）因缺少 owner 对象而无法执行：Spawn 与线程操作 15..21、LengthSquared/AngleTo 86/87",original,observed,implemented,"","这些需要线程管理器而非变量存储"
