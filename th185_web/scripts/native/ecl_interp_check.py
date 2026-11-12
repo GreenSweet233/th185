@@ -27,7 +27,7 @@ sys.path.insert(0, str(HERE))
 
 # Opcodes the C++ skeleton implements (mirrors EclInterpreter.hpp).
 IMPLEMENTED = {
-    0, 1, 10, 11, 12, 13, 14, 30, 40, 41, 42, 43, 44, 83,
+    0, 1, 10, 11, 12, 13, 14, 23, 30, 40, 41, 42, 43, 44, 83, 1013,
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
     68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 79, 80, 88,
 }
@@ -97,7 +97,7 @@ def selftest() -> int:
     # StoreInt/StoreFloat are now implemented via EclContext (reference
     # resolution). What remains blocked is Call (subroutine calls) and
     # Spawn (thread management), which need an owner object.
-    ok = 0.48 <= implemented_share / total <= 0.56
+    ok = 0.58 <= implemented_share / total <= 0.66
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:
@@ -292,7 +292,93 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 9. Report the honest coverage split so the number cannot drift silently.
+    # 9. op 1013 structure: u32 reserved, u32 slot, u32 time[8], u32 reserved,
+    #    with times monotonically non-decreasing. Verified on all occurrences.
+    sched_total = 0
+    sched_mono = 0
+    sched_slots = collections.Counter()
+    sched_bad = []
+    for resource in resources:
+        for sub in resource['subs']:
+            for ins in sub['instructions']:
+                if ins['id'] != 1013:
+                    continue
+                sched_total += 1
+                payload = ins.get('payload', b'')
+                if len(payload) < 44:
+                    sched_bad.append((sub.get('name', '?'), ins['offset'], 'short'))
+                    continue
+                reserved0 = int.from_bytes(payload[0:4], 'little')
+                slot = int.from_bytes(payload[4:8], 'little')
+                times = [int.from_bytes(payload[8 + i * 4:12 + i * 4], 'little')
+                         for i in range(8)]
+                reserved1 = int.from_bytes(payload[40:44], 'little')
+                if reserved0 != 0 or reserved1 != 0:
+                    sched_bad.append((sub.get('name', '?'), ins['offset'], 'reserved'))
+                    continue
+                if all(times[i] <= times[i + 1] for i in range(7)):
+                    sched_mono += 1
+                else:
+                    sched_bad.append((sub.get('name', '?'), ins['offset'], 'mono'))
+                sched_slots[slot] += 1
+    ok = sched_total == 1021 and not sched_bad
+    print('[%s] all %d op1013 schedules have the expected structure (%d bad)'
+          % ('PASS' if ok else 'FAIL', sched_total, len(sched_bad)))
+    if not ok:
+        for item in sched_bad[:5]:
+            print('       %s' % (item,))
+        failures += 1
+
+    ok = sched_mono == sched_total
+    print('[%s] every op1013 time sequence is non-decreasing (%d/%d)'
+          % ('PASS' if ok else 'FAIL', sched_mono, sched_total))
+    if not ok:
+        failures += 1
+
+    ok = len(sched_slots) <= 12
+    print('[%s] op1013 slot values are a small set (%d distinct: %s)'
+          % ('PASS' if ok else 'FAIL', len(sched_slots), sorted(sched_slots)[:12]))
+    if not ok:
+        failures += 1
+
+    # 10. op 23 structure. Same prefix mechanism as Call: payload[0] is a
+    #     PREFIX LENGTH (0 in 1577 cases, 8 in 127 cases), not a reserved word.
+    #     Reading it as reserved made 127 samples look corrupt.
+    timer_total = 0
+    timer_bad = []
+    timer_prefixes = collections.Counter()
+    timer_values = collections.Counter()
+    for resource in resources:
+        for sub in resource['subs']:
+            for ins in sub['instructions']:
+                if ins['id'] != 23:
+                    continue
+                timer_total += 1
+                payload = ins.get('payload', b'')
+                if len(payload) < 8:
+                    timer_bad.append((sub.get('name', '?'), ins['offset'], 'short'))
+                    continue
+                prefix = int.from_bytes(payload[0:4], 'little')
+                timer_prefixes[prefix] += 1
+                if prefix not in (0, 8):
+                    timer_bad.append((sub.get('name', '?'), ins['offset'], prefix))
+                    continue
+                timer_values[int.from_bytes(payload[4:8], 'little', signed=True)] += 1
+    ok = timer_total == 1704 and not timer_bad
+    print('[%s] all %d op23 prefixes are 0 or 8 (%d bad)'
+          % ('PASS' if ok else 'FAIL', timer_total, len(timer_bad)))
+    if not ok:
+        for item in timer_bad[:5]:
+            print('       %s' % (item,))
+        failures += 1
+
+    ok = len(timer_values) <= 60
+    print('[%s] op23 values are a small frame-like set (%d distinct)'
+          % ('PASS' if ok else 'FAIL', len(timer_values)))
+    if not ok:
+        failures += 1
+
+    # 11. Report the honest coverage split so the number cannot drift silently.
     print()
     print('       coverage breakdown:')
     print('         total instructions : %d' % total)

@@ -78,6 +78,30 @@ struct EclContext {
     // Register a subroutine so Call can find it.
     void add_subroutine(std::string name, std::vector<u8> code);
 
+    // --- op 1013: spawn schedule ---------------------------------------
+    //
+    // Structure is fully determined (1021/1021 occurrences):
+    //   u32 reserved(0), u32 slot, u32 time[8], u32 reserved(0)
+    // and all 1021 time[8] sequences are monotonically non-decreasing.
+    //
+    // The SEMANTICS are inferred, not proven: `slot` takes only
+    // 0,1,4,5,8,9,12,13,16,17,18 (grouped in pairs) and the times are
+    // frame-like integers, which reads as "spawn wave `slot` at these 8
+    // times". Recorded rather than acted on.
+    struct SpawnSchedule {
+        u32 slot = 0;
+        std::array<u32, 8> times{};
+    };
+    std::vector<SpawnSchedule> schedules;
+
+    // --- op 23: timer / wait value -------------------------------------
+    //
+    // Structure: u32 reserved(0), then one argument (frame-like integers:
+    // 60, 120, 30, 10, 240, 1000, or a negative builtin reference such as
+    // -9985). Does not touch the stack. Semantics inferred as a timer/wait.
+    u32 last_timer_value = 0;
+    u32 timer_writes = 0;
+
     // Push a fresh zeroed frame. Returns its index.
     u32 push_frame();
 

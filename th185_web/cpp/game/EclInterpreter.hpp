@@ -56,6 +56,11 @@ enum class EclOp : u16 {
     Or = 76, And = 77, PostDecrement = 78, Sin = 79, Cos = 80, Polar = 81,
     NormalizeAngle = 82, Wait = 83, NegateInt = 84, NegateFloatBits = 85,
     LengthSquared = 86, AngleTo = 87, Sqrt = 88,
+
+    // TH185-only opcodes. Payload structure is determined; semantics inferred.
+    // Declared here so the switch can be exhaustive over them.
+    Op23Timer = 23,          // u32 reserved, u32 timer value
+    Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
 };
 
 // A value on the ECL stack. TH185 tags each slot with its type, same as TH11.

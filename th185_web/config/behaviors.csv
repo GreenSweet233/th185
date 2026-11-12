@@ -135,3 +135,8 @@ BHV-ECL-131,SYS-CORE-ECL,"Call 参数描述符 = u16 tag + u16 保留 + u32 值�
 BHV-ECL-132,SYS-CORE-ECL,"Call 的前缀长度取值为 0/8/16/24（8 的倍数），非零时名字前有额外数据；忽略它会导致 173/364 解析失败",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","191/364 -> 364/364"
 BHV-ECL-133,SYS-CORE-ECL,"156 个不同的调用目标，最频繁 EffChargePoint2(57)、WorldWave01(38)、WaveSync(31)、BossInterval(11)",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","C++ EclContext::subroutines 注册表"
 BHV-ECL-134,SYS-CORE-ECL,"实现 Call 后完全可执行子程序从 1 个提升到 11 个（Wave14Loop/Wave16Loop/Wave17Loop/Wave19Loop 等）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","端到端验证能力显著提升"
+BHV-ECL-140,SYS-CORE-ECL,"op1013（1021 条）结构：[u32 前缀=0][u32 槽位][u32 时间[8]][u32 保留=0]；1021/1021 时间序列单调不减",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","语义推断为「在 8 个时间点生成波次」"
+BHV-ECL-141,SYS-CORE-ECL,"op1013 的槽位取值只有 11 个：0,1,4,5,8,9,12,13,16,17,18（成对分组）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","对应波次槽位索引"
+BHV-ECL-142,SYS-CORE-ECL,"op23（1704 条）结构：[u32 前缀长度(0或8)][u32 值]；值是帧数类整数（60/120/30/10/240）或 builtin 引用（-9985）",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","前缀 0 有 1577 次、8 有 127 次"
+BHV-ECL-143,SYS-CORE-ECL,"★ op23 的 payload[0] 与 Call 一样是前缀长度而非保留字；误读为保留字会让 127 个样本看起来损坏",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","前缀机制是 TH185 ECL 的通用约定"
+BHV-ECL-144,SYS-CORE-ECL,"实现 op23+op1013 后覆盖率从 49.34% 提升到 60.80%，完全可执行子程序从 11 个提升到 30 个",original,observed,verified,"th185_web/scripts/native/ecl_interp_check.py","这两个 opcode 合计 2725 条占 11.5%"

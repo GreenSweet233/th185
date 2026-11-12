@@ -1320,3 +1320,149 @@ case EclOp::Call: {
 | **`Spawn`(126)** | ❌ 需要线程管理 |
 | **TH185 独有 10743 条** | ❌ 未开始（45.19%） |
 | **builtin 槽语义** | ❌ 只有 9 个已知 |
+
+---
+
+## 15. ★ TH185 独有操作码：op23 与 op1013（2725 条，11.5%）
+
+### 15.1 为什么先做这两个
+
+它们是 TH185 独有的最高频操作码：
+
+| 操作码 | 次数 | 占比 |
+|---|---|---|
+| 23 | 1704 | 7.2% |
+| 1013 | 1021 | 4.3% |
+| **合计** | **2725** | **11.5%** |
+
+而且**两者都不操作栈**——即使语义推断错了，栈仍然正确，
+记录下来的数据也是可观测的。这是低风险高收益的顺序。
+
+### 15.2 op1013：生成计划
+
+```c
+struct Op1013 {
+    uint32 prefix;      // 恒为 0
+    uint32 slot;        // 波次槽位
+    uint32 times[8];    // 8 个时间点
+    uint32 reserved;    // 恒为 0
+};
+```
+
+**1021/1021 的时间序列全部单调不减。**
+
+| slot 取值 | 次数 |
+|---|---|
+| 0 | 121 |
+| 1, 4, 5, 8, 9, 12, 13 | 各 112~113 |
+| 16 | 113 |
+| 17, 18 | 各 1 |
+
+**只有 11 个不同值，且成对分组**（`0,1` / `4,5` / `8,9` / `12,13` / `16,17,18`）。
+
+推断语义：**「在 8 个时间点生成波次 `slot`」**。
+
+### 15.3 op23：计时器
+
+```c
+struct Op23 {
+    uint32 prefix;   // 0 或 8
+    uint32 value;    // 帧数类整数或 builtin 引用
+};
+```
+
+值分布（51 个不同值）：
+
+| 值 | 次数 |
+|---|---|
+| 1000 | 272 |
+| 60 | 261 |
+| 120 | 180 |
+| 1 | 165 |
+| 30 | 137 |
+| -1 | 127 |
+| -9985 | 84（builtin 引用） |
+
+### 15.4 ★ 前缀机制是通用约定
+
+`op23` 的 `payload[0]` 一开始被当成保留字，**127 个样本因此看起来损坏**：
+
+```
+payload = 08000000 ffffffff 00000000
+          ^^^^^^^^ 应为保留字却等于 8
+```
+
+实际上它是**前缀长度**——与 `Call` 的机制完全相同：
+
+| 操作码 | payload[0] 含义 | 取值 |
+|---|---|---|
+| `Call` | 名字前的额外字节数 | 0/8/16/24 |
+| `op23` | 数据前的额外字节数 | 0/8 |
+
+**这说明「payload[0] = 前缀长度」是 TH185 ECL 的通用约定**，
+而不是个别操作码的特例。以后遇到新操作码应当先假设它成立。
+
+### 15.5 ★ 覆盖率跃升
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 覆盖率 | 49.34% | **60.80%** |
+| **完全可执行子程序** | **11 个** | **30 个** |
+| TH185 独有剩余 | 10743 | 8018 |
+
+**从 30% 到 60% 的覆盖率跃升，只加了两个操作码。**
+
+这验证了上一轮的判断：与其逐族逆向 10743 条，不如先做最高频的少数几个。
+
+### 15.6 新增可执行的真实子程序
+
+```
+Wave01 / Wave01Loop   (8 条指令)
+Wave02 / Wave02Loop   (8 条指令)
+Wave01t / Wave01tLoop (8 条指令)
+BossDead / NoEnemyDebug (5 条指令)
+```
+
+**这些是真实的关卡波次循环逻辑**，不是测试桩。
+
+### 15.7 验证（15 项）
+
+```
+[PASS] implemented opcodes cover 60.80% of instructions
+[PASS] needs-context opcodes cover 5.47%
+[PASS] implemented and needs-context sets are disjoint
+[PASS] every jump target is a boundary or past the subroutine end (0 bad, 34 exits)
+[PASS] instruction offsets are contiguous (0 bad)
+[PASS] 30 subroutine(s) use only implemented opcodes
+[PASS] every Store reference decodes (411 builtin, 537 frame-local, 0 bad)
+[PASS] both reference kinds occur in real data
+[PASS] all 364 Call targets parse (0 bad)
+[PASS] 156 distinct call targets
+[PASS] all 1021 op1013 schedules have the expected structure (0 bad)
+[PASS] every op1013 time sequence is non-decreasing (1021/1021)
+[PASS] op1013 slot values are a small set (11 distinct)
+[PASS] all 1704 op23 prefixes are 0 or 8 (0 bad)
+[PASS] op23 values are a small frame-like set (51 distinct)
+```
+
+### 15.8 证据等级说明
+
+| 项 | 等级 |
+|---|---|
+| payload 结构 | **observed**（全量样本验证） |
+| 时间序列单调 | **observed**（1021/1021） |
+| slot 取值范围 | **observed**（11 个） |
+| **语义（生成波次 / 计时器）** | **inferred**（推断，未验证） |
+
+> 结构是 `observed`，语义是 `inferred`——这个区分很重要。
+> 前者有全量数据支撑，后者只是「看起来像」。
+
+### 15.9 仍然缺失
+
+| 项 | 状态 |
+|---|---|
+| op23 / op1013 结构 | ✅ 全量验证 |
+| **op23 / op1013 语义** | ❌ 推断，未验证 |
+| **`Spawn`(126)** | ❌ 需要线程管理 |
+| **op45 真实语义** | ❌ 不是 StoreFloat |
+| **TH185 独有剩余 8018 条** | ❌ 33.7% |

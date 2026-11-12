@@ -100,7 +100,7 @@ const OpName kOpNames[] = {
     {75, "Xor"}, {76, "Or"}, {77, "And"}, {78, "PostDecrement"}, {79, "Sin"},
     {80, "Cos"}, {81, "Polar"}, {82, "NormalizeAngle"}, {83, "Wait"},
     {84, "NegateInt"}, {85, "NegateFloatBits"}, {86, "LengthSquared"},
-    {87, "AngleTo"}, {88, "Sqrt"},
+    {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1013, "Op1013Schedule"},
 };
 
 }  // namespace
@@ -544,6 +544,32 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
             if (nested_result == EclRunResult::Fault) {
                 return EclRunResult::Fault;
             }
+            break;
+        }
+
+        // --- TH185-only opcodes -------------------------------------------
+        //
+        // These two are the busiest opcodes that TH11 does not have
+        // (1704 + 1021 = 2725 instructions, 11.5%). Their PAYLOAD STRUCTURE is
+        // fully determined from the shipped data; their SEMANTICS are inferred.
+        // Neither touches the operand stack, so recording them is safe even if
+        // the interpretation turns out to be wrong -- the stack stays correct
+        // and the records are observable.
+        case EclOp::Op23Timer: {
+            // payload: u32 reserved, u32 value
+            context.last_timer_value = arg_u32(payload, 0);
+            ++context.timer_writes;
+            break;
+        }
+
+        case EclOp::Op1013Schedule: {
+            // payload: u32 reserved, u32 slot, u32 time[8], u32 reserved
+            EclContext::SpawnSchedule schedule;
+            schedule.slot = arg_u32(payload, 0);
+            for (u32 i = 0; i < 8; ++i) {
+                schedule.times[i] = arg_u32(payload, 1 + i);
+            }
+            context.schedules.push_back(schedule);
             break;
         }
 
