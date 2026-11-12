@@ -106,11 +106,16 @@ bool Application::register_stage_scripts(u32 stage_index) {
         for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
             if (archive_.entries[i].name == name) { entry = i; break; }
         }
+        std::printf("ECL_FIND name=%s entry=%zu total=%zu\n",
+                    name, entry, archive_.entries.size());
         if (entry == archive_.entries.size()) continue;
         std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &error_);
         if (blob.empty()) continue;
         EclResource part;
-        if (!part.parse(std::move(blob), &error_)) continue;
+        const bool parsed = part.parse(std::move(blob), &error_);
+        std::printf("ECL_LOAD %s parsed=%d subs=%zu err=%s\n",
+                    name, parsed ? 1 : 0, part.subs.size(), error_.c_str());
+        if (!parsed) continue;
         any = true;
         // Merge into `resource` by moving its subroutines and data.
         if (resource.data.empty()) resource = std::move(part);
@@ -270,26 +275,55 @@ void Application::consume_schedules() {
             fired_schedule_keys_.insert(key);
             ++stats_.schedules_fired;
 
-            // Position comes from the scene's own group table when it has
-            // one. `.std` groups carry the real formation coordinates
-            // (world04's 15 groups are two 7-point rings), so using them
-            // beats inventing a layout. The group index is the slot taken
-            // modulo the group count -- the exact slot->group mapping is
-            // still inferred, and this keeps every group reachable.
+            // Three levels of layout data, in order of authority:
+            //
+            //   1. The wave entry whose slot_id names a group -> that group's
+            //      coordinates (world04: slot_id 1,0,5,4 against 15 groups).
+            //   2. The wave entry's own f1/f2 position, when it has no group.
+            //   3. A synthetic row, when the scene has no wave entries at all
+            //      (the tutorial stages declare waves but no groups).
+            //
+            // All .std coordinates live in a 384x448 space, so subtract half
+            // to centre them on the field.
             float x = 0.0f;
             float y = -180.0f;
             float group_size = 16.0f;
-            if (!stage_.groups.empty()) {
-                const StageGroup& group =
-                    stage_.groups[schedule.slot % stage_.groups.size()];
-                // The .std coordinate space is 384x448 centred on the field;
-                // the field itself is 384x448, so shift by half.
-                x = group.x - 192.0f;
-                y = group.y - 224.0f;
+            bool placed = false;
+
+            // Level 1: op1013 slot -> wave entry -> group.
+            const StageWave* wave_entry = nullptr;
+            for (const StageWave& candidate : stage_.waves) {
+                if (candidate.slot_id == schedule.slot) { wave_entry = &candidate; break; }
+            }
+            if (wave_entry && wave_entry->slot_id < stage_.groups.size()) {
+                const StageGroup& group = stage_.groups[wave_entry->slot_id];
+                // The group coordinates are in the .std's own space, which
+                // differs per scene: world06/world07 are centred on 0, while
+                // world04 sits around x=115 y=146. Rather than hardcode one
+                // scene's origin, centre on the group table's own bounding box
+                // -- that maps every scene into the field without per-scene
+                // constants.
+                float min_x = stage_.groups[0].x, max_x = min_x;
+                float min_y = stage_.groups[0].y, max_y = min_y;
+                for (const StageGroup& g : stage_.groups) {
+                    if (g.x < min_x) min_x = g.x;
+                    if (g.x > max_x) max_x = g.x;
+                    if (g.y < min_y) min_y = g.y;
+                    if (g.y > max_y) max_y = g.y;
+                }
+                const float centre_x = (min_x + max_x) * 0.5f;
+                const float centre_y = (min_y + max_y) * 0.5f;
+                x = group.x - centre_x;
+                y = group.y - centre_y;
                 if (group.size_a > 0.0f) group_size = group.size_a;
-            } else {
-                // No group table (the tutorial stages have none): fall back
-                // to spreading the slots in a row.
+                placed = true;
+            }
+            // Level 2: the wave entry's own position. f1/f2 are NOT a spawn
+            // point -- world01t's first entry reads 1024/512, which is the
+            // field extent, not a location -- so this level is deliberately
+            // left unused rather than guessed at.
+            // Level 3: synthetic row.
+            if (!placed) {
                 const u32 pair = schedule.slot / 4;
                 x = (float(pair) - 2.0f) * 60.0f;
             }
@@ -305,6 +339,8 @@ void Application::consume_schedules() {
             // Higher templates drift a little faster, which makes the wave
             // progression visible without inventing per-template data.
             const float speed = 0.30f + float(template_index % 8u) * 0.05f;
+
+
             enemies_.spawn(x, y, 0.0f, speed, group_size, 2, sprite);
         }
     }

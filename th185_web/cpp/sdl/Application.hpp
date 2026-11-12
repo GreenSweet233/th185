@@ -124,6 +124,8 @@ public:
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
     const StageScript& stage() const { return stage_; }
+    const Archive& archive() const { return archive_; }
+    const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
     const EnemyPool& enemies() const { return enemies_; }
     const BulletPool& bullets() const { return bullets_; }

@@ -251,10 +251,12 @@ def main() -> int:
         for token in anmtex.split()[1:]:
             key, _, value = token.partition("=")
             fields[key] = value
-        # 54 of 55 files: title_v.anm hits the documented tail-block
-        # decryption limitation in Archive.hpp, so it cannot be extracted.
-        ok = fields.get("files") == "54"
-        print("[%s] C++ parsed %s of 55 .anm files (1 known tail-block miss)"
+        # All 55 .anm files now parse. The last holdout (title_v.anm) was
+        # blocked by the partial-block decryption rule: its tail is shorter
+        # than block/4, and the original leaves such tails as ciphertext.
+        # Implementing that rule (Archive.cpp) unblocked it.
+        ok = int(fields.get("files", "0")) >= 55
+        print("[%s] C++ parsed %s of 55 .anm files"
               % ("PASS" if ok else "FAIL", fields.get("files")))
         if not ok:
             failures += 1
@@ -284,7 +286,7 @@ def main() -> int:
         for token in anmrun.split()[1:]:
             key, _, value = token.partition("=")
             fields[key] = value
-        ok = fields.get("files") == "54"
+        ok = int(fields.get("files", "0")) >= 55
         print("[%s] interpreter ran over %s of 55 .anm files"
               % ("PASS" if ok else "FAIL", fields.get("files")))
         if not ok:

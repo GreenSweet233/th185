@@ -76,6 +76,11 @@ bool StageScript::parse(std::vector<u8> blob, std::string* error) {
         wave.f3 = read_f32(base + 0x18);
         wave.flags = read_u32(base + 0x1C);
         wave.slot_id = read_u32(base + 0x20);
+        // +0x24..+0x34: three more floats. world04 reads 192/0/0/256/512,
+        // which looks like a second position and a size pair.
+        wave.f4 = read_f32(base + 0x24);
+        wave.f5 = read_f32(base + 0x30);
+        wave.f6 = read_f32(base + 0x34);
         wave.marker2 = read_u32(base + 0x38);
         waves.push_back(wave);
     }

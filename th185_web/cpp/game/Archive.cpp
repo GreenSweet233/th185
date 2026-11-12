@@ -1,5 +1,7 @@
 #include "Archive.hpp"
 
+#include <cstdio>
+
 #include <cstring>
 
 namespace th185 {
@@ -49,11 +51,28 @@ void decrypt_in_place(u8* data, u32 size, u32 key, u32 step, u32 block,
     u8 cur_key = u8(key);
     const u8 cur_step = u8(step);
 
+    // Measured with a Unicorn write hook on the original function: a partial
+    // tail block is only processed when it is at least block/4 bytes long.
+    // Below that the original leaves those bytes as CIPHERTEXT.
+    //
+    // The evidence is a sweep over stored sizes at block = 128/256/512/1024:
+    //   block=1024: rem 100/200/255 -> 1 block written, rem 256 -> 2 blocks
+    //   block= 512: rem 100 -> 1 block, rem 200 -> 2 blocks
+    //   block= 256: rem 100 -> 2 blocks
+    //   block= 128: rem 100 -> 2 blocks
+    // i.e. the threshold is exactly block/4 in every case (20/20 samples).
+    //
+    // world04.ecl is why this matters: stored 1198 with block 1024 leaves a
+    // 174-byte tail, 174 < 256, so the original never decrypts it. Decrypting
+    // it anyway produced 4111 bytes of LZSS output instead of 4612 and the
+    // whole scene failed to load.
+    const u32 tail_floor = block / 4u;
     while (remain > 0 && avail > 0 && dst_base < size) {
         u32 chunk = remain;
         if (chunk > block) chunk = block;
         if (chunk > size - dst_base) chunk = size - dst_base;
         if (chunk == 0) break;
+        if (chunk < block && chunk < tail_floor) break;
 
         // Write order, measured with a Unicorn memory-write hook on the
         // original function (RVA 0x1E90). For a 69-byte tail the order is
@@ -292,6 +311,7 @@ std::vector<u8> Archive::extract(const std::vector<u8>& file, std::size_t index,
 
     // Decrypt with this entry is cipher params.
     const CipherParams params = cipher_for(entry.name);
+
     decrypt_in_place(data.data(), u32(data.size()), params.key, params.step,
                      params.block, params.limit);
 

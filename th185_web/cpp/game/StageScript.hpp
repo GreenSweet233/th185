@@ -47,10 +47,24 @@ constexpr u32 STD_EOF_MARKER = 16;   // 16 bytes of 0xFF at EOF
 // One wave slot (60 bytes).
 struct StageWave {
     u32 offset = 0;
-    u32 marker = 0;        // high 16 bits = wave type, low 16 bits = ordinal
+    // +0x00: high 16 bits = wave type, low 16 bits = ordinal
+    u32 marker = 0;
+    // +0x04..+0x0C: three floats. For world04 these read 640/512/0,
+    // 256/512/0, 49/785/0, 54.6/785/0 -- the first two look like a
+    // spawn position in .std space.
     float f1 = 0, f2 = 0, f3 = 0;
+    // +0x10..+0x18: three more floats (0/-2/256, 49.2/848/16, ...). Not yet
+    // interpreted; recorded so the layout stays complete.
+    float f4 = 0, f5 = 0, f6 = 0;
+    // +0x1C: 0x001C0000 on every non-final entry.
     u32 flags = 0;
-    u32 slot_id = 0;       // NOT a sequential index (world03: 0,1,2,2,2,9,10)
+    // +0x20: index into the group table. world04 reads 1, 0, 5, 4 against 15
+    // groups, which is why this is the wave -> formation mapping.
+    u32 slot_id = 0;
+    // +0x24..+0x34: three more floats. world04 reads 192/0/0/256/512, which
+    // looks like a second position plus a size pair.
+    float f4b = 0, f5b = 0, f6b = 0;
+    // +0x38: 0x001C0000, or 0x0004FFFF on the final entry.
     u32 marker2 = 0;
 };
 

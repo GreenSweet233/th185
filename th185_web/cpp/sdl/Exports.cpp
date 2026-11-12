@@ -329,6 +329,48 @@ EMSCRIPTEN_KEEPALIVE float th185_group_y(unsigned index) {
     return index < g.size() ? g[index].y : 0.0f;
 }
 
+// Raw decrypted+decompressed bytes of one archive entry, for differential
+// testing against the Python reference. Returns the length written into the
+// caller-provided buffer, or 0 on failure.
+EMSCRIPTEN_KEEPALIVE unsigned th185_probe_extract(const char* name, unsigned char* out,
+                                                  unsigned capacity) {
+    const auto& archive = th185::app::instance().archive();
+    std::size_t entry = archive.entries.size();
+    for (std::size_t k = 0; k < archive.entries.size(); ++k) {
+        if (archive.entries[k].name == name) { entry = k; break; }
+    }
+    if (entry >= archive.entries.size()) return 0;
+    std::string err;
+    std::vector<th185::u8> blob =
+        archive.extract(th185::app::instance().archive_bytes(), entry, &err);
+    if (blob.empty() || blob.size() > capacity) return 0;
+    std::memcpy(out, blob.data(), blob.size());
+    return unsigned(blob.size());
+}
+
+// Decrypt-only path for differential testing: returns the decrypted stored
+// bytes WITHOUT LZSS, so a mismatch can be attributed to one stage.
+EMSCRIPTEN_KEEPALIVE unsigned th185_probe_decrypt(const char* name,
+                                                  unsigned char* out,
+                                                  unsigned capacity) {
+    const auto& app = th185::app::instance();
+    const auto& archive = app.archive();
+    std::size_t entry = archive.entries.size();
+    for (std::size_t k = 0; k < archive.entries.size(); ++k) {
+        if (archive.entries[k].name == name) { entry = k; break; }
+    }
+    if (entry >= archive.entries.size()) return 0;
+    const th185::ArchiveEntry& e = archive.entries[entry];
+    const th185::u32 stored = archive.stored_size(entry);
+    if (stored == 0 || stored > capacity) return 0;
+    const std::vector<th185::u8>& file = app.archive_bytes();
+    std::memcpy(out, file.data() + e.offset, stored);
+    const th185::CipherParams params = th185::cipher_for(e.name);
+    th185::decrypt_in_place(out, stored, params.key, params.step, params.block,
+                            params.limit);
+    return stored;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
