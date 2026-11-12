@@ -187,6 +187,9 @@ void Application::load_scene_banks() {
     // The player atlas is its own bank; load it without auto-spawning roots
     // because Player owns exactly one instance.
     load_animation_bank("pl01.anm", 0);
+    // The bullet atlas is needed for the shot sprites; no auto-spawn because
+    // BulletPool owns the instances.
+    load_animation_bank("bullet.anm", 0);
 
     // Bind the player to the bank that was just appended.
     if (!banks_.empty()) {
@@ -215,6 +218,65 @@ void Application::render() {
             u32(bank.textures.size()),
             float(raster_.width()) * 0.5f,
             float(raster_.height()) * 0.5f);
+    }
+    stats_.quads = quads;
+
+    // Bullets are drawn from the bullet bank when it is loaded, otherwise as
+    // tinted squares. Either way the position and lifetime are the real thing.
+    const AnimationBank* bullet_bank = nullptr;
+    for (const AnimationBank& bank : banks_) {
+        if (bank.name == "bullet.anm") { bullet_bank = &bank; break; }
+    }
+    for (const Bullet& bullet : bullets_.bullets()) {
+        if (!bullet.alive) continue;
+
+        AnmQuad quad;
+        const float half = 8.0f;
+        quad.x[0] = float(raster_.width()) * 0.5f + bullet.x - half;
+        quad.y[0] = float(raster_.height()) * 0.5f + bullet.y - half;
+        quad.x[1] = quad.x[0] + half * 2.0f;
+        quad.y[1] = quad.y[0];
+        quad.x[2] = quad.x[1];
+        quad.y[2] = quad.y[0] + half * 2.0f;
+        quad.x[3] = quad.x[0];
+        quad.y[3] = quad.y[2];
+
+        quad.u[0] = 0.0f;
+        quad.v[0] = 0.0f;
+        quad.u[1] = 1.0f;
+        quad.v[1] = 0.0f;
+        quad.u[2] = 1.0f;
+        quad.v[2] = 1.0f;
+        quad.u[3] = 0.0f;
+        quad.v[3] = 1.0f;
+
+        quad.tint = Rgba8{u8((bullet.color >> 16) & 0xFF),
+                          u8((bullet.color >> 8) & 0xFF),
+                          u8(bullet.color & 0xFF),
+                          u8((bullet.color >> 24) & 0xFF)};
+        quad.blend = AnmBlendMode::Additive;
+        quad.nearest = true;
+
+        if (bullet_bank && !bullet_bank->textures.empty() &&
+            bullet.sprite < bullet_bank->resource.sprites.size()) {
+            const AnmSprite& sprite =
+                bullet_bank->resource.sprites[bullet.sprite];
+            quad.u[0] = sprite.u0;
+            quad.v[0] = sprite.v0;
+            quad.u[1] = sprite.u1;
+            quad.v[1] = sprite.v0;
+            quad.u[2] = sprite.u1;
+            quad.v[2] = sprite.v1;
+            quad.u[3] = sprite.u0;
+            quad.v[3] = sprite.v1;
+            const u32 texture_index = sprite.texture;
+            if (texture_index < bullet_bank->textures.size()) {
+                quad.texture = &bullet_bank->textures[texture_index];
+            }
+        }
+
+        raster_.draw(quad);
+        ++quads;
     }
     stats_.quads = quads;
     stats_.pixels_written = raster_.pixels_written;
@@ -264,12 +326,15 @@ bool Application::tick(u32 held) {
     }
 
     // Input drives the player, which drives its animation instance.
-    player_.update(held);
+    player_.update(held, &bullets_);
+    bullets_.update();
     stats_.player_x = player_.x();
     stats_.player_y = player_.y();
     stats_.player_focused = player_.focused();
     stats_.player_shots = player_.stats().shots;
     stats_.player_bombs = player_.stats().bombs;
+    stats_.bullets_alive = bullets_.stats().alive;
+    stats_.bullets_fired = player_.stats().bullets_fired;
 
     // Advance the animation tree, then draw it.
     animations_.update(rng_, 1.0f);

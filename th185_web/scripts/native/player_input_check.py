@@ -74,6 +74,20 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    bullets = value('bullets')
+    ok = 'fired' in bullets and 'alive' in bullets
+    print('[%s] bullets were spawned and tracked (%s)'
+          % ('PASS' if ok else 'FAIL', bullets or '-'))
+    if not ok:
+        failures += 1
+
+    retired = value('after 120f')
+    ok = retired.endswith('alive 0')
+    print('[%s] bullets retired after leaving the screen (%s)'
+          % ('PASS' if ok else 'FAIL', retired or '-'))
+    if not ok:
+        failures += 1
+
     clamped = value('clamped')
     ok = clamped.startswith('x=-192')
     print('[%s] the player clamped to the left bound (%s)'

@@ -23,6 +23,7 @@
 // rather than magic numbers buried in the update loop.
 
 #include "AnmManager.hpp"
+#include "BulletPool.hpp"
 #include "AnmResource.hpp"
 #include "Types.hpp"
 
@@ -50,6 +51,15 @@ constexpr float PLAY_BOTTOM = 224.0f;
 constexpr float PLAYER_SPEED = 4.0f;
 constexpr float PLAYER_FOCUS_SPEED = 2.0f;
 
+// Player shot geometry. Two bullets per volley, offset left and right of the
+// player centre, travelling straight up. TH185's real shot patterns are
+// ECL-driven and not reconstructed yet, so this is a placeholder that at least
+// exercises the bullet pipeline end to end.
+constexpr float SHOT_OFFSET = 6.0f;
+constexpr float SHOT_SPEED = 14.0f;
+constexpr u32 SHOT_INTERVAL_FRAMES = 4;
+constexpr u16 SHOT_SPRITE = 0;
+
 struct PlayerStats {
     u32 frames = 0;
     u32 moved_frames = 0;
@@ -57,6 +67,7 @@ struct PlayerStats {
     u32 shots = 0;
     u32 bombs = 0;
     u32 clamped_frames = 0;
+    u32 bullets_fired = 0;
 };
 
 class Player {
@@ -65,7 +76,8 @@ public:
     bool bind(AnmManager* manager, const AnmResource* resource);
 
     // Consumes one frame of input. `held` is the bitmask from the shell.
-    void update(u32 held);
+    // Shots are spawned into `bullets`.
+    void update(u32 held, BulletPool* bullets);
 
     float x() const { return x_; }
     float y() const { return y_; }
@@ -85,6 +97,7 @@ private:
     float y_ = 192.0f;   // starts near the bottom, as in the original
     bool focused_ = false;
     u32 previous_held_ = 0;
+    u32 shot_cooldown_ = 0;
     PlayerStats stats_{};
 };
 

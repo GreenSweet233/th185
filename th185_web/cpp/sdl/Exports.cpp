@@ -163,6 +163,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_player_bombs() {
     return th185::app::instance().stats().player_bombs;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullets_alive() {
+    return th185::app::instance().stats().bullets_alive;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullets_fired() {
+    return th185::app::instance().stats().bullets_fired;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

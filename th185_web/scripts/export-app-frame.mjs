@@ -41,8 +41,11 @@ if (!module._th185_start()) {
   process.exit(1);
 }
 
+// Hold shoot for the last stretch so the frame shows bullets in flight.
+const SHOOT = 1 << 0;
 for (let i = 0; i < 30; ++i) {
-  if (!module._th185_tick(0)) {
+  const held = i >= 20 ? SHOOT : 0;
+  if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
     process.exit(1);
   }
@@ -57,6 +60,7 @@ console.log('frame      : ' + width + 'x' + height);
 console.log('bytes      : ' + bytes);
 console.log('quads      : ' + quads);
 console.log('animations : ' + live);
+console.log('bullets    : ' + module._th185_bullets_alive());
 
 if (!width || !height || !bytes) {
   console.error('FAIL: the application produced no framebuffer');

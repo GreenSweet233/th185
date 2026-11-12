@@ -40,7 +40,7 @@ void Player::select_script(u32 script_index) {
     script_ = script_index;
 }
 
-void Player::update(u32 held) {
+void Player::update(u32 held, BulletPool* bullets) {
     ++stats_.frames;
 
     focused_ = (held & ButtonFocus) != 0;
@@ -74,9 +74,31 @@ void Player::update(u32 held) {
     y_ = clampf(y_, PLAY_TOP, PLAY_BOTTOM);
     if (x_ != before_x || y_ != before_y) ++stats_.clamped_frames;
 
-    // Rising edge counts as one shot / one bomb.
-    if ((held & ButtonShoot) && !(previous_held_ & ButtonShoot)) ++stats_.shots;
+    // Rising edge counts as one bomb press.
     if ((held & ButtonBomb) && !(previous_held_ & ButtonBomb)) ++stats_.bombs;
+
+    // Shooting is a HELD action with a cooldown, not an edge action: holding the
+    // button must keep firing at a fixed rate. The edge counter is kept separate
+    // so the existing input test still means one press.
+    if ((held & ButtonShoot) && !(previous_held_ & ButtonShoot)) ++stats_.shots;
+    if (held & ButtonShoot) {
+        if (shot_cooldown_ == 0) {
+            shot_cooldown_ = SHOT_INTERVAL_FRAMES;
+            if (bullets) {
+                // Two barrels, one either side of centre.
+                bullets->spawn(x_ - SHOT_OFFSET, y_ - 12.0f, 0.0f, -SHOT_SPEED,
+                               SHOT_SPRITE);
+                bullets->spawn(x_ + SHOT_OFFSET, y_ - 12.0f, 0.0f, -SHOT_SPEED,
+                               SHOT_SPRITE);
+                stats_.bullets_fired += 2;
+            }
+        } else {
+            --shot_cooldown_;
+        }
+    } else {
+        shot_cooldown_ = 0;
+    }
+
     previous_held_ = held;
 
     // Swap the animation when movement state changes.

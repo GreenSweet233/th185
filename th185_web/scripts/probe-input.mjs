@@ -128,6 +128,22 @@ check('diagonal is not faster than straight', diagDistance <= 4.0 * 10 + 0.5);
 check('one shoot press counts once', shots === 1);
 check('one bomb press counts once', bombs === 1);
 
+// Bullets: holding shoot must fire repeatedly, and bullets must move up.
+const firedBefore = module._th185_bullets_fired();
+tick(SHOOT, 20);
+const firedAfter = module._th185_bullets_fired();
+const aliveAfter = module._th185_bullets_alive();
+console.log('bullets     : fired ' + firedBefore + ' -> ' + firedAfter
+            + ', alive ' + aliveAfter);
+check('holding shoot keeps firing', firedAfter > firedBefore + 4);
+check('bullets are alive on screen', aliveAfter > 0);
+
+// Bullets must leave the screen and be retired.
+tick(0, 120);
+const aliveLater = module._th185_bullets_alive();
+console.log('after 120f  : alive ' + aliveLater);
+check('bullets retire when off-screen', aliveLater === 0);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

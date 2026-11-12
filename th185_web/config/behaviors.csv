@@ -251,3 +251,8 @@ BHV-PL-002,SYS-GAME-PLAYER,"★ 输入实测：静止不漂移 x=0.0、左移 x=
 BHV-PL-003,SYS-GAME-PLAYER,"★ pl01.anm 内容实测：61 个 sprite 各 30x46 像素、43 个脚本、图集 256x512、format=1(BGRA8888)；脚本以 302/304/311 + 一串 300 开头，循环的用 opcode 200",original,observed,verified,"th185_web/scripts/native/player_input_check.py","玩家素材已确认"
 BHV-PL-004,SYS-GAME-PLAYER,"★ 速度常量 PLAYER_SPEED=4.0 / PLAYER_FOCUS_SPEED=2.0 是 TH 经典值，TH185 未实测——已用命名常量加注释标明，不埋在循环里当魔法数",original,inferred,implemented,"","待与原版对比确认"
 BHV-PL-005,SYS-INTEGRATION-LAUNCHER,"★ 外壳键盘映射接通：Z=射击 X=炸弹 C=特殊 Shift=低速 方向键=移动，转为位掩码传入 tick(heldMask())；状态栏显示 FPS/精灵数/低速标志/玩家坐标",original,observed,verified,"th185_web/scripts/native/shell_contract_check.py","导出函数 21→28"
+BHV-BL-001,SYS-GAME-BULLET,"★★★ 弹幕池实现（BulletPool.hpp/.cpp）：固定 4096 容量 + 空闲槽列表、按速度直线运动、出界回收（margin 64）、spawn/retire/peak 统计",original,observed,verified,"th185_web/scripts/native/player_input_check.py","无堆分配避免帧时间抖动"
+BHV-BL-002,SYS-GAME-BULLET,"★ 射击为按住动作带冷却（SHOT_INTERVAL_FRAMES=4）而非边沿动作：按住持续开火，双管各偏 6 单位；边沿计数单独保留供输入测试",original,observed,verified,"th185_web/scripts/native/player_input_check.py","fired 4→12"
+BHV-BL-003,SYS-GAME-BULLET,"★ 弹幕实测：按住 20 帧 fired 4→12、alive 10；静止 120 帧后 alive 0（全部出界回收）",original,observed,verified,"th185_web/scripts/native/player_input_check.py","14 项断言"
+BHV-BL-004,SYS-GAME-BULLET,"★ 子弹渲染：从 bullet.anm 取 sprite UV，Additive 混合，无纹理时退化为着色方块；实测画面出现 4 个白色子弹",original,observed,verified,"th185_web/artifacts/app-frame.png","quads 33→37"
+BHV-BL-005,SYS-GAME-BULLET,"★ bullet.anm 素材实测：368 个 sprite、72 个脚本、图集 256x256、format=1(BGRA8888)；尺寸分布 16x14(96)、16x16(83)、8x8(64)、14x16(64)、14x14(53)、30x30(8)",original,observed,verified,"th185_web/scripts/native/player_input_check.py","弹幕素材已确认"

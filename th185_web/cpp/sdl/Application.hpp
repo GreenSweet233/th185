@@ -31,6 +31,7 @@
 
 #include "../game/AnmManager.hpp"
 #include "../game/Player.hpp"
+#include "../game/BulletPool.hpp"
 #include "../game/AnmResource.hpp"
 #include "../game/AnmTexture.hpp"
 #include "../game/Archive.hpp"
@@ -75,6 +76,8 @@ struct FrameStats {
     bool player_focused = false;
     u32 player_shots = 0;
     u32 player_bombs = 0;
+    u32 bullets_alive = 0;
+    u32 bullets_fired = 0;
 };
 
 class Application {
@@ -144,6 +147,7 @@ private:
     std::vector<AnimationBank> banks_;
     AnmManager animations_;
     Player player_;
+    BulletPool bullets_;
     std::string animation_bank_;
     SoftwareRaster raster_;
     Rng rng_;

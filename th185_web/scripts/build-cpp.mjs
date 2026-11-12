@@ -294,6 +294,7 @@ async function main() {
           "\"_th185_animation_bank\",\"_th185_stage_index\"," +
           "\"_th185_player_x\",\"_th185_player_y\",\"_th185_player_focused\"," +
           "\"_th185_player_shots\",\"_th185_player_bombs\"," +
+          "\"_th185_bullets_alive\",\"_th185_bullets_fired\"," +
           "\"_th185_error\"]",
       ], "app link");
       console.log("ok");
