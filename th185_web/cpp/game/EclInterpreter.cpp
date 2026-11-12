@@ -1,6 +1,7 @@
 #include "EclInterpreter.hpp"
 
 #include <cmath>
+#include <cstdio>
 #include <cstring>
 
 namespace th185 {
@@ -36,6 +37,26 @@ float normalize_angle(float value) {
 }  // namespace
 
 // --- EclStack ---
+
+void EclStack::save(std::vector<std::pair<u32, u32>>& out) const {
+    out.clear();
+    out.reserve(depth_);
+    for (u32 i = 0; i < depth_; ++i) {
+        out.emplace_back(u32(slots_[i].type), slots_[i].bits);
+    }
+}
+
+bool EclStack::restore(const std::vector<std::pair<u32, u32>>& in) {
+    if (in.size() > CAPACITY) return false;
+    depth_ = 0;
+    frames_.clear();
+    for (const auto& entry : in) {
+        slots_[depth_].type = EclValue::Type(u8(entry.first));
+        slots_[depth_].bits = entry.second;
+        ++depth_;
+    }
+    return true;
+}
 
 bool EclStack::push(EclValue::Type type, u32 bits) {
     if (depth_ >= CAPACITY) return false;
@@ -431,6 +452,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                                        : (as_int(bits) == 0);
                 take = (zero == (opcode == u16(EclOp::JumpIfZero)));
             }
+
             if (take) {
                 // The operand is a delta from THIS instruction's file offset,
                 // so resolve against (code_base + pc) and then convert back
@@ -469,12 +491,30 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.pop_frame();
             break;
 
-        case EclOp::PushInt:
-            if (!stack_.push(EclValue::Type::Integer, arg_u32(payload, 0))) {
+        case EclOp::PushInt: {
+            // A NEGATIVE argument in the builtin range is a reference, not a
+            // literal. This matters for control flow: `main` pushes -9891 and
+            // immediately tests it with JumpIfZero. Treating it as a literal
+            // (-9891 != 0) takes the branch that SKIPS all four WorldWave
+            // calls, which is why only 2 subroutines were ever reached.
+            //
+            // Reference encoding (docs/ECL.md): value < 0 -> builtin slot
+            // (value + 10000), which is why -9891 means slot 109. Values
+            // outside that window (-1, -128, ...) are left as literals: they
+            // cannot name a slot and are observed as plain sentinels.
+            const i32 raw = arg_i32(payload, 0);
+            u32 bits = u32(raw);
+            if (raw < 0 && raw >= -ECL_BUILTIN_BASE &&
+                raw + ECL_BUILTIN_BASE < i32(ECL_BUILTIN_COUNT)) {
+                bits = context.builtins[u32(raw + ECL_BUILTIN_BASE)];
+
+            }
+            if (!stack_.push(EclValue::Type::Integer, bits)) {
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
             break;
+        }
 
         case EclOp::PushFloat:
             if (!stack_.push(EclValue::Type::Float, arg_u32(payload, 0))) {
@@ -1042,10 +1082,24 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
         state.pc = 0;
     }
 
+    // Restore the operand stack saved when this coroutine suspended. Without
+    // it a resume starts with an EMPTY stack, so a value pushed before the
+    // wait is gone and the very next branch decides on garbage.
+    if (!state.stack.empty()) {
+        stack_.restore(state.stack);
+    }
+
     // Bound the work per frame: a loop with no wait inside would otherwise spin
     // forever now that every opcode is implemented.
     const EclRunResult result = run(code, 20000, code_base, state.pc, &state.pc,
                                     &state.wait_frames);
+
+    // Save the stack for the next resume.
+    if (state.wait_frames > 0) {
+        stack_.save(state.stack);
+    } else {
+        state.stack.clear();
+    }
     return result;
 }
 }  // namespace th185

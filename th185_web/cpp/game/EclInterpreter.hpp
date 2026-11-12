@@ -32,6 +32,7 @@
 #include "Types.hpp"
 
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace th185 {
@@ -95,6 +96,11 @@ public:
     bool leave_frame();
     u32 depth() const { return depth_; }
     bool empty() const { return depth_ == 0; }
+
+    // Snapshot/restore for coroutine suspension. Only the live slots are
+    // copied, so the cost is proportional to the actual depth.
+    void save(std::vector<std::pair<u32, u32>>& out) const;
+    bool restore(const std::vector<std::pair<u32, u32>>& in);
 
 private:
     EclValue slots_[CAPACITY]{};

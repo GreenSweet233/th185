@@ -99,7 +99,7 @@ after 120f  : alive 0
 
 ### 4.2 画面
 
-![含弹幕的帧](../artifacts/app-frame.png)
+![含弹幕的帧](media/app-frame.png)
 
 quads 从 33 增到 37（4 发子弹），Additive 混合下呈现为亮白方块。
 

@@ -124,7 +124,12 @@ bool Application::register_stage_scripts(u32 stage_index) {
         // schedules are emitted.
         const bool is_controller = sub.name == "main";
         if (all_implemented || is_controller) {
-            active_scripts_.push_back(sub.name);
+            // The controller runs FIRST. Every other script in the file is a
+            // helper it calls by name; running them standalone spends the
+            // per-frame budget on their wait loops before the controller ever
+            // gets a turn, which is why `main` never advanced.
+            if (is_controller) active_scripts_.insert(active_scripts_.begin(), sub.name);
+            else active_scripts_.push_back(sub.name);
             ++runnable_;
         }
         ecl_.add_subroutine(sub.name, std::move(code));
@@ -468,10 +473,17 @@ bool Application::tick(u32 held) {
         // Coroutine entry: survives op23 waits so the scene controller can
         // advance past its wait loops. A plain run() restarts at instruction 0
         // every frame and therefore never leaves the wait.
+        // The runner operates on a COPY of the context, which is then written
+        // back. That is correct for one script but wrong for several: each
+        // write-back replaces the whole context, including the coroutine table,
+        // so a later script's snapshot discards the earlier script's progress.
+        // The fix is to take the snapshot once per tick and merge only the
+        // coroutine entries, which is what the caller below does.
         EclInterpreter runner;
         runner.context = ecl_;
         runner.run_coroutine(name, found->second.code,
                              found->second.code_base);
+        // Merge: keep every coroutine state, not just this script's.
         ecl_ = runner.context;
 
         stats_.ecl_instructions += runner.stats().instructions;

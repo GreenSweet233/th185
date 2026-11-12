@@ -118,7 +118,7 @@ after fire  : alive 0, killed 16, hits 48
 
 ## 5. ★★★★★ 完整游戏画面
 
-![完整场景](../artifacts/app-frame.png)
+![完整场景](media/app-frame.png)
 
 | 元素 | 位置 |
 |---|---|
@@ -242,7 +242,7 @@ f=450  lives=0 hits=3 shots=30
 
 ## 8. 完整对战画面
 
-![完整对战](../artifacts/app-frame.png)
+![完整对战](media/app-frame.png)
 
 | 元素 | 表现 |
 |---|---|

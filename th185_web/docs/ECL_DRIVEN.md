@@ -136,7 +136,7 @@ after 400f  : fired=9 enemies=9
 
 ### 5.1 画面
 
-![ECL 驱动场景](../artifacts/app-frame.png)
+![ECL 驱动场景](media/app-frame.png)
 
 左上方**大型敌人**（金绿色）由 `op1013` 第 60 帧生成，
 与背景网格里的合成精灵明显不同。

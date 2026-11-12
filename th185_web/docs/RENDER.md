@@ -246,7 +246,7 @@ ANMDRAW files=6 scenes=6 quads=140 written=3106252 rejected=74
 
 ### 3.7 图像
 
-![渲染帧](../artifacts/anm-frame.png)
+![渲染帧](media/anm-frame.png)
 
 640×480，深色背景 `(24,24,48)`，白色方块是 ANM 实例绘制的四边形。
 
@@ -281,7 +281,7 @@ ANMDRAW files=6 scenes=6 quads=140 written=3106252 rejected=74
 
 把 `ascii.anm` 的 256×256 图集解码出来，**肉眼可见完整 ASCII 字符集**：
 
-![纹理图集](../artifacts/anm-atlas.png)
+![纹理图集](media/anm-atlas.png)
 
 图中能读出 `Bonus`、`History`、`Failed`、`PowerUp`，以及完整的
 `!"#$%&'()*+,-./0123456789:;<=>?@ABC...` 字符表。
@@ -373,7 +373,7 @@ quad.texture = &textures[texture_index];
 
 ### 7.1 图像
 
-![敌人精灵表](../artifacts/anm-sprites.png)
+![敌人精灵表](media/anm-sprites.png)
 
 `enemy.anm` 的 320 个 sprite 全部按自身 UV 平铺。
 
@@ -456,7 +456,7 @@ ANMSPR name=enemy.anm sprites=320 drawn=320 quads=320 written=218018
 
 ### 9.1 图像
 
-![应用渲染帧](../artifacts/app-frame.png)
+![应用渲染帧](media/app-frame.png)
 
 **32 个 TH185 敌人精灵**按 8×4 网格排列，由 `th185-app.mjs` 产出。
 

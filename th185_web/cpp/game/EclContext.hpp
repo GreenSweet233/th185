@@ -36,6 +36,7 @@
 #include <array>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace th185 {
@@ -149,6 +150,11 @@ struct EclContext {
         u32 pc = 0;             // resume point, a buffer index
         u32 wait_frames = 0;    // frames still to wait; 0 = not waiting
         bool started = false;
+        // Operand stack snapshot. A coroutine resumes MID-subroutine, so the
+        // values pushed before the wait must survive: `main` pushes -9891 then
+        // immediately branches on it, and resuming with an empty stack loses
+        // that value and takes the wrong branch.
+        std::vector<std::pair<u32, u32>> stack;   // (type, bits), bottom first
     };
     std::unordered_map<std::string, CoroutineState> coroutines;
     std::vector<std::string> missing_calls;
