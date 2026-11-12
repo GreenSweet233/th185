@@ -55,6 +55,9 @@ constexpr u32 ECL_FRAME_BYTES = 256;
 struct EclCallable {
     std::string name;
     std::vector<u8> code;
+    // Offset in the original file that code[0] corresponds to. Jump operands are
+    // absolute file offsets, so a sliced buffer needs this to resolve them.
+    u32 code_base = 0;
 };
 
 struct EclContext {
@@ -101,6 +104,17 @@ struct EclContext {
     // -9985). Does not touch the stack. Semantics inferred as a timer/wait.
     u32 last_timer_value = 0;
     u32 timer_writes = 0;
+
+    // --- op 1015: field query ------------------------------------------
+    //
+    // Structure (212 occurrences, every field checked against the full set):
+    //   u32 reserved(0), u32 reference, u32 field, u32 reserved(0)
+    //   reference is 0 (108x) or a builtin reference -9985 (104x)
+    //   field takes only 16, 0, 1, 8, 12
+    // Does not touch the stack. Semantics inferred as a field query; recorded.
+    u32 query_count = 0;
+    u32 last_query_reference = 0;
+    u32 last_query_field = 0;
 
     // Push a fresh zeroed frame. Returns its index.
     u32 push_frame();

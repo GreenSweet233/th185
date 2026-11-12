@@ -59,8 +59,9 @@ enum class EclOp : u16 {
 
     // TH185-only opcodes. Payload structure is determined; semantics inferred.
     // Declared here so the switch can be exhaustive over them.
-    Op23Timer = 23,          // u32 reserved, u32 timer value
+    Op23Timer = 23,          // u32 prefix, u32 timer value
     Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
+    Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved
 };
 
 // A value on the ECL stack. TH185 tags each slot with its type, same as TH11.
@@ -117,7 +118,13 @@ public:
     EclContext context;
 
     // Run at most step_budget instructions (0 = unlimited).
-    EclRunResult run(const std::vector<u8>& code, u32 step_budget = 0);
+    //
+    // `code_base` is the offset in the ORIGINAL file that code[0] corresponds
+    // to. Jump operands are absolute file offsets, so a run over a sliced
+    // buffer must pass the slice start or every jump lands out of range.
+    // Passing 0 means code already starts at file offset 0.
+    EclRunResult run(const std::vector<u8>& code, u32 step_budget = 0,
+                     u32 code_base = 0);
 
     const EclRunStats& stats() const { return stats_; }
     const EclStack& stack() const { return stack_; }

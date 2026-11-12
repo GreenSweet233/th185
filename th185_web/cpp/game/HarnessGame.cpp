@@ -11,6 +11,7 @@
 #include "EclResource.hpp"
 #include "GameSession.hpp"
 #include "EnemyManager.hpp"
+#include "EclInterpreter.hpp"
 #include "Rng.hpp"
 #include "SaveFile.hpp"
 #include "StageScript.hpp"
@@ -222,6 +223,117 @@ void emit_session(const std::vector<u8>& file) {
     }
 }
 
+void emit_ecl_run(const std::vector<u8>& file) {
+    // Actually EXECUTE the interpreter on real ECL data.
+    //
+    // Until now the interpreter was only verified through a Python mirror of
+    // its logic -- which proves the translation is faithful but not that the
+    // C++ runs. This drives it for real: load every .ecl, register every
+    // subroutine, run the ones whose opcodes are all implemented, and report
+    // the aggregate outcome.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) {
+        std::printf("ECLRUN ARCHIVE_ERROR %s\n", error.c_str());
+        return;
+    }
+
+    u32 files = 0;
+    u32 subs = 0;
+    u32 clean = 0;
+    u32 ran = 0;
+    u32 finished = 0;
+    u32 returned = 0;
+    u32 unsupported = 0;
+    u32 faulted = 0;
+    u32 total_instructions = 0;
+    u32 max_depth = 0;
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".ecl") != 0) continue;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) continue;
+        EclResource resource;
+        if (!resource.parse(std::move(blob), &error)) continue;
+        ++files;
+
+        // Register every subroutine so Call can resolve across the file.
+        EclInterpreter interpreter;
+        for (const EclSubroutine& sub : resource.subs) {
+            // Rebuild the raw instruction bytes for this subroutine.
+            std::vector<u8> code;
+            u32 code_base = 0;
+            if (!sub.instructions.empty()) {
+                const u32 begin = sub.instructions.front().offset;
+                code_base = begin;
+                const u32 end = sub.instructions.back().offset +
+                                sub.instructions.back().size;
+                if (begin < resource.data.size() && end <= resource.data.size()) {
+                    code.assign(resource.data.begin() + begin,
+                                resource.data.begin() + end);
+                }
+            }
+            interpreter.context.add_subroutine(sub.name, std::move(code));
+            interpreter.context.subroutines[sub.name].code_base = code_base;
+        }
+
+        for (const EclSubroutine& sub : resource.subs) {
+            ++subs;
+            // Only run subroutines whose every opcode is implemented: a run that
+            // stops on an unknown opcode tells us nothing about correctness.
+            bool all_implemented = !sub.instructions.empty();
+            for (const EclInstruction& ins : sub.instructions) {
+                if (!EclInterpreter::is_supported(ins.id)) {
+                    all_implemented = false;
+                    break;
+                }
+            }
+            if (!all_implemented) continue;
+            ++clean;
+
+            const auto found = interpreter.context.subroutines.find(sub.name);
+            if (found == interpreter.context.subroutines.end()) continue;
+
+            EclInterpreter runner;
+            runner.context = interpreter.context;
+            // Cap the step budget: a malformed loop must terminate.
+            const EclRunResult result = runner.run(found->second.code, 100000,
+                                                   found->second.code_base);
+            ++ran;
+            total_instructions += runner.stats().instructions;
+            if (runner.stats().max_stack_depth > max_depth) {
+                max_depth = runner.stats().max_stack_depth;
+            }
+            if (result == EclRunResult::Unsupported && unsupported < 10) {
+                std::printf("ECLRUN UNSUP %s / %s op=%u after=%u\n",
+                            name.c_str(), sub.name.c_str(),
+                            unsigned(runner.stats().first_unsupported_opcode),
+                            runner.stats().instructions);
+            }
+            if (result == EclRunResult::Fault && faulted < 8) {
+                std::printf("ECLRUN FAULT %s / %s instrs=%u depth=%u\n",
+                            name.c_str(), sub.name.c_str(),
+                            runner.stats().instructions,
+                            runner.stack().depth());
+            }
+            switch (result) {
+            case EclRunResult::Finished: ++finished; break;
+            case EclRunResult::Returned: ++returned; break;
+            case EclRunResult::Unsupported: ++unsupported; break;
+            case EclRunResult::Fault: ++faulted; break;
+            }
+        }
+    }
+
+    std::printf("ECLRUN files=%u subs=%u clean=%u ran=%u"
+                " finished=%u returned=%u unsupported=%u faulted=%u"
+                " instrs=%u maxdepth=%u\n",
+                files, subs, clean, ran, finished, returned, unsupported,
+                faulted, total_instructions, max_depth);
+}
+
 void emit_save(const char* path) {
     // The save file lives outside the archive, so it is passed separately.
     std::vector<u8> blob;
@@ -311,6 +423,7 @@ int main(int argc, char** argv) {
 
     emit_archive(file);
     emit_ecl(file);
+    emit_ecl_run(file);
     emit_std(file);
     emit_session(file);
     emit_tables();

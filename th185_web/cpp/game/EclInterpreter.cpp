@@ -101,6 +101,7 @@ const OpName kOpNames[] = {
     {80, "Cos"}, {81, "Polar"}, {82, "NormalizeAngle"}, {83, "Wait"},
     {84, "NegateInt"}, {85, "NegateFloatBits"}, {86, "LengthSquared"},
     {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1013, "Op1013Schedule"},
+    {1015, "Op1015Query"},
 };
 
 }  // namespace
@@ -186,7 +187,8 @@ float arg_float(const u8* payload, u32 index) {
 
 }  // namespace
 
-EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
+EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
+                                 u32 code_base) {
     stats_ = EclRunStats{};
     stack_ = EclStack{};
 
@@ -257,12 +259,16 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
                 take = (zero == (opcode == u16(EclOp::JumpIfZero)));
             }
             if (take) {
-                const i32 target = arg_i32(payload, 0);
-                if (target < 0 || u32(target) + INSTRUCTION_HEADER > code.size()) {
+                // The operand is a delta from THIS instruction's file offset,
+                // so resolve against (code_base + pc) and then convert back
+                // into a buffer index.
+                const i32 delta = arg_i32(payload, 0);
+                const i64 target = i64(code_base) + i64(pc) + i64(delta);
+                if (target < 0 || u64(target) + INSTRUCTION_HEADER > u64(code_base) + code.size()) {
                     ++stats_.fault_count;
                     return EclRunResult::Fault;
                 }
-                pc = u32(target);
+                pc = u32(u64(target) - u64(code_base));
                 advanced = true;
             }
             break;
@@ -528,12 +534,19 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
             // meaningful. The nested result is propagated.
             EclInterpreter nested;
             nested.context = context;
-            const EclRunResult nested_result = nested.run(found->second.code);
+            const EclRunResult nested_result = nested.run(found->second.code, 0,
+                                                          found->second.code_base);
             // Preserve variable/frame state written by the callee.
             context = nested.context;
             --context.call_depth;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
+            // Propagate the nested opcode too, otherwise the outer run reports
+            // opcode 0 (the sentinel) and the diagnostic is useless.
+            if (stats_.first_unsupported_opcode == 0) {
+                stats_.first_unsupported_opcode =
+                    nested.stats().first_unsupported_opcode;
+            }
             stats_.fault_count += nested.stats().fault_count;
             if (stats_.max_stack_depth < nested.stats().max_stack_depth) {
                 stats_.max_stack_depth = nested.stats().max_stack_depth;
@@ -573,6 +586,32 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
             break;
         }
 
+        case EclOp::Op1015Query: {
+            // payload: u32 reserved, u32 reference, u32 field, u32 reserved
+            context.last_query_reference = arg_u32(payload, 0);
+            context.last_query_field = arg_u32(payload, 1);
+            ++context.query_count;
+            break;
+        }
+
+        case EclOp::PostDecrement: {
+            // payload: u32 reserved, u32 reference, u32 reserved.
+            // Verified: payload[4] is a legal frame reference in 406/406 cases.
+            // Semantics follow TH11: read the slot, write value-1 back, push the
+            // OLD value (post-decrement).
+            const i32 reference = arg_i32(payload, 0);
+            const i32 previous = context.read_int_ref(reference);
+            if (!context.write_int_ref(reference, previous - 1)) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            if (!stack_.push(EclValue::Type::Integer, u32(previous))) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            break;
+        }
+
         // Everything else needs the ECL context/owner object.
         case EclOp::Spawn:
         case EclOp::SpawnNamed:
@@ -581,7 +620,6 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget) {
         case EclOp::ClearThreadFlag:
         case EclOp::SetThreadState:
         case EclOp::CancelSecondary:
-        case EclOp::PostDecrement:
         case EclOp::Polar:
         case EclOp::NormalizeAngle:
         case EclOp::LengthSquared:

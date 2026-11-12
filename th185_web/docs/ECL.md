@@ -1466,3 +1466,168 @@ BossDead / NoEnemyDebug (5 条指令)
 | **`Spawn`(126)** | ❌ 需要线程管理 |
 | **op45 真实语义** | ❌ 不是 StoreFloat |
 | **TH185 独有剩余 8018 条** | ❌ 33.7% |
+
+---
+
+## 16. ★★ 解释器首次真实执行：发现 Python 镜像永远看不到的 bug
+
+### 16.1 为什么这一步必须做
+
+在此之前，解释器的验证方式是**用 Python 重写一遍同样的逻辑，然后对比**。
+这只能证明「C++ 忠实地翻译了设计」，**不能证明「C++ 真的能跑」**。
+
+本轮把解释器接进 harness，让它对真实的 87 个 `.ecl` 文件执行。
+结果立刻暴露一个致命 bug。
+
+### 16.2 bug：跳转基准错位
+
+首次执行结果：
+
+```
+ECLRUN files=87 subs=617 clean=28 ran=28
+       finished=2 returned=0 unsupported=3 faulted=23   ← 82% 失败
+       instrs=143
+```
+
+诊断输出：
+
+```
+ECLRUN FAULT wave01.ecl / Wave01Loop instrs=5 depth=0
+```
+
+`Wave01Loop` 的指令序列：
+
+```
+[0] off=680  EnterFrame(0)
+[1] off=700  Jump(128)
+[2] off=724  Call("Wave01Sub01")
+...
+[7] off=848  JumpIfNonzero(-124)
+```
+
+`Jump(128)` 的目标是 `700 + 128 = 828`——这是**文件绝对偏移**。
+但 harness 给解释器的 `code` 是从 `sub.instructions.front().offset`（680）
+开始**重新复制**的缓冲区，长度只有 192 字节。
+
+`pc = 828` 越界 → `Fault`。
+
+### 16.3 修复：`code_base` 参数
+
+```cpp
+// 跳转操作数是相对当前指令的 FILE 偏移。
+// 对切片缓冲区执行时必须传入切片起点。
+const i64 target = i64(code_base) + i64(pc) + i64(delta);
+pc = u32(u64(target) - u64(code_base));
+```
+
+修复后：
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| `faulted` | **23** | **0** |
+| `instrs` | 143 | **100372** |
+| `maxdepth` | 10 | 21 |
+
+**执行指令数从 143 跃升到 100372——700 倍。**
+
+### 16.4 ★ 这个 bug 为什么 Python 镜像发现不了
+
+Python 侧的校验逻辑是：
+
+```python
+target = ins['offset'] + delta      # 用文件绝对偏移
+if target in bounds: ok += 1        # bounds 也是文件绝对偏移
+```
+
+**镜像里基准是一致的**（都用文件偏移），所以永远对。
+C++ 侧因为要「把子程序切出来单独跑」才引入了基准错位。
+
+> **镜像校验的第二个盲区**：它能验证「逻辑翻译一致」，
+> 但验证不了「运行时环境差异」（缓冲区切片、生命周期、内存布局）。
+> 上一轮的盲区是「镜像和被测代码同源会一起错」，
+> 这一轮的盲区是「镜像没有运行时概念」。
+
+### 16.5 顺带修的两个诊断缺陷
+
+**缺陷 1**：嵌套 `Call` 时没有合并 `first_unsupported_opcode`，
+导致所有 unsupported 都报 `op=0`（哨兵值）。
+
+**缺陷 2**：`unsupported` 只报告第一个遇到的，掩盖了后续。
+
+修复后立刻看到真实阻塞点：`op1015` → `op78` → `op304`/`op300`。
+
+### 16.6 本轮新增的两个操作码
+
+| 操作码 | 次数 | 结构 |
+|---|---|---|
+| `op1015` | 212 | `[保留=0][引用(0或-9985)][字段(16/0/1/8/12)][保留=0]` |
+| `op78` | 406 | `[保留][帧引用][保留]`，406/406 全部是合法帧引用 |
+
+`op78` 是 TH11 同号操作码 `PostDecrement`，语义：
+读旧值 → 写回 `值-1` → 压入旧值。
+
+### 16.7 覆盖率
+
+| 项 | 上轮 | 本轮 |
+|---|---|---|
+| 覆盖率 | 60.80% | **63.40%** |
+| 完全可执行子程序 | 30 个 | **33 个** |
+| 需 EclContext | 1300 | 894 |
+| TH185 独有剩余 | 8018 | 7806 |
+
+### 16.8 真实执行指标
+
+```
+ECLRUN files=87 subs=617 clean=28 ran=28
+       finished=3 returned=0 unsupported=25 faulted=0
+       instrs=100372 maxdepth=21
+```
+
+| 指标 | 值 |
+|---|---|
+| 文件 | 87 |
+| 子程序 | 617 |
+| 全实现子程序 | 28 |
+| 实际执行 | 28 |
+| **执行故障** | **0** |
+| **执行指令** | **100372** |
+| 最大栈深 | 21 |
+
+### 16.9 下一个阻塞点
+
+所有 `Wave*Loop` 都在执行 18-20 条指令后停在：
+
+```
+ECLRUN UNSUP wave01.ecl / Wave01Loop op=304 after=20
+ECLRUN UNSUP wave06.ecl / Wave06Loop op=300 after=18
+```
+
+`op300`（244 次）和 `op304`（53 次）都是**带明文名字的子程序调用**，
+结构类似 `Call`。这是下一轮的入口。
+
+### 16.10 验证（9 项，含 4 项真实执行）
+
+```
+[PASS] compiled C++ reads the header correctly
+[PASS] compiled C++ parses 284 entries (expect 284)
+[PASS] thbgm.fmt extracts (537 bytes)
+[PASS] all 7 probe entries extract at the expected size
+[PASS] C++ ECL totals 87/617/17546 within reference 816/23770
+[PASS] the interpreter executed real ECL (yes)
+[PASS] zero execution faults (0)
+[PASS] at least 28 subroutines ran (28)
+[PASS] over 10000 instructions executed (100372)
+```
+
+### 16.11 教训
+
+**「用 Python 重写一遍再对比」不是验证，只是翻译检查。**
+
+| 验证层次 | 能发现 | 不能发现 |
+|---|---|---|
+| 编译通过 | 语法/类型 | 运行时逻辑 |
+| **Python 镜像** | 逻辑翻译错误 | **运行时环境差异、同源同错** |
+| **真实执行** | **基准错位、生命周期、边界** | 语义正确性 |
+
+这次 82% 的失败率，靠镜像校验永远发现不了——
+因为镜像里根本没有「缓冲区切片」这个概念。

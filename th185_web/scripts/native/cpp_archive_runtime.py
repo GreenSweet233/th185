@@ -185,6 +185,42 @@ def main() -> int:
                   % (cpp_files, len(ecl_names)))
             print("        tail-block limitation documented in Archive.hpp)")
 
+    # 6. The interpreter must actually RUN, not just parse. A Python mirror of
+    #    the interpreter logic proves the translation is faithful; only real
+    #    execution proves the C++ works. This caught a jump-base bug that the
+    #    mirror could never see (23 of 28 runnable subroutines faulted).
+    eclrun = summary.get("ECLRUN_line")
+    run_line = None
+    for line in lines:
+        if line.startswith("ECLRUN files="):
+            run_line = line
+            break
+    ok = run_line is not None
+    print("[%s] the interpreter executed real ECL (%s)"
+          % ("PASS" if ok else "FAIL", "yes" if ok else "no ECLRUN line"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in run_line.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        ok = fields.get("faulted") == "0"
+        print("[%s] zero execution faults (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("faulted")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("ran", "0")) >= 28
+        print("[%s] at least 28 subroutines ran (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("ran")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) > 10000
+        print("[%s] over 10000 instructions executed (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("instrs")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)
