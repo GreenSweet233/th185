@@ -143,6 +143,26 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_stage_index() {
     return th185::app::instance().session().stage_index;
 }
 
+EMSCRIPTEN_KEEPALIVE float th185_player_x() {
+    return th185::app::instance().stats().player_x;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_player_y() {
+    return th185::app::instance().stats().player_y;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_focused() {
+    return th185::app::instance().stats().player_focused ? 1u : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_shots() {
+    return th185::app::instance().stats().player_shots;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_bombs() {
+    return th185::app::instance().stats().player_bombs;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

@@ -30,6 +30,7 @@
 // behind the same surface.
 
 #include "../game/AnmManager.hpp"
+#include "../game/Player.hpp"
 #include "../game/AnmResource.hpp"
 #include "../game/AnmTexture.hpp"
 #include "../game/Archive.hpp"
@@ -68,6 +69,12 @@ struct FrameStats {
     u32 live_animations = 0;
     // Last button bitmask received from the shell.
     u32 held_buttons = 0;
+    // Player.
+    float player_x = 0.0f;
+    float player_y = 0.0f;
+    bool player_focused = false;
+    u32 player_shots = 0;
+    u32 player_bombs = 0;
 };
 
 class Application {
@@ -97,6 +104,8 @@ public:
 
     // Names of the animation banks currently loaded, joined by '+'.
     const std::string& animation_bank() const { return animation_bank_; }
+
+    const Player& player() const { return player_; }
 
     // Number of subroutines currently registered and runnable.
     u32 runnable_subroutines() const { return runnable_; }
@@ -134,6 +143,7 @@ private:
     };
     std::vector<AnimationBank> banks_;
     AnmManager animations_;
+    Player player_;
     std::string animation_bank_;
     SoftwareRaster raster_;
     Rng rng_;

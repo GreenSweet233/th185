@@ -246,3 +246,8 @@ BHV-APP-020,SYS-INTEGRATION-LAUNCHER,"★★ 按关卡加载动画库：.std 的
 BHV-APP-021,SYS-INTEGRATION-LAUNCHER,"★ 一个场景需要多个动画库：worldNN.anm 是背景（单 sprite）、enemy.anm 是敌人（120 sprite）、bullet.anm 是子弹、effect.anm 是特效；sprite 编号按库独立，所以每个库保留自己的纹理数组",original,observed,verified,"th185_web/cpp/sdl/Application.cpp","banks_ 向量"
 BHV-APP-022,SYS-INTEGRATION-LAUNCHER,"★ AnmManager::render_bank 按 resource 过滤实例：sprite 索引只在其来源库内有意义，跨库混用会采到错误纹理",original,observed,verified,"th185_web/cpp/game/AnmManager.cpp","已实现"
 BHV-APP-023,SYS-INTEGRATION-LAUNCHER,"★ 输入已接线但不消费：tick(held) 记录 stats_.held_buttons，因无玩家实体所以无对象可操控；签名保持不变，将来接玩家实体时无需改动",original,observed,verified,"th185_web/cpp/sdl/Application.cpp","签名稳定"
+BHV-PL-001,SYS-GAME-PLAYER,"★★★ 玩家实体实现（Player.hpp/.cpp）：八方向输入、低速半速移动、斜向归一化、场地边界钳制、射击/炸弹边沿计数、动画脚本切换",original,observed,verified,"th185_web/scripts/native/player_input_check.py","11 项校验"
+BHV-PL-002,SYS-GAME-PLAYER,"★ 输入实测：静止不漂移 x=0.0、左移 x=-40.0、右移 x=40.0、低速 20.00 vs 常速 40.00（正好一半）、边界钳制 x=-192.0、斜向距离 40.00（不加速）、射击 1 次、炸弹 1 次",original,observed,verified,"th185_web/scripts/native/player_input_check.py","首次有可操控角色"
+BHV-PL-003,SYS-GAME-PLAYER,"★ pl01.anm 内容实测：61 个 sprite 各 30x46 像素、43 个脚本、图集 256x512、format=1(BGRA8888)；脚本以 302/304/311 + 一串 300 开头，循环的用 opcode 200",original,observed,verified,"th185_web/scripts/native/player_input_check.py","玩家素材已确认"
+BHV-PL-004,SYS-GAME-PLAYER,"★ 速度常量 PLAYER_SPEED=4.0 / PLAYER_FOCUS_SPEED=2.0 是 TH 经典值，TH185 未实测——已用命名常量加注释标明，不埋在循环里当魔法数",original,inferred,implemented,"","待与原版对比确认"
+BHV-PL-005,SYS-INTEGRATION-LAUNCHER,"★ 外壳键盘映射接通：Z=射击 X=炸弹 C=特殊 Shift=低速 方向键=移动，转为位掩码传入 tick(heldMask())；状态栏显示 FPS/精灵数/低速标志/玩家坐标",original,observed,verified,"th185_web/scripts/native/shell_contract_check.py","导出函数 21→28"

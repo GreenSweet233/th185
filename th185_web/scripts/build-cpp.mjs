@@ -288,7 +288,12 @@ async function main() {
           "\"_th185_start\",\"_th185_tick\",\"_th185_pause\",\"_th185_resume\",\"_th185_restart\"," +
           "\"_th185_load_stage\",\"_th185_phase\",\"_th185_frame\",\"_th185_ticks\"," +
           "\"_th185_ecl_instructions\",\"_th185_ecl_faults\"," +
-          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\",\"_th185_frame_width\",\"_th185_frame_height\",\"_th185_frame_pixels\",\"_th185_frame_bytes\",\"_th185_render_quads\",\"_th185_live_animations\"," +
+          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\"," +
+          "\"_th185_frame_width\",\"_th185_frame_height\",\"_th185_frame_pixels\",\"_th185_frame_bytes\"," +
+          "\"_th185_render_quads\",\"_th185_live_animations\"," +
+          "\"_th185_animation_bank\",\"_th185_stage_index\"," +
+          "\"_th185_player_x\",\"_th185_player_y\",\"_th185_player_focused\"," +
+          "\"_th185_player_shots\",\"_th185_player_bombs\"," +
           "\"_th185_error\"]",
       ], "app link");
       console.log("ok");

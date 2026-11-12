@@ -77,6 +77,9 @@ checks.push(
   // No browser automation here, so the shell is checked by CONTRACT: exports,
   // element ids, asset paths. Those are the failures that actually happen.
   { name: "shell-contract", args: [resolve(here, "native", "shell_contract_check.py")], python: true },
+  // Rendering a frame and moving a character are different claims; this proves
+  // the bitmask the shell sends actually reaches an entity.
+  { name: "player-input", args: [resolve(here, "native", "player_input_check.py")], python: true, timeoutMs: 900000 },
 );
 
 let failures = 0;

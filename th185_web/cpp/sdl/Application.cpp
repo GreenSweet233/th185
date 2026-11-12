@@ -184,6 +184,17 @@ void Application::load_scene_banks() {
     load_animation_bank(session_.stage.anm_name.c_str(), 1);
     // Then the enemies, which is where the visible content actually lives.
     load_animation_bank("enemy.anm", 32);
+    // The player atlas is its own bank; load it without auto-spawning roots
+    // because Player owns exactly one instance.
+    load_animation_bank("pl01.anm", 0);
+
+    // Bind the player to the bank that was just appended.
+    if (!banks_.empty()) {
+        const AnimationBank& player_bank = banks_.back();
+        if (player_bank.name == "pl01.anm") {
+            player_.bind(&animations_, &player_bank.resource);
+        }
+    }
 }
 
 void Application::render() {
@@ -251,6 +262,14 @@ bool Application::tick(u32 held) {
             stats_.max_stack_depth = runner.stats().max_stack_depth;
         }
     }
+
+    // Input drives the player, which drives its animation instance.
+    player_.update(held);
+    stats_.player_x = player_.x();
+    stats_.player_y = player_.y();
+    stats_.player_focused = player_.focused();
+    stats_.player_shots = player_.stats().shots;
+    stats_.player_bombs = player_.stats().bombs;
 
     // Advance the animation tree, then draw it.
     animations_.update(rng_, 1.0f);

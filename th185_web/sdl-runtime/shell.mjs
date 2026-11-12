@@ -41,6 +41,40 @@ let imageData = null;
 
 const keys = new Set();
 
+// Button bitmask, matching th185::PlayerButton in cpp/game/Player.hpp.
+const BUTTON = {
+  shoot: 1 << 0,
+  bomb: 1 << 1,
+  focus: 1 << 2,
+  special: 1 << 3,
+  up: 1 << 4,
+  down: 1 << 5,
+  left: 1 << 6,
+  right: 1 << 7,
+};
+
+// Keyboard -> button. TH uses Z/X/Shift by convention; arrows move.
+const KEY_TO_BUTTON = {
+  KeyZ: BUTTON.shoot,
+  KeyX: BUTTON.bomb,
+  KeyC: BUTTON.special,
+  ShiftLeft: BUTTON.focus,
+  ShiftRight: BUTTON.focus,
+  ArrowUp: BUTTON.up,
+  ArrowDown: BUTTON.down,
+  ArrowLeft: BUTTON.left,
+  ArrowRight: BUTTON.right,
+};
+
+function heldMask() {
+  let mask = 0;
+  for (const code of keys) {
+    const button = KEY_TO_BUTTON[code];
+    if (button) mask |= button;
+  }
+  return mask;
+}
+
 function fail(error) {
   running = false;
   errorBox.hidden = false;
@@ -90,7 +124,7 @@ function frame(now) {
 
     let steps = 0;
     while (accumulator >= STEP_MS && steps < MAX_STEPS_PER_FRAME) {
-      if (!core._th185_tick(0)) {
+      if (!core._th185_tick(heldMask())) {
         fail(new Error(moduleError()));
         return;
       }
