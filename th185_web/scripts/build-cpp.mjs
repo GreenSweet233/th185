@@ -281,14 +281,14 @@ async function main() {
         "-sSTACK_SIZE=5242880",
         "-sDEFAULT_TO_CXX=1",
         "-sFORCE_FILESYSTEM=1",
-        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap",
+        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8",
         // Every th185_* function is EMSCRIPTEN_KEEPALIVE, but exporting them
         // explicitly keeps the JS surface auditable.
         "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\",\"_th185_initialize\"," +
           "\"_th185_start\",\"_th185_tick\",\"_th185_pause\",\"_th185_resume\",\"_th185_restart\"," +
           "\"_th185_load_stage\",\"_th185_phase\",\"_th185_frame\",\"_th185_ticks\"," +
           "\"_th185_ecl_instructions\",\"_th185_ecl_faults\"," +
-          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\"," +
+          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\",\"_th185_frame_width\",\"_th185_frame_height\",\"_th185_frame_pixels\",\"_th185_frame_bytes\",\"_th185_render_quads\",\"_th185_live_animations\"," +
           "\"_th185_error\"]",
       ], "app link");
       console.log("ok");

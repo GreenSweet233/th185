@@ -9,6 +9,10 @@ namespace th185::app {
 
 namespace {
 
+// Frame RNG. Seeded once so a replay of the same tick count is reproducible.
+Rng g_rng;
+bool g_rng_ready = false;
+
 constexpr u32 kSceneCount = 9;
 
 // ECL files follow the scene naming: world01t.ecl / world01.ecl ...
@@ -43,6 +47,11 @@ bool Application::initialize(std::vector<u8> archive_bytes) {
         phase_ = Phase::Failed;
         return false;
     }
+    // A missing animation bank is not fatal: the logic side still works, and
+    // the shell can show an empty frame.
+    load_animation_bank("enemy.anm");
+    raster_.resize(640, 480);
+    render();
     phase_ = Phase::Idle;
     stats_ = FrameStats{};
     return true;
@@ -117,6 +126,61 @@ bool Application::register_stage_scripts(u32 stage_index) {
     return true;
 }
 
+bool Application::load_animation_bank(const char* name) {
+    // Load one .anm as the animation source and decode all its textures.
+    // A stage normally uses several banks; one is enough for the shell to
+    // show something real while the rest is wired up.
+    std::size_t entry = archive_.entries.size();
+    for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
+        if (archive_.entries[i].name == name) { entry = i; break; }
+    }
+    if (entry == archive_.entries.size()) return false;
+
+    std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &error_);
+    if (blob.empty()) return false;
+    if (!animation_.parse(std::move(blob), &error_)) return false;
+
+    animation_textures_.clear();
+    animation_textures_.reserve(animation_.textures.size());
+    for (const AnmTexture& texture : animation_.textures) {
+        animation_textures_.push_back(decode_texture(
+            texture.format, texture.width, texture.height,
+            animation_.data.data() + texture.offset + 16, texture.size));
+    }
+
+    // Start every script so the frame has content. A real stage would pick
+    // specific ones; for now the point is that the pipeline runs end to end.
+    animations_ = AnmManager{};
+    const u32 limit = u32(animation_.script_list.size() < 32 ?
+                          animation_.script_list.size() : 32);
+    const u32 columns = 8;
+    for (u32 s = 0; s < limit; ++s) {
+        const float column = float(s % columns);
+        const float row = float(s / columns);
+        animations_.create(&animation_, i32(s), 0, 0xFFFFFFFFu,
+                           (column - float(columns - 1) * 0.5f) * 64.0f,
+                           (row - 1.5f) * 64.0f);
+    }
+    return true;
+}
+
+void Application::render() {
+    if (raster_.width() == 0) {
+        raster_.resize(640, 480);
+    }
+    // Opaque dark clear: a transparent framebuffer composites to white in
+    // every viewer and hides the geometry.
+    raster_.clear(Rgba8{24, 24, 48, 255});
+    stats_.quads = animations_.render(
+        raster_,
+        animation_textures_.empty() ? nullptr : animation_textures_.data(),
+        u32(animation_textures_.size()),
+        float(raster_.width()) * 0.5f,
+        float(raster_.height()) * 0.5f);
+    stats_.pixels_written = raster_.pixels_written;
+    stats_.live_animations = animations_.live_count();
+}
+
 bool Application::load_stage(u32 stage_index) {
     if (!session_.load_stage(stage_index, &error_)) return false;
     stage_index_ = stage_index;
@@ -149,6 +213,10 @@ bool Application::tick(u32 held) {
             stats_.max_stack_depth = runner.stats().max_stack_depth;
         }
     }
+
+    // Advance the animation tree, then draw it.
+    animations_.update(rng_, 1.0f);
+    render();
 
     ++stats_.frame;
     return true;

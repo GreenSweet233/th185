@@ -452,6 +452,7 @@ def main() -> int:
         if not ok:
             failures += 1
 
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)

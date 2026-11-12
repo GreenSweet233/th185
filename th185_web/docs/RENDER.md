@@ -449,3 +449,91 @@ ANMSPR name=enemy.anm sprites=320 drawn=320 quads=320 written=218018
 | 音频 / 输入 | ❌ | — |
 
 **「从加密归档到可辨认的游戏图形」已经完成并验证。**
+
+---
+
+## 9. ★★★★★ 应用模块渲染出真实游戏画面
+
+### 9.1 图像
+
+![应用渲染帧](../artifacts/app-frame.png)
+
+**32 个 TH185 敌人精灵**按 8×4 网格排列，由 `th185-app.mjs` 产出。
+
+### 9.2 为什么这一张最重要
+
+前几张图是 harness 产出的——harness 是测试夹具，不是产品。
+
+**这一张来自 `th185-app.mjs`，正是 `sdl-runtime/th185.html` 里
+`<script type="module" src="/app/shell.mjs">` 会加载的那个模块。**
+
+也就是说：**网页外壳现在有真实内容可画了。**
+
+### 9.3 接线
+
+| 环节 | 变化 |
+|---|---|
+| `Application::initialize` | 加载 `enemy.anm`、解码全部纹理、建 32 个根动画 |
+| `Application::tick` | 推进动画树 → 调用 `render()` |
+| `Application::render` | 清屏 + `AnmManager::render` 到 640×480 |
+| 导出 | `th185_frame_width/height/pixels/bytes`、`th185_render_quads` |
+
+### 9.4 实测
+
+```
+frame      : 640x480
+bytes      : 1228800        (640 * 480 * 4)
+quads      : 32
+animations : 32
+```
+
+### 9.5 ★ 一个构建陷阱
+
+读像素需要 `HEAPU8`。缺少它时：
+
+```
+TypeError: Cannot read properties of undefined (reading 'subarray')
+```
+
+修正：
+
+```javascript
+"-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8"
+```
+
+**帧缓冲已经存在（`bytes=1228800` 打得出来），只是读不到。**
+这个错误表现是「渲染没工作」，实际是「导出没配全」。
+
+### 9.6 ★ CI 项的结构限制
+
+`ci.mjs` 的检查项只支持：
+
+```javascript
+{ name, args: [script, ...args], python: bool, timeoutMs }
+```
+
+没有「自定义执行逻辑」的字段。
+而应用帧导出需要「先 build 再跑 node 脚本再校验」三步。
+
+**解法：写一个 Python 校验脚本，由它去调 node 脚本。**
+CI 项只负责启动那个 Python 脚本——保持 CI 表结构简单。
+
+---
+
+## 10. 端到端完成度
+
+| 环节 | 状态 | 证据 |
+|---|---|---|
+| PBG4 解密 | ✅ | 条目表 0 差异 |
+| LZSS 解压 | ✅ | 284 条目全解 |
+| ANM 容器 | ✅ | 430 块 / 1879 sprite |
+| THTX 像素解码 | ✅ | `anm-atlas.png` 可读字体 |
+| sprite UV 查表 | ✅ | `anm-sprites.png` 320 精灵 |
+| 软件光栅化 | ✅ | 10 种 blend |
+| 对象调度 | ✅ | 2291 spawn |
+| **应用接线** | ✅ | **`app-frame.png` 32 精灵** |
+| Web 外壳 | ⚠️ | HTML 在，`shell.mjs` 未写 |
+| 音频 / 输入 | ❌ | — |
+| 真实关卡流程 | ❌ | 只加载 enemy.anm |
+
+**「加密归档 → 应用模块 → 屏幕图像」已经贯通。**

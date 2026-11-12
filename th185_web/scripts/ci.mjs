@@ -71,6 +71,9 @@ checks.push(
   { name: "cpp-runtime", args: [resolve(here, "native", "cpp_runtime_check.py"), "--selftest"], python: true },
   { name: "cpp-archive", args: [resolve(here, "native", "cpp_archive_runtime.py"), "--selftest"], python: true },
   { name: "cpp-session", args: [resolve(here, "native", "cpp_session_runtime.py"), "--selftest"], python: true },
+  // The application module is what the web shell loads, so its render is the
+  // end-to-end check that everything below it is wired correctly.
+  { name: "app-frame", args: [resolve(here, "native", "app_frame_check.py")], python: true, timeoutMs: 900000 },
 );
 
 let failures = 0;

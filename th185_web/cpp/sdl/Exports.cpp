@@ -109,6 +109,32 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_runnable_subroutines() {
     return th185::app::instance().runnable_subroutines();
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_frame_width() {
+    return th185::app::instance().framebuffer_width();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_frame_height() {
+    return th185::app::instance().framebuffer_height();
+}
+
+// Returns a pointer into the framebuffer. Valid until the next tick().
+EMSCRIPTEN_KEEPALIVE const unsigned char* th185_frame_pixels() {
+    const std::vector<th185::u8>& pixels = th185::app::instance().framebuffer();
+    return pixels.empty() ? nullptr : pixels.data();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_frame_bytes() {
+    return unsigned(th185::app::instance().framebuffer().size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_render_quads() {
+    return th185::app::instance().stats().quads;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_live_animations() {
+    return th185::app::instance().stats().live_animations;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

@@ -11,22 +11,27 @@
 //
 // ## Scope, stated plainly
 //
-// This is a SKELETON. It does:
+// This is an APPLICATION, not a game yet. It does:
 //
 //   * own the archive and load a stage
 //   * own a GameSession and an EnemyManager
 //   * advance a fixed-step frame clock
-//   * run ECL subroutines when their opcodes are implemented
-//   * expose init/tick/pause/restart/error to the shell
+//   * run ECL subroutines
+//   * own an ANM manager and render its tree into an RGBA8 framebuffer
+//   * expose init/tick/pause/restart/frame to the shell
 //
-// It does NOT render, play audio, or accept input. Those subsystems do not
-// exist yet, so `tick()` advances logic and produces no pixels. Claiming
-// otherwise would be the kind of unverified statement this project forbids.
+// It does NOT play audio or accept input, and the renderer is software (no
+// GPU). `tick()` therefore produces real pixels but not the original game's
+// pixels: the transform, blend and sampling are implemented from th15's
+// behaviour, but nobody has compared the output against a capture.
 //
 // The point of building it now is that it forces the interfaces to exist and
 // gives the web shell something real to call. Rendering can then be added
 // behind the same surface.
 
+#include "../game/AnmManager.hpp"
+#include "../game/AnmResource.hpp"
+#include "../game/AnmTexture.hpp"
 #include "../game/Archive.hpp"
 #include "../game/EclContext.hpp"
 #include "../game/EclInterpreter.hpp"
@@ -34,6 +39,7 @@
 #include "../game/EnemyManager.hpp"
 #include "../game/GameSession.hpp"
 #include "../game/Rng.hpp"
+#include "../game/SoftwareRaster.hpp"
 #include "../game/StageScript.hpp"
 #include "Types.hpp"
 
@@ -56,6 +62,10 @@ struct FrameStats {
     u32 ecl_faults = 0;
     u32 ecl_unsupported = 0;
     u32 max_stack_depth = 0;
+    // Rendering.
+    u32 quads = 0;
+    u32 pixels_written = 0;
+    u32 live_animations = 0;
 };
 
 class Application {
@@ -86,14 +96,33 @@ public:
     // Number of subroutines currently registered and runnable.
     u32 runnable_subroutines() const { return runnable_; }
 
+    // The framebuffer `tick()` last produced, as tightly packed RGBA8.
+    // Empty until the first tick after start().
+    const std::vector<u8>& framebuffer() const { return raster_.pixels(); }
+    u32 framebuffer_width() const { return raster_.width(); }
+    u32 framebuffer_height() const { return raster_.height(); }
+
+    // Draws every live animation into the framebuffer without advancing time.
+    // Exposed so a shell can present a paused frame.
+    void render();
+
 private:
     bool register_stage_scripts(u32 stage_index);
+    bool load_animation_bank(const char* name);
 
     Archive archive_;
     std::vector<u8> archive_bytes_;
     GameSession session_;
     EclContext ecl_;
     std::vector<std::string> active_scripts_;
+
+    // Animation state. `animation_textures_` must outlive the manager because
+    // AnmVm holds pointers into it.
+    AnmResource animation_;
+    AnmManager animations_;
+    std::vector<DecodedImage> animation_textures_;
+    SoftwareRaster raster_;
+    Rng rng_;
 
     Phase phase_ = Phase::Idle;
     FrameStats stats_{};
