@@ -473,18 +473,30 @@ bool Application::tick(u32 held) {
         // Coroutine entry: survives op23 waits so the scene controller can
         // advance past its wait loops. A plain run() restarts at instruction 0
         // every frame and therefore never leaves the wait.
-        // The runner operates on a COPY of the context, which is then written
-        // back. That is correct for one script but wrong for several: each
-        // write-back replaces the whole context, including the coroutine table,
-        // so a later script's snapshot discards the earlier script's progress.
-        // The fix is to take the snapshot once per tick and merge only the
-        // coroutine entries, which is what the caller below does.
+        // Run against a COPY, then merge ONLY the fields the callee is
+        // expected to change. Writing the whole context back would replace
+        // the coroutine table and the recorded wave templates with the
+        // snapshot taken before this script ran -- which is exactly why
+        // WorldWave01 was called repeatedly but its op1011 template never
+        // appeared: the next script's write-back discarded it.
         EclInterpreter runner;
         runner.context = ecl_;
         runner.run_coroutine(name, found->second.code,
                              found->second.code_base);
-        // Merge: keep every coroutine state, not just this script's.
-        ecl_ = runner.context;
+
+        // Merge: coroutines (progress), stacks are inside them, and the
+        // records the interpreter accumulates. Everything else (frames,
+        // builtins, subroutines) is read-only here.
+        ecl_.coroutines = std::move(runner.context.coroutines);
+        ecl_.calls_made = std::move(runner.context.calls_made);
+        ecl_.missing_calls = std::move(runner.context.missing_calls);
+        ecl_.wave_templates = std::move(runner.context.wave_templates);
+        ecl_.last_wave_template = runner.context.last_wave_template;
+        ecl_.schedules = std::move(runner.context.schedules);
+        ecl_.recorded = std::move(runner.context.recorded);
+        ecl_.last_timer_value = runner.context.last_timer_value;
+        ecl_.timer_writes = runner.context.timer_writes;
+
 
         stats_.ecl_instructions += runner.stats().instructions;
         stats_.ecl_faults += runner.stats().fault_count;

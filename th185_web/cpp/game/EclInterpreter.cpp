@@ -121,7 +121,8 @@ const OpName kOpNames[] = {
     {75, "Xor"}, {76, "Or"}, {77, "And"}, {78, "PostDecrement"}, {79, "Sin"},
     {80, "Cos"}, {81, "Polar"}, {82, "NormalizeAngle"}, {83, "Wait"},
     {84, "NegateInt"}, {85, "NegateFloatBits"}, {86, "LengthSquared"},
-    {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1013, "Op1013Schedule"},
+    {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1011, "WaveTemplate"},
+    {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
     {500, "Op500SetPosition"}, {1006, "Op1006Comment"},
@@ -177,10 +178,18 @@ const NetEffect kInferredNet[] = {
     {601, +1}, {603, -1}, {604, 0}, {605, -1}, {609, 0}, {610, 0},
     {615, 0}, {626, -2}, {627, +1}, {628, -2},
     // other TH185-only
-    {45, -1}, {81, -1}, {82, -2}, {93, +1}, {94, +1},
+    // NOTE: op82 NormalizeAngle is NOT here either -- same reason as op1011.
+    // It has a dedicated case that actually normalizes the angle into
+    // (-pi, pi]; listing it as net -2 would swallow that work.
+    {45, -1}, {81, -1}, {93, +1}, {94, +1},
     {303, 0}, {313, -1}, {316, -1}, {319, +1},
     {404, 0}, {405, +1}, {412, +1}, {422, 0}, {441, +1}, {445, +2},
-    {535, 0}, {555, 0}, {1011, 0}, {1021, -1},
+    {535, 0}, {555, 0}, {1021, -1},
+    // NOTE: op1011 is deliberately NOT here. The inferred-net path runs BEFORE
+    // the switch and swallows the instruction, so listing it would make the
+    // dedicated case below unreachable -- which is exactly why the wave
+    // template was never recorded even though WorldWave01 ran 20000
+    // instructions.
     // data-only opcodes already established (net 0)
     {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0}, {600, 0},
     {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
@@ -746,6 +755,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 }
                 break;
             }
+
             // Record the call for diagnostics (deduplicated).
             {
                 bool seen = false;
@@ -759,12 +769,17 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 return EclRunResult::Fault;
             }
             ++context.call_depth;
-            // Nested runs share the context (and therefore the stack and the
-            // variables) but keep their own stats so the outer counters stay
-            // meaningful. The nested result is propagated.
+            // Nested runs share the CONTEXT (variables, frames) but must NOT
+            // share the operand stack: run() resets it, which would wipe the
+            // caller's operands. Hand the callee a fresh stack and give the
+            // caller its own back afterwards.
+            EclStack caller_stack = stack_;
+            stack_ = EclStack{};
             EclInterpreter nested;
             nested.context = context;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
+            stack_ = caller_stack;
+
             // Preserve variable/frame state written by the callee.
             context = nested.context;
             --context.call_depth;
@@ -817,6 +832,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
 
         case EclOp::Op1011WaveTemplate: {
+
             // Wave template selector. See EclContext::wave_templates.
             const i32 value = as_int(arg_u32(payload, 0));
             context.last_wave_template = value;
@@ -932,9 +948,13 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 return EclRunResult::Fault;
             }
             ++context.call_depth;
+            // Same stack isolation as op 11: see the comment there.
+            EclStack caller_stack = stack_;
+            stack_ = EclStack{};
             EclInterpreter nested;
             nested.context = context;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
+            stack_ = caller_stack;
             context = nested.context;
             --context.call_depth;
             stats_.instructions += nested.stats().instructions;

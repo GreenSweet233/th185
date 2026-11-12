@@ -49,7 +49,8 @@ const SHOOT = 1 << 0;
 // controller's op1013 schedules, which is the real data path.
 module._th185_reset_scenario();
 // Long enough for the enemies to return fire, so the frame shows both sides.
-for (let i = 0; i < 90; ++i) {
+// Long enough for the ECL schedules to spawn several waves.
+for (let i = 0; i < 600; ++i) {
   const held = i >= 20 ? SHOOT : 0;
   if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
@@ -69,6 +70,7 @@ console.log('animations : ' + live);
 console.log('bullets    : ' + module._th185_bullets_alive());
 console.log('enemies    : ' + module._th185_enemies_alive());
 console.log('schedules  : ' + module._th185_schedules_total() + ' fired ' + module._th185_schedules_fired());
+console.log('templates  : ' + module._th185_wave_templates() + ' last ' + module._th185_last_wave_template());
 console.log('hits       : ' + module._th185_collision_hits());
 console.log('enemyShots : ' + module._th185_enemy_shots());
 console.log('lives      : ' + module._th185_player_lives());

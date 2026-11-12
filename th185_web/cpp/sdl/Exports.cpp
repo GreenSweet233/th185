@@ -277,6 +277,17 @@ EMSCRIPTEN_KEEPALIVE const char* th185_call_name(unsigned index) {
     return calls[index].c_str();
 }
 
+// Sprite index of the i-th live enemy, for verifying that op1011 actually
+// drives the look of a wave.
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_sprite(unsigned index) {
+    unsigned seen = 0;
+    for (const th185::Enemy& e : th185::app::instance().enemies().enemies()) {
+        if (!e.alive) continue;
+        if (seen++ == index) return e.sprite;
+    }
+    return 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
