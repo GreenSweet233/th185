@@ -478,7 +478,15 @@ void emit_anm_scripts(const std::vector<u8>& file) {
             case AnmRunResult::Finished: ++finished; break;
             case AnmRunResult::Stopped: ++stopped; break;
             case AnmRunResult::Unsupported: ++unsupported; break;
-            case AnmRunResult::Fault: ++faulted; break;
+            case AnmRunResult::Fault:
+                ++faulted;
+                if (faulted <= 10) {
+                    std::printf("ANMRUN FAULT %s id=%u instrs=%u err=%s\n",
+                                name.c_str(), script.id,
+                                interpreter.stats().instructions,
+                                interpreter.error().c_str());
+                }
+                break;
             case AnmRunResult::Running: ++stopped; break;  // ran out of budget
             }
         }

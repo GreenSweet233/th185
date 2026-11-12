@@ -281,13 +281,20 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("files")))
         if not ok:
             failures += 1
-        ok = int(fields.get("ran", "0")) >= 600
-        print("[%s] at least 600 scripts executed (%s)"
+        ok = int(fields.get("ran", "0")) >= 1000
+        print("[%s] at least 1000 scripts executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("ran")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) >= 5000
-        print("[%s] at least 5000 ANM instructions executed (%s)"
+        # Scripts that reach their terminator prove the timing model works;
+        # ones that stop on an unimplemented opcode are counted separately.
+        ok = int(fields.get("finished", "0")) >= 100
+        print("[%s] at least 100 scripts ran to completion (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("finished")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) >= 6000
+        print("[%s] at least 6000 ANM instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

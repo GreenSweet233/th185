@@ -14,6 +14,10 @@ u32 read_u32(const u8* p) noexcept {
 
 float read_f32(const u8* p) noexcept { return bits_float(read_u32(p)); }
 
+// An ANM *instruction* header is 8 bytes. The CONTAINER header is 0x40. Mixing
+// them up silently rejects every instruction, so they stay separate constants.
+constexpr u32 INSTRUCTION_HEADER = 8;
+
 }  // namespace
 
 bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
@@ -23,115 +27,135 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
     };
 
     if (blob.size() < ANM_HEADER_SIZE) return fail("anm blob too small");
-
     data = std::move(blob);
 
-    version = read_u32(data.data() + 0x00);
-    sprite_count = read_u16(data.data() + 0x04);
-    script_count = read_u16(data.data() + 0x06);
-    width = read_u16(data.data() + 0x0A);
-    height = read_u16(data.data() + 0x0C);
-    format = read_u16(data.data() + 0x0E);
-    name_offset = read_u32(data.data() + 0x10);
-    memory_priority = read_u32(data.data() + 0x18);
-    thtx_offset = read_u32(data.data() + 0x1C);
-    has_data = read_u16(data.data() + 0x20);
-    low_res_scale = read_u16(data.data() + 0x22);
-    next_offset = read_u32(data.data() + 0x24);
-
-    if (version != ANM_VERSION) return fail("unexpected anm version");
-    if (name_offset >= data.size()) return fail("atlas name offset out of range");
-
-    // Atlas name, NUL terminated.
-    {
-        std::size_t end = name_offset;
-        while (end < data.size() && data[end] != 0) ++end;
-        if (end >= data.size()) return fail("atlas name is not terminated");
-        atlas.assign(reinterpret_cast<const char*>(data.data() + name_offset),
-                     end - name_offset);
-        // sprite_t array starts 4-aligned after the NUL.
-        sprite_offset = u32((end + 1 + 3) & ~std::size_t(3));
-    }
-
-    // sprite_t records, addressed THROUGH the offset table that follows the
-    // header. thtk's thanm.c:
-    //   uint32_t* sprite_offsets = (uint32_t*)(map + sizeof(*header));
-    //   sprite19_t* sprite = (sprite19_t*)(map + sprite_offsets[s]);
-    // The records are NOT stored in order, so reading them sequentially works
-    // only for files whose table happens to be ordered.
+    // ------------------------------------------------------------------
+    // A .anm file is a CHAIN of blocks. Each block has its own header,
+    // sprite table and script table, and `nextoffset` gives the distance to
+    // the next block (0 = last). Sprite and script INDICES are global across
+    // the chain: th15's AnmResource notes that "the original loader appends
+    // sprites and scripts in table order across chained chunks".
+    //
+    // Parsing only the first block is what produced "sprite index out of
+    // range": front.anm has 14 blocks and 167 sprites in total, but block 0
+    // declares only 39.
+    // ------------------------------------------------------------------
     sprites.clear();
-    sprites.reserve(sprite_count);
-    for (u32 i = 0; i < sprite_count; ++i) {
-        const std::size_t table_at = std::size_t(ANM_HEADER_SIZE) + std::size_t(i) * 4;
-        if (table_at + 4 > data.size()) break;
-        const std::size_t at = read_u32(data.data() + table_at);
-        if (at + ANM_SPRITE_SIZE > data.size()) break;
-        AnmSprite sprite;
-        sprite.id = read_u32(data.data() + at);
-        sprite.x = read_f32(data.data() + at + 4);
-        sprite.y = read_f32(data.data() + at + 8);
-        sprite.w = read_f32(data.data() + at + 12);
-        sprite.h = read_f32(data.data() + at + 16);
-        sprites.push_back(sprite);
-    }
-
-    // Script table: anm_offset_t { u32 id; u32 offset; } entries, right after
-    // the sprite offset array.
     script_list.clear();
-    const std::size_t script_table =
-        ANM_HEADER_SIZE + std::size_t(sprite_count) * 4;
-    for (u32 i = 0; i < script_count; ++i) {
-        const std::size_t at = script_table + std::size_t(i) * 8;
-        if (at + 8 > data.size()) break;
-        AnmScriptEntry script;
-        script.id = read_u32(data.data() + at);
-        script.offset = read_u32(data.data() + at + 4);
-        if (script.offset >= data.size()) break;
-
-        // Walk the instruction stream to find its extent, then keep a copy of
-        // the bytes so the interpreter does not have to re-slice.
-        // NOTE: an ANM *instruction* header is 8 bytes, while ANM_HEADER_SIZE
-        // is the 0x40-byte container header. Comparing `length` against
-        // ANM_HEADER_SIZE silently rejected every instruction (all are 8..64
-        // bytes), which is why script.bytes came out empty.
-        constexpr u32 INSTRUCTION_HEADER = 8;
-        std::size_t pos = script.offset;
-        u32 guard = 0;
-        while (pos + INSTRUCTION_HEADER <= data.size() && guard++ < 100000) {
-            const u16 opcode = read_u16(data.data() + pos);
-            const u16 length = read_u16(data.data() + pos + 2);
-            if (opcode == 0xFFFF || length < INSTRUCTION_HEADER ||
-                (length % 4) != 0 || pos + length > data.size()) {
-                break;
-            }
-            AnmInstruction ins;
-            ins.opcode = opcode;
-            ins.length = length;
-            ins.offset = u32(pos);
-            script.instructions.push_back(ins);
-            pos += length;
-        }
-        script.bytes.assign(data.begin() + script.offset, data.begin() + pos);
-        script_list.push_back(std::move(script));
-    }
-
-    // THTX blocks: walk forward from thtx_offset.
     textures.clear();
-    std::size_t at = thtx_offset;
-    u32 guard = 0;
-    while (at + 16 <= data.size() && guard++ < 4096) {
-        if (std::memcmp(data.data() + at, "THTX", 4) != 0) break;
-        AnmTexture texture;
-        texture.offset = u32(at);
-        texture.format = read_u16(data.data() + at + 6);
-        texture.width = read_u16(data.data() + at + 8);
-        texture.height = read_u16(data.data() + at + 10);
-        texture.size = read_u32(data.data() + at + 12);
-        if (at + 16 + texture.size > data.size()) break;
-        textures.push_back(texture);
-        at += 16 + texture.size;
+    block_count = 0;
+
+    std::size_t base = 0;
+    while (base + ANM_HEADER_SIZE <= data.size() && block_count < 64) {
+        const u8* h = data.data() + base;
+        const u32 block_version = read_u32(h + 0x00);
+        if (block_version != ANM_VERSION) {
+            // A malformed chain end is not fatal for the blocks we already
+            // parsed; stop rather than discard the whole file.
+            if (block_count == 0) return fail("unexpected anm version");
+            break;
+        }
+
+        const u16 block_sprites = read_u16(h + 0x04);
+        const u16 block_scripts = read_u16(h + 0x06);
+        const u32 name_offset = read_u32(h + 0x10);
+        const u32 thtx_offset = read_u32(h + 0x1C);
+        const u32 next_offset = read_u32(h + 0x24);
+
+        if (block_count == 0) {
+            // File-level fields come from the first block.
+            version = block_version;
+            width = read_u16(h + 0x0A);
+            height = read_u16(h + 0x0C);
+            format = read_u16(h + 0x0E);
+            memory_priority = read_u32(h + 0x18);
+            has_data = read_u16(h + 0x20);
+            low_res_scale = read_u16(h + 0x22);
+            name_offset_ = name_offset;
+            thtx_offset_ = thtx_offset;
+            next_offset_ = next_offset;
+
+            if (name_offset < data.size()) {
+                std::size_t end = name_offset;
+                while (end < data.size() && data[end] != 0) ++end;
+                if (end < data.size()) {
+                    atlas.assign(
+                        reinterpret_cast<const char*>(data.data() + name_offset),
+                        end - name_offset);
+                }
+            }
+        }
+
+        // Sprite records, addressed through this block's offset table.
+        for (u32 i = 0; i < block_sprites; ++i) {
+            const std::size_t table_at = base + ANM_HEADER_SIZE + std::size_t(i) * 4;
+            if (table_at + 4 > data.size()) break;
+            const std::size_t at = read_u32(data.data() + table_at);
+            if (at + ANM_SPRITE_SIZE > data.size()) break;
+            AnmSprite sprite;
+            sprite.id = read_u32(data.data() + at);
+            sprite.x = read_f32(data.data() + at + 4);
+            sprite.y = read_f32(data.data() + at + 8);
+            sprite.w = read_f32(data.data() + at + 12);
+            sprite.h = read_f32(data.data() + at + 16);
+            sprites.push_back(sprite);
+        }
+
+        // Script table, right after the sprite offset array.
+        const std::size_t script_table =
+            base + ANM_HEADER_SIZE + std::size_t(block_sprites) * 4;
+        for (u32 i = 0; i < block_scripts; ++i) {
+            const std::size_t at = script_table + std::size_t(i) * 8;
+            if (at + 8 > data.size()) break;
+            AnmScriptEntry script;
+            script.id = read_u32(data.data() + at);
+            script.offset = read_u32(data.data() + at + 4);
+            if (script.offset >= data.size()) break;
+
+            std::size_t pos = script.offset;
+            u32 guard = 0;
+            while (pos + INSTRUCTION_HEADER <= data.size() && guard++ < 100000) {
+                const u16 opcode = read_u16(data.data() + pos);
+                const u16 length = read_u16(data.data() + pos + 2);
+                if (opcode == 0xFFFF || length < INSTRUCTION_HEADER ||
+                    (length % 4) != 0 || pos + length > data.size()) {
+                    break;
+                }
+                AnmInstruction ins;
+                ins.opcode = opcode;
+                ins.length = length;
+                ins.offset = u32(pos);
+                script.instructions.push_back(ins);
+                pos += length;
+            }
+            script.bytes.assign(data.begin() + script.offset, data.begin() + pos);
+            script_list.push_back(std::move(script));
+        }
+
+        // THTX blocks in this chunk.
+        std::size_t at = thtx_offset;
+        u32 guard = 0;
+        while (at + 16 <= data.size() && guard++ < 4096) {
+            if (std::memcmp(data.data() + at, "THTX", 4) != 0) break;
+            AnmTexture texture;
+            texture.offset = u32(at);
+            texture.format = read_u16(data.data() + at + 6);
+            texture.width = read_u16(data.data() + at + 8);
+            texture.height = read_u16(data.data() + at + 10);
+            texture.size = read_u32(data.data() + at + 12);
+            if (at + 16 + texture.size > data.size()) break;
+            textures.push_back(texture);
+            at += 16 + texture.size;
+        }
+
+        ++block_count;
+        if (next_offset == 0) break;
+        base += next_offset;
     }
 
+    if (block_count == 0) return fail("no anm block parsed");
+    sprite_count = u16(sprites.size() > 0xFFFF ? 0xFFFF : sprites.size());
+    script_count = u16(script_list.size() > 0xFFFF ? 0xFFFF : script_list.size());
     return true;
 }
 

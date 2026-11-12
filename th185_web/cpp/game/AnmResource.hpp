@@ -73,17 +73,18 @@ struct AnmResource {
     std::vector<u8> data;
 
     u32 version = 0;
+    u32 block_count = 0;   // number of chained blocks in this file
     u16 sprite_count = 0;
     u16 script_count = 0;
     u16 width = 0;
     u16 height = 0;
     u16 format = 0;
-    u32 name_offset = 0;
+    u32 name_offset_ = 0;
     u32 memory_priority = 0;
-    u32 thtx_offset = 0;
+    u32 thtx_offset_ = 0;
     u16 has_data = 0;
     u16 low_res_scale = 0;
-    u32 next_offset = 0;
+    u32 next_offset_ = 0;
     std::string atlas;
     u32 sprite_offset = 0;
     std::vector<AnmSprite> sprites;

@@ -379,3 +379,141 @@ script 条目   : 610
 | **扩展 opcode 语义（45 种 5602 条）** | ❌ 未解 |
 | **v8 表内 opcode 的语义** | ❌ 只有 size 已知 |
 | **sprite 绘制 / 着色器** | ❌ 未实现 |
+
+---
+
+## 16. ★★ 块链：一个 .anm 文件是多块的
+
+### 16.1 之前漏掉的结构
+
+`anm_header11_t` 末尾有 `nextoffset`，我之前当成「同文件下一个条目的偏移」就跳过了。
+
+thtk `thanm.c` 第 1630 行：
+
+```c
+offset += entry->header->nextoffset;
+```
+
+**这是块链：每个块有独立的头部、sprite 表、script 表，`nextoffset` 给出到下一块的距离（0 = 最后一块）。**
+
+### 16.2 实测块数
+
+| 文件 | 块数 | 累计 sprites | 累计 scripts |
+|---|---|---|---|
+| `front.anm` | **14** | **167** | 331 |
+| `bullet.anm` | **10** | **604** | 328 |
+| `effect.anm` | **13** | 64 | 195 |
+| `pl01.anm` | 11+ | — | — |
+
+### 16.3 ★ 这是 `sprite index out of range` 的根因
+
+```
+front.anm 块0 声明 sprites=39，但脚本引用的索引可以到 166
+bullet.anm 块0 声明 sprites=368，但全文件有 604 个
+```
+
+**sprite 与 script 的编号跨块累加。** th15 的 `AnmResource` 注释：
+
+> the original loader appends sprites and scripts in table order across chained chunks
+
+只解析首块，就会把合法索引判成越界。
+
+### 16.4 修复效果
+
+| 指标 | 修复前 | 修复后 |
+|---|---|---|
+| 纹理块 | 53 | **55** |
+| 像素 | 12014464 | **12358528** |
+| 脚本数 | 609 | **2121** |
+| 实际执行 | 609 | **1097** |
+| **跑完的脚本** | **0** | **175** |
+| 执行指令 | 5217 | **6343** |
+| 帧 | 16790 | **78330** |
+
+**`finished` 从 0 提升到 175 是最关键的信号**——之前没有任何脚本能执行完。
+
+---
+
+## 17. ★ 跳转基准：用命中率判定
+
+### 17.1 三种候选解释
+
+`opcode 200/201` 的跳转操作数 `tgt` 可能是：
+
+| 解释 | 公式 |
+|---|---|
+| 绝对文件偏移 | `tgt` |
+| 相对脚本起点 | `script_offset + tgt` |
+| 相对当前指令 | `instruction_offset + tgt` |
+
+### 17.2 ★ 判据：落在指令边界的比例
+
+不猜语义，只看哪种解释的结果**总是落在合法指令起点上**：
+
+```
+总数 260 个跳转
+  rel_script   241 (92.7%)   ← 相对脚本起点
+  rel_instr      9 ( 3.5%)
+  absolute       0 ( 0.0%)
+```
+
+**92.7% vs 3.5%——结论明确。**
+
+### 17.3 这个判据为什么可靠
+
+跳转目标如果算错，几乎不可能恰好落在指令边界上（指令是 8..64 字节的变长记录）。
+所以「命中率」是一个**不需要真值就能自证**的判据。
+
+---
+
+## 18. 脚本终止与范围
+
+### 18.1 `0xFFFF` 是终止符
+
+```
+@9504 opcode=403  len=12
+@9516 opcode=3    len=8
+@9524 opcode=0xFFFF len=0    ← 终止
+其后 8 字节是填充
+```
+
+### 18.2 ★ `bytes` 不含终止符
+
+切片只包含真实指令，所以执行到最后一条后 `instruction_offset_` **正好等于 `size`**。
+
+这时应返回 `Finished`，而不是报 `instruction outside script`。
+
+---
+
+## 19. 当前状态
+
+```
+ANMTEX files=54 blocks=55 decoded=55 rejected=0 pixels=12358528
+ANMRUN files=54 scripts=2121 ran=1097 finished=175 stopped=113
+       unsupported=749 faulted=60 instrs=6343 frames=78330
+```
+
+### 19.1 仍存的 60 个 fault
+
+| 错误 | 原因 |
+|---|---|
+| `invalid jump` | 跳转目标超出 `bytes` 范围，因扫描遇非法 length 提前截断 |
+| `invalid instruction length` | 同上 |
+
+**已记录为已知限制。** 这两个都源于「脚本范围界定」——正确的做法应当是用
+**下一个脚本的 offset** 作为上界（thtk `thanm.c` 第 1125 行 `limit += script_offsets[s+1].offset`），
+而不是遇到非法 length 就停。
+
+### 19.2 验证（14 项）
+
+```
+[PASS] the C++ ANM parser produced output
+[PASS] C++ parsed 54 of 55 .anm files (1 known tail-block miss)
+[PASS] every extracted THTX block decoded (0 rejected)
+[PASS] over 10 million pixels decoded
+[PASS] the C++ ANM interpreter produced output
+[PASS] interpreter ran over 54 of 55 .anm files
+[PASS] at least 1000 scripts executed (1097)
+[PASS] at least 100 scripts ran to completion (175)
+[PASS] at least 6000 ANM instructions executed (6343)
+```

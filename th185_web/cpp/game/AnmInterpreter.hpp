@@ -87,7 +87,11 @@ struct AnmRunStats {
 class AnmInterpreter {
 public:
     // Bind to a script. `resource` supplies sprites for opcode 300/301.
-    bool bind(const AnmResource* resource, const std::vector<u8>* script);
+    // `code_base` is the file offset that script->at(0) corresponds to: jump
+    // operands are ABSOLUTE file offsets, so a sliced buffer needs it to
+    // resolve targets. (Same trap as the ECL interpreter's code_base.)
+    bool bind(const AnmResource* resource, const std::vector<u8>* script,
+              u32 code_base = 0);
 
     // Advances one frame at `rate` (1.0 = normal speed).
     AnmRunResult tick(Rng& rng, float rate = 1.0f);
@@ -104,6 +108,7 @@ private:
     const AnmResource* resource_ = nullptr;
     const std::vector<u8>* script_ = nullptr;
     i32 instruction_offset_ = 0;
+    u32 code_base_ = 0;
     float timer_ = 0.0f;
     float saved_timer_ = 0.0f;
     i32 saved_offset_ = 0;
