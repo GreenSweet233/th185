@@ -357,6 +357,43 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # 10. The rasteriser must produce a real framebuffer.
+    anmdraw = None
+    for line in lines:
+        if line.startswith("ANMDRAW files="):
+            anmdraw = line
+            break
+    ok = anmdraw is not None
+    print("[%s] the C++ rasteriser produced output" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in anmdraw.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        ok = int(fields.get("quads", "0")) >= 100
+        print("[%s] at least 100 quads rasterised (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("quads")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("written", "0")) >= 1000000
+        print("[%s] at least 1 million pixels written (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("written")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("nonblack", "0")) >= 100000
+        print("[%s] at least 100000 pixels differ from the clear colour (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("nonblack")))
+        if not ok:
+            failures += 1
+        # A stable checksum proves the render is deterministic.
+        ok = fields.get("checksum") == "7df374f1be076f3c"
+        print("[%s] framebuffer checksum is deterministic (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("checksum")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)

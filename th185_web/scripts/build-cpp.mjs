@@ -214,7 +214,10 @@ async function main() {
     // translation unit plus the archive.
     const harnesses = [
       { source: "HarnessRng.cpp", output: "harness-rng.cjs" },
-      { source: "HarnessGame.cpp", output: "harness-game.cjs" },
+      {
+        source: "HarnessGame.cpp",
+        output: "harness-game.cjs",
+      },
     ];
     for (const item of harnesses) {
       const source = resolve(root, "cpp", "game", item.source);
@@ -231,7 +234,8 @@ async function main() {
         // INVOKE_RUN=0: the runner mounts NODEFS and then calls main itself,
         // because the sandbox has no host filesystem at startup.
         "-sINVOKE_RUN=0",
-        "-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,callMain",
+        "-sEXPORTED_RUNTIME_METHODS=FS,NODEFS,callMain,HEAPU8",
+
         "-sENVIRONMENT=node",
         // MODULARIZE=1 so the runner can mount NODEFS in preRun before main.
         "-sMODULARIZE=1",

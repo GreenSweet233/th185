@@ -85,4 +85,13 @@ try {
     code = 1;
   }
 }
+// NODEFS writes are buffered in the module's stream table; without an explicit
+// sync the file may never reach the host. Harnesses that WRITE (the rasteriser
+// dumps a PNG this way) need this, and it is harmless for the read-only ones.
+try {
+  module.FS.syncfs(false, () => {});
+} catch {
+  // Older builds without syncfs still work for read-only harnesses.
+}
+
 process.exitCode = code;

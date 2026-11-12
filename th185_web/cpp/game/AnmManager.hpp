@@ -26,6 +26,7 @@
 #include "AnmInterpreter.hpp"
 #include "AnmResource.hpp"
 #include "Rng.hpp"
+#include "SoftwareRaster.hpp"
 #include "Types.hpp"
 
 #include <memory>
@@ -47,6 +48,10 @@ struct AnmVm {
     bool detached = false;
     // Frames this instance has been advanced.
     u32 age = 0;
+    // Where this instance sits in animation space. th15 keeps this in
+    // visual.translation and opcode 422 copies it into variables.position.
+    float translate_x = 0.0f;
+    float translate_y = 0.0f;
 
     // Children created by opcode 500-506. Owned through the manager's pool.
     std::vector<u32> children;
@@ -73,10 +78,23 @@ public:
     // Creates a root animation running `script_index` of `resource`.
     // Returns the handle, or UINT32_MAX when the pool is full.
     u32 create(const AnmResource* resource, i32 script_index,
-               u32 depth = 0, u32 parent = 0xFFFFFFFFu);
+               u32 depth = 0, u32 parent = 0xFFFFFFFFu,
+               float translate_x = 0.0f, float translate_y = 0.0f);
 
     // Advances every live animation one frame. Returns the number ticked.
     u32 update(Rng& rng, float rate = 1.0f);
+
+    // Draws every live animation into `target`. Each instance contributes one
+    // quad built from its visual state (sprite size, scale, rotation, position,
+    // colour, blend mode). Returns the number of quads submitted.
+    //
+    // The transform follows th15's AnmRenderer::shape: the quad is centred on
+    // the sprite size, scaled, rotated about Z, then translated.
+    // `view_x`/`view_y` is where animation-space (0,0) lands in target pixels.
+    // TH scripts place sprites around the origin, so a caller rendering to a
+    // 640x480 target passes (320, 240) to centre them.
+    u32 render(SoftwareRaster& target, const DecodedImage* textures,
+               u32 texture_count, float view_x, float view_y) const;
 
     // Frees finished animations and compacts the pool.
     void collect();

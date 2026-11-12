@@ -1,5 +1,7 @@
 #include "AnmManager.hpp"
 
+#include <cmath>
+
 namespace th185 {
 
 u32 AnmManager::allocate() {
@@ -14,7 +16,7 @@ u32 AnmManager::allocate() {
 }
 
 u32 AnmManager::create(const AnmResource* resource, i32 script_index, u32 depth,
-                       u32 parent) {
+                       u32 parent, float translate_x, float translate_y) {
     if (!resource) {
         error_ = "null resource";
         return 0xFFFFFFFFu;
@@ -40,6 +42,8 @@ u32 AnmManager::create(const AnmResource* resource, i32 script_index, u32 depth,
     vm.alive = true;
     vm.detached = false;
     vm.age = 0;
+    vm.translate_x = translate_x;
+    vm.translate_y = translate_y;
     vm.children.clear();
     vm.parent = parent;
 
@@ -96,8 +100,12 @@ u32 AnmManager::update(Rng& rng, float rate) {
                     ++stats_.depth_capped;
                     continue;
                 }
+                // A child inherits its parent's position, so a spawned effect
+                // appears where its parent is rather than at the origin.
                 const u32 child = create(vm->resource, request.script,
-                                         vm->depth + 1, u32(i));
+                                         vm->depth + 1, u32(i),
+                                         vm->translate_x + request.anchor_x,
+                                         vm->translate_y + request.anchor_y);
                 if (child == 0xFFFFFFFFu) continue;
                 if (request.detached) {
                     pool_[child]->detached = true;
@@ -127,6 +135,75 @@ void AnmManager::collect() {
     for (auto& slot : pool_) {
         if (slot && !slot->alive) slot->children.clear();
     }
+}
+
+u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
+                       u32 texture_count, float view_x, float view_y) const {
+    u32 submitted = 0;
+    for (const auto& slot : pool_) {
+        if (!slot || !slot->alive) continue;
+        const AnmVisual& visual = slot->interpreter.visual();
+        if (!visual.visible()) continue;
+
+        const AnmVariables& variables = slot->interpreter.variables();
+
+        // Sprite size: the interpreter stores it when opcode 300/301 selects a
+        // sprite; 436 can override it. Fall back to 32x32 when nothing set it.
+        float width = visual.size.x;
+        float height = visual.size.y;
+        if (!(width > 0.0f)) width = 32.0f;
+        if (!(height > 0.0f)) height = 32.0f;
+        width *= visual.scale.x;
+        height *= visual.scale.y;
+
+        const float half_w = width * 0.5f;
+        const float half_h = height * 0.5f;
+        const float angle = variables.rotation.z;
+        const float cosine = float(std::cos(double(angle)));
+        const float sine = float(std::sin(double(angle)));
+
+        AnmQuad quad;
+        // Corner order matches AnmQuad's documented clockwise-from-top-left.
+        const float local_x[4] = {-half_w, half_w, half_w, -half_w};
+        const float local_y[4] = {-half_h, -half_h, half_h, half_h};
+        for (u32 i = 0; i < 4; ++i) {
+            const float rx = local_x[i] * cosine - local_y[i] * sine;
+            const float ry = local_x[i] * sine + local_y[i] * cosine;
+            // Animation space has its origin at the playfield centre; the
+            // target's origin is top-left, so translate by the view offset.
+            // The instance's own translation is added because scripts address
+            // positions relative to wherever they were spawned.
+            quad.x[i] = view_x + slot->translate_x + variables.position.x + rx;
+            quad.y[i] = view_y + slot->translate_y + variables.position.y + ry;
+        }
+
+        // UVs follow the visual's uv_scale (opcode 429/430).
+        quad.u[0] = 0.0f;
+        quad.u[1] = visual.uv_scale.x;
+        quad.u[2] = visual.uv_scale.x;
+        quad.u[3] = 0.0f;
+        quad.v[0] = 0.0f;
+        quad.v[1] = 0.0f;
+        quad.v[2] = visual.uv_scale.y;
+        quad.v[3] = visual.uv_scale.y;
+
+        quad.tint = Rgba8{u8((visual.color >> 16) & 0xFF),
+                          u8((visual.color >> 8) & 0xFF),
+                          u8(visual.color & 0xFF),
+                          u8((visual.color >> 24) & 0xFF)};
+        quad.blend = blend_mode_from_flags(visual.flags);
+        quad.nearest = (visual.render_flags & 0x800u) != 0;
+
+        // Texture: the sprite index selects a decoded image when available.
+        if (textures && visual.sprite >= 0 &&
+            u32(visual.sprite) < texture_count) {
+            quad.texture = &textures[visual.sprite];
+        }
+
+        target.draw(quad);
+        ++submitted;
+    }
+    return submitted;
 }
 
 }  // namespace th185

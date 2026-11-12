@@ -13,6 +13,13 @@
 #include "EnemyManager.hpp"
 #include "AnmInterpreter.hpp"
 #include "AnmManager.hpp"
+#include "PngWriter.hpp"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#else
+#define EMSCRIPTEN_KEEPALIVE
+#endif
+#include "SoftwareRaster.hpp"
 #include "AnmResource.hpp"
 #include "AnmTexture.hpp"
 #include "EclInterpreter.hpp"
@@ -576,6 +583,161 @@ void emit_anm_objects(const std::vector<u8>& file) {
                 depth_capped, live_capped, bad_script, faults, frames);
 }
 
+// Exposed to the runner so a frame can be written to disk from JS, where file
+// IO is synchronous and reliable.
+static u32 g_frame_width = 0;
+static u32 g_frame_height = 0;
+static std::vector<u8> g_frame_rgba;
+
+
+
+void emit_anm_render(const std::vector<u8>& file) {
+    // Render a real ANM scene into an RGBA8 buffer and report coverage.
+    //
+    // This is the first point where the project produces PIXELS from shipped
+    // data. It proves the geometry transform, tint, blend and texture sampling
+    // all agree well enough to fill a framebuffer; it does not claim the output
+    // matches the original game's pixels.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) {
+        std::printf("ANMDRAW ARCHIVE_ERROR %s\n", error.c_str());
+        return;
+    }
+
+    constexpr u32 WIDTH = 640;
+    constexpr u32 HEIGHT = 480;
+
+    u32 files = 0;
+    u32 scenes = 0;
+    u32 total_quads = 0;
+    u32 total_written = 0;
+    u32 total_rejected = 0;
+    u64 checksum = 0;
+    u32 nonblack = 0;
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".anm") != 0) continue;
+        // A handful of files is enough to prove the pipeline; more would just
+        // slow the harness down.
+        if (files >= 6) break;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) continue;
+        AnmResource resource;
+        if (!resource.parse(std::move(blob), &error)) continue;
+        ++files;
+
+        // Decode every texture in this file so sprites can be sampled.
+        std::vector<DecodedImage> textures;
+        textures.reserve(resource.textures.size());
+        for (const AnmTexture& texture : resource.textures) {
+            textures.push_back(decode_texture(
+                texture.format, texture.width, texture.height,
+                resource.data.data() + texture.offset + 16, texture.size));
+        }
+
+        AnmManager manager;
+        Rng rng;
+        rng.seed = u16(0x1234);
+        rng.calls = 0;
+
+        // Lay the roots out on a grid so the exported frame shows many
+        // sprites instead of all of them stacked at the origin.
+        const u32 limit = u32(resource.script_list.size() < 32 ?
+                              resource.script_list.size() : 32);
+        const u32 columns = 8;
+        for (u32 s = 0; s < limit; ++s) {
+            const float column = float(s % columns);
+            const float row = float(s / columns);
+            const float px = (column - float(columns - 1) * 0.5f) * 64.0f;
+            const float py = (row - 1.5f) * 64.0f;
+            manager.create(&resource, i32(s), 0, 0xFFFFFFFFu, px, py);
+        }
+
+        // Advance a few frames so the scripts set positions and colours.
+        for (u32 frame = 0; frame < 8; ++frame) {
+            manager.update(rng, 1.0f);
+        }
+
+        SoftwareRaster raster;
+        raster.resize(WIDTH, HEIGHT);
+        // Opaque dark background so the exported PNG is inspectable: a
+        // transparent clear composites to white in every viewer and hides the
+        // geometry completely.
+        raster.clear(Rgba8{24, 24, 48, 255});
+        manager.render(raster, textures.empty() ? nullptr : textures.data(),
+                       u32(textures.size()), float(WIDTH) * 0.5f,
+                       float(HEIGHT) * 0.5f);
+        ++scenes;
+
+        total_quads += raster.quads_drawn;
+        total_written += raster.pixels_written;
+        total_rejected += raster.quads_rejected;
+
+        const std::vector<u8>& pixels = raster.pixels();
+        // Keep the first scene's framebuffer so the runner can export it.
+        // Writing a PNG from inside the WASM sandbox does not reach the host
+        // reliably (NODEFS sync is asynchronous and the process exits first),
+        // so the bytes are handed out through memory instead.
+        if (scenes == 1) {
+            g_frame_width = WIDTH;
+            g_frame_height = HEIGHT;
+            g_frame_rgba.assign(pixels.begin(), pixels.end());
+        }
+        for (std::size_t i = 0; i < pixels.size(); i += 4) {
+            if (pixels[i] != 24 || pixels[i + 1] != 24 || pixels[i + 2] != 48) {
+                ++nonblack;
+            }
+        }
+        // FNV-1a over the framebuffer, so two runs can be compared cheaply.
+        for (u8 byte : pixels) {
+            checksum ^= byte;
+            checksum *= 1099511628211ull;
+        }
+    }
+
+    std::printf("ANMDRAW files=%u scenes=%u quads=%u written=%u rejected=%u"
+                " nonblack=%u checksum=%016llx\n",
+                files, scenes, total_quads, total_written, total_rejected,
+                nonblack, static_cast<unsigned long long>(checksum));
+
+    // Emit the first scene as a base64 PNG on stdout.
+    //
+    // A file written through NODEFS does not reliably reach the host (the sync
+    // is asynchronous and the process exits first), and a pointer handed out
+    // after callMain points into a reclaimed stack. Printing the bytes is the
+    // only channel that survives all three constraints.
+    if (!g_frame_rgba.empty()) {
+        std::vector<u8> png;
+        if (encode_png(WIDTH, HEIGHT, g_frame_rgba, png)) {
+            std::printf("ANMDRAW PNG_BASE64 ");
+            static const char* kTable =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            std::size_t i = 0;
+            while (i + 2 < png.size()) {
+                const u32 triple = (u32(png[i]) << 16) |
+                                    (u32(png[i + 1]) << 8) | u32(png[i + 2]);
+                std::putchar(kTable[(triple >> 18) & 0x3F]);
+                std::putchar(kTable[(triple >> 12) & 0x3F]);
+                std::putchar(kTable[(triple >> 6) & 0x3F]);
+                std::putchar(kTable[triple & 0x3F]);
+                i += 3;
+            }
+            if (i < png.size()) {
+                u32 triple = u32(png[i]) << 16;
+                if (i + 1 < png.size()) triple |= u32(png[i + 1]) << 8;
+                std::putchar(kTable[(triple >> 18) & 0x3F]);
+                std::putchar(kTable[(triple >> 12) & 0x3F]);
+                std::putchar(i + 1 < png.size() ? kTable[(triple >> 6) & 0x3F] : '=');
+                std::putchar('=');
+            }
+            std::putchar('\n');
+        }
+    }
+}
+
 void emit_save(const char* path) {
     // The save file lives outside the archive, so it is passed separately.
     std::vector<u8> blob;
@@ -669,6 +831,7 @@ int main(int argc, char** argv) {
     emit_anm_textures(file);
     emit_anm_scripts(file);
     emit_anm_objects(file);
+    emit_anm_render(file);
     emit_std(file);
     emit_session(file);
     emit_tables();

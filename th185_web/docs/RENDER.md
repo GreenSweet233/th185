@@ -162,3 +162,113 @@ C++ 侧（`cpp_archive_runtime.py`）：
 > th15 的 resample 着色器用整数运算复现了原版「round-toward-zero」的浮点舍入，
 > 注释里写「captures require the original separately rounded operations」。
 > 这说明**像素级一致性需要非常小心**，不是简单采样就够。
+
+---
+
+## 3. ★★★ 软件光栅化器：首次产出真实像素
+
+### 3.1 为什么选软件而非 GLES
+
+th15 驱动完整 GLES3 管线（`portable/sdl/Renderer.cpp`，34 KB）。
+复现它需要窗口、GL 上下文、着色器工具链——三者目前都不存在。
+
+**软件光栅化器一步就到可验证的图像**：纯 C++、产出字节、字节可对比。
+
+这是踏脚石，不是终点。它先回答「ANM 树产生的几何和颜色对不对」。
+
+### 3.2 实现范围
+
+| 能力 | 说明 |
+|---|---|
+| RGBA8 目标 + alpha 混合 | |
+| 纹理 / 纯色四边形 | |
+| 10 种 blend 模式 | 见下表 |
+| 双线性 / 最近邻采样 | |
+| repeat / clamp / mirror 寻址 | |
+
+### 3.3 blend 模式（th15 `AnmRenderer::material`，flags 位 25..29）
+
+| 值 | 模式 | 源/目标因子 |
+|---|---|---|
+| 0 | Alpha | SrcAlpha / InvSrcAlpha |
+| 1 | Additive | SrcAlpha / One |
+| 2 | Subtractive | SrcAlpha / One, ReverseSubtract |
+| 3 | Opaque | One / Zero |
+| 4 | MultiplyInverse | InvDstColor / InvSrcColor |
+| 5 | MultiplyDst | DstColor / Zero |
+| 6 | InvSrcAlpha | InvSrcColor / InvSrcAlpha |
+| 7 | DestAlpha | DstAlpha / InvDstAlpha |
+| 8 | Minimum | |
+| 9 | Maximum | |
+
+### 3.4 ★ 坑一：PNG 导出必须走 stdout
+
+三种通道都试过：
+
+| 通道 | 结果 |
+|---|---|
+| 写 `/data/x.png`（NODEFS） | 文件不落盘 |
+| `FS.syncfs` 后写 | 异步，进程退出前未完成 |
+| `callMain` 后读全局指针 | 指针指向已回收的栈 |
+| **stdout 打印 base64** | **可靠** |
+
+WASM 沙箱里唯一能可靠穿过边界的通道是 stdio。
+
+### 3.5 ★ 坑二：视图变换必须显式加
+
+脚本坐标以**场地中心**为原点，目标画布以**左上角**为原点。
+
+```cpp
+quad.x[i] = view_x + translate_x + variables.position.x + rx;
+quad.y[i] = view_y + translate_y + variables.position.y + ry;
+```
+
+不加的话所有几何堆在 `(0,0)` 角：
+
+| | 像素写入 |
+|---|---|
+| 不加视图变换 | 1,774,647 |
+| 加视图变换 | **3,514,601** |
+
+### 3.6 实测
+
+```
+ANMDRAW files=6 scenes=6 quads=140 written=3106252 rejected=74
+        nonblack=289120 checksum=7df374f1be076f3c
+```
+
+| 指标 | 值 |
+|---|---|
+| 四边形 | 140 |
+| 像素写入 | 3,106,252 |
+| 非背景像素 | 289,120 |
+| 校验和 | `7df374f1be076f3c`（确定性） |
+
+### 3.7 图像
+
+![渲染帧](../artifacts/anm-frame.png)
+
+640×480，深色背景 `(24,24,48)`，白色方块是 ANM 实例绘制的四边形。
+
+### 3.8 ★ 一个数据发现：多数根脚本不设 visible
+
+32 个根脚本里只有 **2 个**在 8 帧后可见。
+其余需要靠 spawn 或更长时间才显示。
+
+**这是数据行为，不是渲染 bug。**
+
+---
+
+## 4. 渲染层完成度
+
+| 层 | 状态 |
+|---|---|
+| 纹理容器与解码 | ✅ |
+| 软件光栅化 | ✅ 本轮 |
+| PNG 导出 | ✅ |
+| **GLES 硬件渲染** | ❌ 需 SDL3 + 上下文 |
+| **几何族实际顶点生成** | ❌ opcode 600-611 只记录数量 |
+| **效果宿主** | ❌ opcode 508 |
+| **音频 / 输入** | ❌ |
+
+**从 `th185.dat` 到 PNG 图像的完整链路已经跑通。**
