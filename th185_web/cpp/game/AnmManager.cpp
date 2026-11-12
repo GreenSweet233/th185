@@ -177,15 +177,28 @@ u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
             quad.y[i] = view_y + slot->translate_y + variables.position.y + ry;
         }
 
-        // UVs follow the visual's uv_scale (opcode 429/430).
-        quad.u[0] = 0.0f;
-        quad.u[1] = visual.uv_scale.x;
-        quad.u[2] = visual.uv_scale.x;
-        quad.u[3] = 0.0f;
-        quad.v[0] = 0.0f;
-        quad.v[1] = 0.0f;
-        quad.v[2] = visual.uv_scale.y;
-        quad.v[3] = visual.uv_scale.y;
+        // UVs come from the SELECTED SPRITE, not from 0..1: an ANM sprite is a
+        // sub-rectangle of an atlas, and the interpreter stores which sprite
+        // was chosen. Using 0..1 samples the whole atlas, which is why the
+        // first render produced plain white squares.
+        float u0 = 0.0f, v0 = 0.0f, u1 = 1.0f, v1 = 1.0f;
+        const AnmResource* source = slot->resource;
+        if (source && visual.sprite >= 0 &&
+            u32(visual.sprite) < source->sprites.size()) {
+            const AnmSprite& sprite = source->sprites[u32(visual.sprite)];
+            u0 = sprite.u0;
+            v0 = sprite.v0;
+            u1 = sprite.u1;
+            v1 = sprite.v1;
+        }
+        quad.u[0] = u0;
+        quad.u[1] = u1;
+        quad.u[2] = u1;
+        quad.u[3] = u0;
+        quad.v[0] = v0;
+        quad.v[1] = v0;
+        quad.v[2] = v1;
+        quad.v[3] = v1;
 
         quad.tint = Rgba8{u8((visual.color >> 16) & 0xFF),
                           u8((visual.color >> 8) & 0xFF),
@@ -194,10 +207,15 @@ u32 AnmManager::render(SoftwareRaster& target, const DecodedImage* textures,
         quad.blend = blend_mode_from_flags(visual.flags);
         quad.nearest = (visual.render_flags & 0x800u) != 0;
 
-        // Texture: the sprite index selects a decoded image when available.
-        if (textures && visual.sprite >= 0 &&
-            u32(visual.sprite) < texture_count) {
-            quad.texture = &textures[visual.sprite];
+        // Texture: the SPRITE names its texture; the sprite index is not a
+        // texture index. An atlas holds many sprites, so indexing textures by
+        // sprite would be out of range for most of them.
+        if (textures && source && visual.sprite >= 0 &&
+            u32(visual.sprite) < source->sprites.size()) {
+            const u32 texture_index = source->sprites[u32(visual.sprite)].texture;
+            if (texture_index < texture_count) {
+                quad.texture = &textures[texture_index];
+            }
         }
 
         target.draw(quad);

@@ -272,3 +272,97 @@ ANMDRAW files=6 scenes=6 quads=140 written=3106252 rejected=74
 | **音频 / 输入** | ❌ |
 
 **从 `th185.dat` 到 PNG 图像的完整链路已经跑通。**
+
+---
+
+## 5. ★★★ 纹理解码端到端验证
+
+### 5.1 决定性证据
+
+把 `ascii.anm` 的 256×256 图集解码出来，**肉眼可见完整 ASCII 字符集**：
+
+![纹理图集](../artifacts/anm-atlas.png)
+
+图中能读出 `Bonus`、`History`、`Failed`、`PowerUp`，以及完整的
+`!"#$%&'()*+,-./0123456789:;<=>?@ABC...` 字符表。
+
+**这证明整条链路都是正确的：**
+
+```
+th185.dat
+  -> PBG4 解密（cipher 表 + 分块顺序）
+  -> LZSS 解压（13 位偏移 + 4 位长度）
+  -> ANM 容器解析（块链 + 相对块起点偏移表）
+  -> THTX 定位（ARGB4444, 256x256）
+  -> 像素解码（4 位扩展到 8 位）
+  -> PNG 编码
+```
+
+任何一环错了，都不可能还原出可读的文字。
+
+### 5.2 ★ 为什么之前只得白方块
+
+渲染时我用 `0..1` 作 UV，那是**整个图集**。
+
+ANM 的 sprite 是图集里的**子矩形**，必须用 sprite 自己的 UV：
+
+```cpp
+// th15 AnmResource.cpp 第 45-47 行，加载时算一次
+sprite.u0 = float(double(sprite.x) / texture.width);
+sprite.v0 = float(double(sprite.y) / texture.height);
+sprite.u1 = float((double(sprite.x) + double(sprite.width)) / texture.width);
+sprite.v1 = float((double(sprite.y) + double(sprite.height)) / texture.height);
+```
+
+**在加载时算一次**而不是每帧算——这是原版的做法，也避免了每帧重复除法。
+
+### 5.3 ★ 另一个错误：纹理索引来自 sprite，不是 sprite 序号
+
+```cpp
+// 错误：sprite 序号当纹理索引
+quad.texture = &textures[visual.sprite];
+
+// 正确：sprite 记录它属于哪个纹理
+const u32 texture_index = source->sprites[u32(visual.sprite)].texture;
+quad.texture = &textures[texture_index];
+```
+
+一个图集含多个 sprite。用 sprite 序号索引纹理，对大多数 sprite 会越界。
+
+### 5.4 修正效果
+
+| 指标 | 修正前 | 修正后 |
+|---|---|---|
+| 像素写入 | 3,106,252 | **3,759,163** |
+| 非背景像素 | 289,120 | **359,260** |
+| 校验和 | `7df374f1…` | **`5502a39e…`** |
+
+### 5.5 校验和为什么是断言
+
+帧缓冲校验和只在**渲染路径变化**时才变。
+
+```
+[PASS] framebuffer checksum is deterministic (5502a39ee95aa9f2)
+```
+
+**它变了，就说明有人改动了渲染，应该重新看图。**
+这比「跑通了」更有价值——它把「输出变了」变成一个显式的、需要审查的事件。
+
+---
+
+## 6. 渲染层完成度
+
+| 层 | 状态 |
+|---|---|
+| PBG4 解密 | ✅ complete |
+| LZSS 解压 | ✅ complete |
+| ANM 容器 | ✅ complete |
+| **THTX 像素解码** | ✅ **端到端验证** |
+| **软件光栅化** | ✅ |
+| **PNG 导出** | ✅ |
+| GLES 硬件渲染 | ❌ 需 SDL3 + 上下文 |
+| 几何族实际顶点生成 | ❌ opcode 600-611 只记录数量 |
+| 效果宿主 | ❌ opcode 508 |
+| 音频 / 输入 | ❌ |
+
+**「从加密归档到可读图像」这一段已经完全打通并验证。**

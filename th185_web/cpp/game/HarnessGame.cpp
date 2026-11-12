@@ -591,6 +591,63 @@ static std::vector<u8> g_frame_rgba;
 
 
 
+void emit_anm_atlas(const std::vector<u8>& file) {
+    // Dump the first decodable texture as a PNG. This isolates the DECODER:
+    // if the atlas looks wrong here, the problem is pixel conversion, not
+    // geometry or blending.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) return;
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".anm") != 0) continue;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) continue;
+        AnmResource resource;
+        if (!resource.parse(std::move(blob), &error)) continue;
+        if (resource.textures.empty()) continue;
+
+        const AnmTexture& texture = resource.textures[0];
+        const DecodedImage image = decode_texture(
+            texture.format, texture.width, texture.height,
+            resource.data.data() + texture.offset + 16, texture.size);
+        if (!image.valid()) continue;
+
+        // Force alpha opaque so the PNG is visible without compositing.
+        std::vector<u8> rgba = image.rgba;
+        for (std::size_t i = 3; i < rgba.size(); i += 4) rgba[i] = 255;
+
+        std::vector<u8> png;
+        if (!encode_png(image.width, image.height, rgba, png)) continue;
+
+        std::printf("ANMATLAS name=%s fmt=%u %ux%u ", name.c_str(),
+                    unsigned(texture.format), image.width, image.height);
+        static const char* kTable =
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        std::size_t i = 0;
+        while (i + 2 < png.size()) {
+            const u32 triple = (u32(png[i]) << 16) | (u32(png[i + 1]) << 8) |
+                               u32(png[i + 2]);
+            std::putchar(kTable[(triple >> 18) & 0x3F]);
+            std::putchar(kTable[(triple >> 12) & 0x3F]);
+            std::putchar(kTable[(triple >> 6) & 0x3F]);
+            std::putchar(kTable[triple & 0x3F]);
+            i += 3;
+        }
+        if (i < png.size()) {
+            u32 triple = u32(png[i]) << 16;
+            if (i + 1 < png.size()) triple |= u32(png[i + 1]) << 8;
+            std::putchar(kTable[(triple >> 18) & 0x3F]);
+            std::putchar(kTable[(triple >> 12) & 0x3F]);
+            std::putchar(i + 1 < png.size() ? kTable[(triple >> 6) & 0x3F] : '=');
+            std::putchar('=');
+        }
+        std::putchar('\n');
+        return;
+    }
+}
 void emit_anm_render(const std::vector<u8>& file) {
     // Render a real ANM scene into an RGBA8 buffer and report coverage.
     //
@@ -832,6 +889,7 @@ int main(int argc, char** argv) {
     emit_anm_scripts(file);
     emit_anm_objects(file);
     emit_anm_render(file);
+    emit_anm_atlas(file);
     emit_std(file);
     emit_session(file);
     emit_tables();

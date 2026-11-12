@@ -224,3 +224,7 @@ BHV-RND-003,SYS-RENDER-ANM,"★ 首次产出真实像素：140 个四边形、31
 BHV-RND-004,SYS-RENDER-ANM,"★ PNG 导出走 stdout base64 而非文件：NODEFS 的 syncfs 是异步的进程退出前不保证落盘，callMain 之后返回的指针指向已回收的栈",original,observed,verified,"th185_web/scripts/export-frame.mjs","三种通道里只有打印字节可靠"
 BHV-RND-005,SYS-RENDER-ANM,"★ 视图变换必须显式加：脚本坐标以场地中心为原点，目标画布以左上角为原点；不加则所有几何堆在 (0,0) 角",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","像素写入 177万→351万"
 BHV-RND-006,SYS-RENDER-ANM,"★ 多数 ANM 根脚本不设 visible：32 个根里只有 2 个在 8 帧后可见，其余需靠 spawn 或更长时间才显示——这是数据行为不是渲染 bug",original,observed,implemented,"","已记录"
+BHV-RND-010,SYS-RENDER-ANM,"★★★ 纹理解码端到端验证成功：导出 ascii.anm 的 256x256 ARGB4444 图集，肉眼可见完整 ASCII 字符集与 Bonus/History/Failed/PowerUp 文字——证明 PBG4解密→LZSS解压→ANM解析→THTX解码→ARGB4444转RGBA8 全链路正确",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","产物 th185_web/artifacts/anm-atlas.png"
+BHV-RND-011,SYS-RENDER-ANM,"★ sprite 必须记录所属 texture 索引与归一化 UV：th15 AnmResource.cpp 第45-47行 sprite.u0=x/texture.width、u1=(x+w)/width；用 0..1 采样整个图集是首次渲染只得白方块的原因",original,observed,verified,"th185_web/cpp/game/AnmResource.cpp","th15 在加载时算一次而非每帧算"
+BHV-RND-012,SYS-RENDER-ANM,"★ 纹理索引来自 sprite.texture 而不是 sprite 序号：一个图集含多个 sprite，用 sprite 序号索引纹理对大多数 sprite 会越界",original,observed,verified,"th185_web/cpp/game/AnmManager.cpp","render 已修正"
+BHV-RND-013,SYS-RENDER-ANM,"UV 修正后：像素写入 3106252→3759163、非背景像素 289120→359260、校验和 7df374f1→5502a39e",original,observed,verified,"th185_web/scripts/native/cpp_archive_runtime.py --selftest","方块中已可见图集内容"

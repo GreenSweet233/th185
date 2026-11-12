@@ -387,10 +387,35 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("nonblack")))
         if not ok:
             failures += 1
-        # A stable checksum proves the render is deterministic.
-        ok = fields.get("checksum") == "7df374f1be076f3c"
+        # A stable checksum proves the render is deterministic. It changes only
+        ok = fields.get("checksum") == "5502a39ee95aa9f2"
         print("[%s] framebuffer checksum is deterministic (%s)"
               % ("PASS" if ok else "FAIL", fields.get("checksum")))
+        if not ok:
+            failures += 1
+
+    # 11. The texture decoder must produce a viewable atlas.
+    atlas = None
+    for line in lines:
+        if line.startswith("ANMATLAS name="):
+            atlas = line
+            break
+    ok = atlas is not None
+    print("[%s] the C++ texture decoder produced an atlas" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        # The first decodable texture in the archive is ascii.anm, an
+        # ARGB4444 font atlas. Its presence and format are stable facts about
+        # the shipped data, so asserting them catches a regression in the
+        # decode path (wrong bpp, wrong channel order) immediately.
+        ok = "name=ascii.anm" in atlas and "fmt=5" in atlas
+        print("[%s] atlas is ascii.anm in ARGB4444 (%s)"
+              % ("PASS" if ok else "FAIL", atlas.split()[0] if atlas else "-"))
+        if not ok:
+            failures += 1
+        ok = "256x256" in atlas
+        print("[%s] atlas is 256x256" % ("PASS" if ok else "FAIL"))
         if not ok:
             failures += 1
 

@@ -44,6 +44,12 @@ constexpr u32 ANM_VERSION = 8;
 struct AnmSprite {
     u32 id = 0;
     float x = 0, y = 0, w = 0, h = 0;
+    // Which texture in AnmResource::textures this sprite lives in.
+    u32 texture = 0;
+    // Normalised UVs, derived from the pixel rect over the texture size.
+    // th15 computes these once at load time (AnmResource.cpp lines 45-47);
+    // deriving them per draw would repeat the same division every frame.
+    float u0 = 0, v0 = 0, u1 = 1, v1 = 1;
 };
 
 struct AnmTexture {

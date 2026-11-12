@@ -86,6 +86,9 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
             }
         }
 
+        const std::size_t block_texture_base = textures.size();
+        const std::size_t block_sprite_base = sprites.size();
+
         // Sprite records, addressed through this block's offset table.
         for (u32 i = 0; i < block_sprites; ++i) {
             const std::size_t table_at = base + ANM_HEADER_SIZE + std::size_t(i) * 4;
@@ -101,6 +104,9 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
             sprite.y = read_f32(data.data() + at + 8);
             sprite.w = read_f32(data.data() + at + 12);
             sprite.h = read_f32(data.data() + at + 16);
+            // Every sprite in a block belongs to that block's first texture
+            // (thtk/thanm treats a block as one atlas).
+            sprite.texture = u32(block_texture_base);
             sprites.push_back(sprite);
         }
 
@@ -174,6 +180,23 @@ bool AnmResource::parse(std::vector<u8> blob, std::string* error) {
             if (at + 16 + texture.size > data.size()) break;
             textures.push_back(texture);
             at += 16 + texture.size;
+        }
+
+        // Derive UVs for the sprites just added, now that this block's texture
+        // sizes are known. th15 does the same in AnmResource.cpp:
+        //     sprite.u0 = sprite.x / texture.width
+        //     sprite.u1 = (sprite.x + sprite.width) / texture.width
+        for (std::size_t s = block_sprite_base; s < sprites.size(); ++s) {
+            AnmSprite& sprite = sprites[s];
+            if (sprite.texture >= textures.size()) continue;
+            const AnmTexture& texture = textures[sprite.texture];
+            if (texture.width == 0 || texture.height == 0) continue;
+            const float tw = float(texture.width);
+            const float th = float(texture.height);
+            sprite.u0 = float(double(sprite.x) / double(tw));
+            sprite.v0 = float(double(sprite.y) / double(th));
+            sprite.u1 = float((double(sprite.x) + double(sprite.w)) / double(tw));
+            sprite.v1 = float((double(sprite.y) + double(sprite.h)) / double(th));
         }
 
         ++block_count;
