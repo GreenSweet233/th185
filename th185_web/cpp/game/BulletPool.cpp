@@ -12,7 +12,7 @@ BulletPool::BulletPool() {
 }
 
 bool BulletPool::spawn(float x, float y, float vx, float vy, u16 sprite,
-                       u32 color) {
+                       u32 color, bool hostile) {
     if (free_slots_.empty()) {
         ++stats_.pool_full;
         return false;
@@ -27,6 +27,7 @@ bool BulletPool::spawn(float x, float y, float vx, float vy, u16 sprite,
     bullet.vy = vy;
     bullet.sprite = sprite;
     bullet.color = color;
+    bullet.hostile = hostile;
     bullet.age = 0;
     bullet.alive = true;
 

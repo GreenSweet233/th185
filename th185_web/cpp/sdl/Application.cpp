@@ -212,6 +212,8 @@ void Application::reset_scenario() {
         }
     }
     stats_.collision_hits = 0;
+    stats_.player_hits_taken = 0;
+    stats_.player_lives = player_.lives();
 }
 
 u32 Application::spawn_test_wave(u32 count) {
@@ -427,6 +429,24 @@ bool Application::tick(u32 held) {
     stats_.collision_hits += enemies_.resolve_collisions(&bullets_);
     stats_.enemies_alive = enemies_.stats().alive;
     stats_.enemies_killed = enemies_.stats().killed;
+
+    // Enemies fire aimed shots at the player.
+    enemies_.fire_at(&bullets_, player_.x(), player_.y());
+
+    // Player vs hostile bullets. The player's hitbox is 2 units, far smaller
+    // than its 30x46 sprite -- that gap is what makes grazing feel fair.
+    const float hitbox = player_.hitbox_radius();
+    for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+        Bullet& bullet = bullets_.mutable_bullet(i);
+        if (!bullet.alive || !bullet.hostile) continue;
+        const float dx = bullet.x - player_.x();
+        const float dy = bullet.y - player_.y();
+        if (dx * dx + dy * dy > hitbox * hitbox) continue;
+        bullets_.release(i);
+        if (player_.take_hit()) ++stats_.player_hits_taken;
+    }
+    stats_.player_lives = player_.lives();
+    stats_.enemy_shots = enemies_.stats().enemy_shots;
     stats_.player_x = player_.x();
     stats_.player_y = player_.y();
     stats_.player_focused = player_.focused();

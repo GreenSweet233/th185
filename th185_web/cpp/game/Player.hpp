@@ -48,6 +48,14 @@ constexpr float PLAY_RIGHT = 192.0f;
 constexpr float PLAY_TOP = -224.0f;
 constexpr float PLAY_BOTTOM = 224.0f;
 
+// Deathbomb window and invulnerability, in frames. After a hit the player is
+// briefly invulnerable so a dense pattern cannot drain every life in one frame.
+constexpr u32 PLAYER_INVULNERABLE_FRAMES = 90;
+constexpr u32 PLAYER_STARTING_LIVES = 3;
+// The player's own hitbox is much smaller than its sprite -- this is the whole
+// point of a danmaku game's "grazing" feel. TH uses roughly 2 units.
+constexpr float PLAYER_HITBOX_RADIUS = 2.0f;
+
 constexpr float PLAYER_SPEED = 4.0f;
 constexpr float PLAYER_FOCUS_SPEED = 2.0f;
 
@@ -68,6 +76,8 @@ struct PlayerStats {
     u32 bombs = 0;
     u32 clamped_frames = 0;
     u32 bullets_fired = 0;
+    u32 hits_taken = 0;
+    u32 deaths = 0;
 };
 
 class Player {
@@ -78,6 +88,15 @@ public:
     // Consumes one frame of input. `held` is the bitmask from the shell.
     // Shots are spawned into `bullets`.
     void update(u32 held, BulletPool* bullets);
+
+    // Applies one hit. Ignored while invulnerable. Returns true when a life was
+    // actually lost.
+    bool take_hit();
+
+    u32 lives() const { return lives_; }
+    u32 invulnerable_frames() const { return invulnerable_; }
+    bool dead() const { return lives_ == 0; }
+    float hitbox_radius() const { return PLAYER_HITBOX_RADIUS; }
 
     float x() const { return x_; }
     float y() const { return y_; }
@@ -98,6 +117,8 @@ private:
     bool focused_ = false;
     u32 previous_held_ = 0;
     u32 shot_cooldown_ = 0;
+    u32 lives_ = PLAYER_STARTING_LIVES;
+    u32 invulnerable_ = 0;
     PlayerStats stats_{};
 };
 

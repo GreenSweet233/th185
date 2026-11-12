@@ -262,3 +262,8 @@ BHV-CL-003,SYS-GAME-COLLISION,"★ 首次碰撞测试假失败三个原因：(a)
 BHV-CL-004,SYS-GAME-COLLISION,"★ 新增 reset_scenario()：清空子弹与敌人、玩家复位、重新绑定动画库；测试需要已知初始状态，否则每个阶段继承上一阶段的位置",original,observed,verified,"th185_web/scripts/native/player_input_check.py","关键测试基础设施"
 BHV-CL-005,SYS-GAME-COLLISION,"★ spawn_test_wave 必须立即同步 stats_：只在 tick() 里同步会让「生成后立刻读」读到旧值，这是 spawn 测试假失败的根因",original,observed,verified,"th185_web/scripts/native/player_input_check.py","stats 同步时机"
 BHV-CL-006,SYS-GAME-COLLISION,"★★★★★ 完整游戏场景渲染：玩家(底部中央30x46)+12个敌人(顶部竖列)+6发子弹(中间白色方块)，quads=52，产物 th185_web/artifacts/app-frame.png",original,observed,verified,"th185_web/artifacts/app-frame.png","首次三系统同框"
+BHV-CL-010,SYS-GAME-COLLISION,"★★★ 敌方弹幕与玩家被弹判定：Bullet 加 hostile 标记（敌我共用池因运动与生命周期规则相同但碰撞对象不同），敌人每 90 帧向玩家发射瞄准弹（速度 3.0）",original,observed,verified,"th185_web/scripts/native/player_input_check.py","enemyShots 135"
+BHV-CL-011,SYS-GAME-COLLISION,"★ 玩家生命系统：3 条命、被弹后 90 帧无敌、判定半径 2.0（远小于 30x46 精灵，这是弹幕游戏「擦弹」手感的关键）",original,observed,verified,"th185_web/scripts/native/player_input_check.py","lives 3→0"
+BHV-CL-012,SYS-GAME-COLLISION,"★★ 关键 bug：resolve_collisions 未排除 hostile 子弹，导致敌方子弹刚出膛就被自己的碰撞检测消耗——表现为「敌人开火 18 次但玩家 hits=0、bullets=0」",original,observed,verified,"th185_web/scripts/native/player_input_check.py","加 if(bullet.hostile) continue"
+BHV-CL-013,SYS-GAME-COLLISION,"★ 完整闭环实测：f=0 lives=3 hits=0 → f=150 lives=2 → f=300 lives=1 → f=450 lives=0；900 帧内 enemyShots=135、hits=3（无敌帧限制避免一帧掉光）",original,observed,verified,"th185_web/scripts/native/player_input_check.py","21 项断言"
+BHV-CL-014,SYS-GAME-COLLISION,"★★★★★ 完整对战画面：玩家(底部)+5存活敌人(顶部)+玩家子弹(白色向上)+敌方子弹(粉色向下)，quads=55、bullets=17、hits=22、enemyShots=11",original,observed,verified,"th185_web/artifacts/app-frame.png","双方弹幕交汇"

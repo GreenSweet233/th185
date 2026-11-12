@@ -221,6 +221,18 @@ EMSCRIPTEN_KEEPALIVE void th185_reset_scenario() {
     th185::app::instance().reset_scenario();
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_lives() {
+    return th185::app::instance().stats().player_lives;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_hits_taken() {
+    return th185::app::instance().stats().player_hits_taken;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_shots() {
+    return th185::app::instance().stats().enemy_shots;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

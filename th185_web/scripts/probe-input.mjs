@@ -139,6 +139,10 @@ check('holding shoot keeps firing', firedAfter > firedBefore + 4);
 check('bullets are alive on screen', aliveAfter > 0);
 
 // Bullets must leave the screen and be retired.
+//
+// The field is cleared first because enemies now fire too: counting all bullets
+// would measure the enemy's output, not the retirement rule.
+module._th185_reset_scenario();
 tick(0, 120);
 const aliveLater = module._th185_bullets_alive();
 console.log('after 120f  : alive ' + aliveLater);
@@ -184,6 +188,31 @@ const afterSpawn = module._th185_enemies_alive();
 console.log('spawn wave  : +' + spawned + ' -> alive ' + afterSpawn);
 check('test wave can be spawned', spawned === 8);
 check('enemy count matches what was spawned', afterSpawn === spawned);
+
+// Enemy fire and the player's lives.
+//
+// This closes the loop: enemies shoot, hostile bullets reach the player, lives
+// drop, and invulnerability stops a single frame from draining everything.
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(6);
+const livesStart = module._th185_player_lives();
+console.log('lives start : ' + livesStart);
+
+let framesRun = 0;
+for (; framesRun < 900; ++framesRun) {
+  if (!module._th185_tick(0)) break;
+  if (module._th185_player_lives() === 0) break;
+}
+const livesEnd = module._th185_player_lives();
+const hitsTaken = module._th185_player_hits_taken();
+const enemyShots = module._th185_enemy_shots();
+console.log('after ' + framesRun + 'f : lives=' + livesEnd
+            + ' hits=' + hitsTaken + ' enemyShots=' + enemyShots);
+
+check('enemies fired at the player', enemyShots > 0);
+check('the player took hits', hitsTaken > 0);
+check('the player lost lives', livesEnd < livesStart);
+check('invulnerability prevents instant death', hitsTaken < 10);
 
 console.log('');
 if (failures) {

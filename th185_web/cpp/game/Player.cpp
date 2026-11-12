@@ -40,8 +40,18 @@ void Player::select_script(u32 script_index) {
     script_ = script_index;
 }
 
+bool Player::take_hit() {
+    if (dead() || invulnerable_ > 0) return false;
+    --lives_;
+    invulnerable_ = PLAYER_INVULNERABLE_FRAMES;
+    ++stats_.hits_taken;
+    if (lives_ == 0) ++stats_.deaths;
+    return true;
+}
+
 void Player::update(u32 held, BulletPool* bullets) {
     ++stats_.frames;
+    if (invulnerable_ > 0) --invulnerable_;
 
     focused_ = (held & ButtonFocus) != 0;
     const float speed = focused_ ? PLAYER_FOCUS_SPEED : PLAYER_SPEED;

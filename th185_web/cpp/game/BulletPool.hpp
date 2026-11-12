@@ -48,6 +48,9 @@ struct Bullet {
     u32 color = 0xFFFFFFFFu;
     // Frames this bullet has lived. Useful for animation and for debugging.
     u16 age = 0;
+    // True for enemy fire. The two kinds share the pool because they share the
+    // motion and lifetime rules, but they collide with different things.
+    bool hostile = false;
     bool alive = false;
 };
 
@@ -65,7 +68,7 @@ public:
 
     // Spawns one bullet. Returns false when the pool is exhausted.
     bool spawn(float x, float y, float vx, float vy, u16 sprite,
-               u32 color = 0xFFFFFFFFu);
+               u32 color = 0xFFFFFFFFu, bool hostile = false);
 
     // Advances every live bullet one frame and retires the ones that left.
     void update();

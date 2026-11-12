@@ -47,8 +47,9 @@ if (!module._th185_start()) {
 const SHOOT = 1 << 0;
 module._th185_reset_scenario();
 module._th185_spawn_test_wave(12);
-for (let i = 0; i < 30; ++i) {
-  const held = i >= 12 ? SHOOT : 0;
+// Long enough for the enemies to return fire, so the frame shows both sides.
+for (let i = 0; i < 90; ++i) {
+  const held = i >= 20 ? SHOOT : 0;
   if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
     process.exit(1);
@@ -67,6 +68,8 @@ console.log('animations : ' + live);
 console.log('bullets    : ' + module._th185_bullets_alive());
 console.log('enemies    : ' + module._th185_enemies_alive());
 console.log('hits       : ' + module._th185_collision_hits());
+console.log('enemyShots : ' + module._th185_enemy_shots());
+console.log('lives      : ' + module._th185_player_lives());
 
 if (!width || !height || !bytes) {
   console.error('FAIL: the application produced no framebuffer');

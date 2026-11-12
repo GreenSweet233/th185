@@ -37,6 +37,8 @@ struct Enemy {
     // Circle hitbox.
     float radius = 16.0f;
     i32 hp = 1;
+    // Frames until this enemy fires again. 0 means "fire now".
+    u16 fire_cooldown = 0;
     // Which bank script drives it (for the animation instance).
     u32 script = 0;
     // The animation instance owned by this enemy, or UINT32_MAX.
@@ -51,6 +53,8 @@ struct EnemyStats {
     u32 peak_alive = 0;
     u32 hits = 0;
     u32 bullets_consumed = 0;
+    u32 enemy_shots = 0;
+    u32 player_hits = 0;
 };
 
 class EnemyPool {
@@ -67,6 +71,10 @@ public:
     // Tests every live bullet against every live enemy. A bullet that hits is
     // consumed; an enemy at zero HP dies. Returns the number of hits.
     u32 resolve_collisions(BulletPool* bullets);
+
+    // Fires from every live enemy into `bullets` as HOSTILE shots, aimed at
+    // (target_x, target_y). Returns the number of shots spawned.
+    u32 fire_at(BulletPool* bullets, float target_x, float target_y);
 
     void clear();
 

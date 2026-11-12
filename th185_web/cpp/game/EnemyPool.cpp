@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "Player.hpp"
+
 namespace th185 {
 
 namespace {
@@ -39,6 +41,8 @@ bool EnemyPool::spawn(float x, float y, float vx, float vy, float radius,
     enemy.hp = hp > 0 ? hp : 1;
     enemy.script = script;
     enemy.handle = handle;
+    // Stagger the first shot so a whole wave does not fire on the same frame.
+    enemy.fire_cooldown = u16(30 + (index % 60));
     enemy.alive = true;
 
     ++stats_.spawned;
@@ -57,6 +61,7 @@ void EnemyPool::update() {
 
         enemy.x += enemy.vx;
         enemy.y += enemy.vy;
+        if (enemy.fire_cooldown > 0) --enemy.fire_cooldown;
 
         if (enemy.x < ENEMY_LEFT || enemy.x > ENEMY_RIGHT ||
             enemy.y < ENEMY_TOP || enemy.y > ENEMY_BOTTOM) {
@@ -77,6 +82,10 @@ u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
     for (u32 b = 0; b < BULLET_CAPACITY; ++b) {
         Bullet& bullet = bullets->mutable_bullet(b);
         if (!bullet.alive) continue;
+        // Enemy fire must not hit its own side. Without this guard the aimed
+        // shots are consumed the moment they leave the muzzle -- which is why
+        // the player took zero hits while enemies fired 18 times.
+        if (bullet.hostile) continue;
 
         for (u32 e = 0; e < ENEMY_CAPACITY; ++e) {
             Enemy& enemy = enemies_[e];
@@ -107,6 +116,42 @@ u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
         }
     }
     return hits;
+}
+
+u32 EnemyPool::fire_at(BulletPool* bullets, float target_x, float target_y) {
+    if (!bullets) return 0;
+    u32 fired = 0;
+
+    for (u32 i = 0; i < ENEMY_CAPACITY; ++i) {
+        Enemy& enemy = enemies_[i];
+        if (!enemy.alive) continue;
+        if (enemy.fire_cooldown > 0) continue;
+
+        // Reset the timer whether or not the shot succeeds, so a full bullet pool
+        // does not make every enemy retry on every frame.
+        enemy.fire_cooldown = 90;
+
+        float dx = target_x - enemy.x;
+        float dy = target_y - enemy.y;
+        const float length = std::sqrt(dx * dx + dy * dy);
+        if (!(length > 0.0001f)) {
+            dx = 0.0f;
+            dy = 1.0f;
+        } else {
+            dx /= length;
+            dy /= length;
+        }
+
+        // A slow aimed shot: fast enough to matter, slow enough to dodge.
+        constexpr float SPEED = 3.0f;
+        constexpr u32 ENEMY_SHOT_COLOR = 0xFFFF6060u;
+        if (bullets->spawn(enemy.x, enemy.y, dx * SPEED, dy * SPEED, 0,
+                           ENEMY_SHOT_COLOR, true)) {
+            ++fired;
+            ++stats_.enemy_shots;
+        }
+    }
+    return fired;
 }
 
 void EnemyPool::clear() {

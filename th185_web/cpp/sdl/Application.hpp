@@ -82,6 +82,9 @@ struct FrameStats {
     u32 enemies_alive = 0;
     u32 enemies_killed = 0;
     u32 collision_hits = 0;
+    u32 player_hits_taken = 0;
+    u32 player_lives = 0;
+    u32 enemy_shots = 0;
 };
 
 class Application {
@@ -113,6 +116,7 @@ public:
     const std::string& animation_bank() const { return animation_bank_; }
 
     const Player& player() const { return player_; }
+    const Player& player_state() const { return player_; }
     const EnemyPool& enemies() const { return enemies_; }
     const BulletPool& bullets() const { return bullets_; }
 
