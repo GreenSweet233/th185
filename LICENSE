@@ -1,0 +1,65 @@
+MIT License
+
+Copyright (c) 2026 GreenSweet233 and contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 适用范围
+
+上述 MIT 许可仅覆盖**本仓库自己编写的代码与文档**（`th185_web/cpp/`、
+`th185_web/scripts/`、`th185_web/docs/`、`th185_web/sdl-runtime/` 等）。
+
+**不覆盖**：
+
+| 内容 | 归属 |
+|---|---|
+| 東方Project 系列作品及其资源 | 上海アリス幻樂団 / ZUN |
+| `th185.dat`、`thbgm.dat`、游戏可执行文件 | 同上，且**不在本仓库内** |
+| `th185_web/reference/thtk/` 下的格式定义 | thpatch/thtk，BSD-2-Clause，见下 |
+| `_references/` 下的第三方源码 | 各自的许可证 |
+
+本仓库不含原版游戏的可执行文件、游戏数据、音乐、存档或 Replay。
+可运行包需由使用者用自己合法持有的原版文件在本地组装。
+
+---
+
+## 第三方组件
+
+### thtk (Touhou Toolkit)
+
+- 位置：`th185_web/reference/thtk/`
+- 来源：https://github.com/thpatch/thtk
+- commit：`892114a0fcaa0bbdaaecf3cb4ad56f758683fb40`
+- 许可：BSD-2-Clause
+- 用途：ANM 容器格式（`anm_types.h`）与 PBG4 归档条目结构（`dattypes.h`）的权威定义
+
+每个文件的 SHA-256 记录在 `th185_web/reference/thtk/provenance.json`。
+
+这些文件是**格式定义**，不含游戏资源。本项目引用它们而非自行猜测格式，
+理由见 `th185_web/reference/README.md`。
+
+---
+
+## 引用与致敬
+
+- [Eagler Touhou](https://github.com/YomotsuHisami/eagler-touhou) / [touhou.vip](https://touhou.vip/) — 本项目的归属计划与工程布局来源
+- [thtk](https://github.com/thpatch/thtk) — 东方系列文件格式的社区权威定义
+- 上海アリス幻樂団 / ZUN — 原作

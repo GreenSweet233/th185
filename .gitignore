@@ -9,7 +9,9 @@
 **/tools/wasi-sdk*/
 [[]th185[]]*/
 th185_web/assets/
-th185_web/reference/
+# reference/ 是外部权威格式定义的 vendored 副本（thtk，BSD-2-Clause）。
+# 它们不是游戏资源，是本项目的格式依据，必须入库才能让 README 的说法可核查。
+# 来源与每个文件的 SHA-256 记录在 reference/thtk/provenance.json。
 th185_web/local.target.json
 tools/
 verification/

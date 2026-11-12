@@ -207,3 +207,12 @@ CI 覆盖：目标指纹、账本一致性、进度、Unicorn 探针、RNG、波
 This repository does not include the original Touhou executable, game data, music, replay, save files, or private development reference material. A runnable package must be assembled locally from files you are legally allowed to use.
 
 Licensing is component-specific. Keep the notices and licenses beside each bundled component; no blanket license is asserted for the original game or its assets.
+
+本仓库自己编写的代码与文档采用 **MIT** 许可，详见 [LICENSE](LICENSE)。
+
+| 内容 | 归属 |
+|---|---|
+| 本仓库代码与文档 | MIT |
+| 東方Project 系列作品及资源 | 上海アリス幻樂団 / ZUN（**不在本仓库内**） |
+| `th185_web/reference/thtk/` | thpatch/thtk，BSD-2-Clause |
+| `_references/` | 各自许可证 |
