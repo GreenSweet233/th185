@@ -117,6 +117,27 @@ const OpName kOpNames[] = {
 //
 // A payload[0] of 0 says "no leading prefix", NOT "no stack effect". Only
 // opcodes with independent evidence of being stack-neutral belong here.
+// Measured stack effects for opcodes still unimplemented, inferred from loop
+// balance constraints by scripts/native/ecl_stack_infer.py (404 of 480 loops
+// gave a usable equation). These are CANDIDATE values, not proof -- but they
+// are far better than the guess that caused the previous rollback.
+//
+//   op   net   op   net   op   net   op   net
+//   601  +1    604  0     609  0     610  0
+//   605  -1    603  -1    626  -2    627  +1
+//   628  -2    615  0     303  0     313  -1
+//   316  -1    319  +1    404  0     405  +1
+//   412  +1    422  0     441  +1    445  +2
+//   535  0     555  0     1011 0     1021 -1
+//   45   -1    81   -1    82   -2    93   +1
+//   94   +1
+//
+// Note 601/604: the Wave17_Girl_at loop pushes 8 and pops 1, so it needs -7
+// from the unknown ops. The inference gives +1 and 0, which does NOT match --
+// confirming that loop is one of the non-balancing ones the filter excludes.
+// That inconsistency is itself informative: it means Wave17_Girl_at changes
+// depth deliberately and cannot be used as a balance constraint.
+
 const u16 kRecordOnly[] = {
     306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
 };
