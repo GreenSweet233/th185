@@ -1,6 +1,6 @@
 # th185
 
-[![QQ Group 1124121427](https://img.shields.io/badge/QQ%20Group-1124121427-12B7F5?logo=tencentqq)](https://qm.qq.com/q/eeUrxIltug?from=uc)
+[![QQ Group 1124121427](https://img.shields.io/badge/QQ%20Group-1124121427-12B7F5?logo=tencentqq)](https://qm.qq.com/q/eeUrxIltug?from=tim)
 
 A high-fidelity, portable reimplementation of 東方虹龍洞 外伝 ～ バレットフィリア達の闇市場 ～ 100th Black Market. ver 1.00a.
 
