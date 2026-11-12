@@ -74,6 +74,14 @@ public:
     void clear();
 
     const std::vector<Bullet>& bullets() const { return bullets_; }
+
+    // Mutable access for the collision pass: it has to retire bullets it hits.
+    Bullet& mutable_bullet(u32 index) { return bullets_[index]; }
+
+    // Retires bullet `index`. Safe to call for an already-dead index? No -- the
+    // caller must check alive first, because pushing the slot twice would let
+    // two spawns claim it.
+    void release(u32 index);
     const BulletStats& stats() const { return stats_; }
 
 private:

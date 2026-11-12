@@ -41,10 +41,14 @@ if (!module._th185_start()) {
   process.exit(1);
 }
 
-// Hold shoot for the last stretch so the frame shows bullets in flight.
+// Set up a scenario that shows all three systems at once: targets, bullets in
+// flight, and the player. reset_scenario first because initialise already
+// spawned a wave that a long run would have destroyed.
 const SHOOT = 1 << 0;
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(12);
 for (let i = 0; i < 30; ++i) {
-  const held = i >= 20 ? SHOOT : 0;
+  const held = i >= 12 ? SHOOT : 0;
   if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
     process.exit(1);
@@ -61,6 +65,8 @@ console.log('bytes      : ' + bytes);
 console.log('quads      : ' + quads);
 console.log('animations : ' + live);
 console.log('bullets    : ' + module._th185_bullets_alive());
+console.log('enemies    : ' + module._th185_enemies_alive());
+console.log('hits       : ' + module._th185_collision_hits());
 
 if (!width || !height || !bytes) {
   console.error('FAIL: the application produced no framebuffer');

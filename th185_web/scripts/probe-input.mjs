@@ -144,6 +144,47 @@ const aliveLater = module._th185_bullets_alive();
 console.log('after 120f  : alive ' + aliveLater);
 check('bullets retire when off-screen', aliveLater === 0);
 
+// Collision: bullets must hit enemies, and enemies must die.
+//
+// Earlier phases of this probe run for hundreds of frames, and the wave spawned
+// at initialise is destroyed long before this point -- so a fresh wave is
+// spawned here. Reading the count without doing that is what made the first
+// version of this test report a false failure.
+// Start from a known state: earlier phases left the player at the left edge and
+// spawned a wave that is already destroyed, so without this the collision test
+// measured nothing.
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(16);
+console.log('recentre    : x=' + module._th185_player_x().toFixed(1)
+            + ' enemies=' + module._th185_enemies_alive());
+const enemiesBefore = module._th185_enemies_alive();
+const killedBefore = module._th185_enemies_killed();
+console.log('enemies     : alive ' + enemiesBefore + ', killed ' + killedBefore);
+
+// Aim at the middle of the field and hold shoot for a while.
+tick(0, 1);
+tick(SHOOT, 180);
+const enemiesAfter = module._th185_enemies_alive();
+const killedAfter = module._th185_enemies_killed();
+const hits = module._th185_collision_hits();
+console.log('after fire  : alive ' + enemiesAfter + ', killed ' + killedAfter
+            + ', hits ' + hits);
+
+check('there were enemies to shoot', enemiesBefore > 0);
+check('bullets hit enemies', hits > 0);
+check('enemies died', killedAfter > killedBefore);
+check('enemy count dropped', enemiesAfter < enemiesBefore);
+
+// Spawning must work through the exported hook. Measured on a clean field, not
+// after the shooting phase -- that phase ends with zero enemies by design, so
+// comparing against it proves nothing.
+module._th185_reset_scenario();
+const spawned = module._th185_spawn_test_wave(8);
+const afterSpawn = module._th185_enemies_alive();
+console.log('spawn wave  : +' + spawned + ' -> alive ' + afterSpawn);
+check('test wave can be spawned', spawned === 8);
+check('enemy count matches what was spawned', afterSpawn === spawned);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

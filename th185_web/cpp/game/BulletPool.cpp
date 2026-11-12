@@ -59,6 +59,16 @@ void BulletPool::update() {
     }
 }
 
+void BulletPool::release(u32 index) {
+    if (index >= BULLET_CAPACITY) return;
+    Bullet& bullet = bullets_[index];
+    if (!bullet.alive) return;   // double release would corrupt the free list
+    bullet.alive = false;
+    free_slots_.push_back(index);
+    --stats_.alive;
+    ++stats_.retired;
+}
+
 void BulletPool::clear() {
     free_slots_.clear();
     for (u32 i = 0; i < BULLET_CAPACITY; ++i) {

@@ -200,6 +200,44 @@ void Application::load_scene_banks() {
     }
 }
 
+void Application::reset_scenario() {
+    bullets_.clear();
+    enemies_.clear();
+    player_ = Player{};
+    // Re-bind the player to its bank: the reset dropped the animation handle.
+    for (const AnimationBank& bank : banks_) {
+        if (bank.name == "pl01.anm") {
+            player_.bind(&animations_, &bank.resource);
+            break;
+        }
+    }
+    stats_.collision_hits = 0;
+}
+
+u32 Application::spawn_test_wave(u32 count) {
+    // Drifting targets spread across the upper field. They move slowly downward
+    // so they stay in range of the player's shots long enough to be hit.
+    u32 spawned = 0;
+    for (u32 i = 0; i < count; ++i) {
+        // Keep the targets near the player's firing line. The player's shots are
+        // two straight columns at x = +-6, so a wide spread would never be hit --
+        // which is exactly what the first collision test revealed.
+        const float column = float(i % 3);
+        const float row = float(i / 3);
+        const float x = (column - 1.0f) * 6.0f;
+        const float y = -160.0f + row * 40.0f;
+        // Radius follows the sprite size the enemy bank actually uses (32..64),
+        // halved because the hitbox is a circle around the sprite centre.
+        const float radius = 16.0f;
+        if (enemies_.spawn(x, y, 0.0f, 0.35f, radius, 3, 0)) ++spawned;
+    }
+    // Publish the counts immediately. tick() also refreshes them, but a caller
+    // that spawns and then reads would otherwise see the stale value -- which is
+    // exactly what made the spawn test look like a failure.
+    stats_.enemies_alive = enemies_.stats().alive;
+    return spawned;
+}
+
 void Application::render() {
     if (raster_.width() == 0) {
         raster_.resize(640, 480);
@@ -221,6 +259,58 @@ void Application::render() {
     }
     stats_.quads = quads;
 
+    // Enemies, drawn from the enemy bank when available.
+    const AnimationBank* enemy_bank = nullptr;
+    for (const AnimationBank& bank : banks_) {
+        if (bank.name == "enemy.anm") { enemy_bank = &bank; break; }
+    }
+    for (const Enemy& enemy : enemies_.enemies()) {
+        if (!enemy.alive) continue;
+
+        AnmQuad quad;
+        const float half = enemy.radius * 2.0f;
+        quad.x[0] = float(raster_.width()) * 0.5f + enemy.x - half;
+        quad.y[0] = float(raster_.height()) * 0.5f + enemy.y - half;
+        quad.x[1] = quad.x[0] + half * 2.0f;
+        quad.y[1] = quad.y[0];
+        quad.x[2] = quad.x[1];
+        quad.y[2] = quad.y[0] + half * 2.0f;
+        quad.x[3] = quad.x[0];
+        quad.y[3] = quad.y[2];
+
+        quad.u[0] = 0.0f;
+        quad.v[0] = 0.0f;
+        quad.u[1] = 1.0f;
+        quad.v[1] = 0.0f;
+        quad.u[2] = 1.0f;
+        quad.v[2] = 1.0f;
+        quad.u[3] = 0.0f;
+        quad.v[3] = 1.0f;
+        quad.blend = AnmBlendMode::Alpha;
+        quad.nearest = true;
+
+        // Use the first sprite of the enemy bank as a stand-in: ECL is what
+        // normally selects which sprite an enemy shows.
+        if (enemy_bank && !enemy_bank->textures.empty() &&
+            !enemy_bank->resource.sprites.empty()) {
+            const AnmSprite& sprite = enemy_bank->resource.sprites[0];
+            quad.u[0] = sprite.u0;
+            quad.v[0] = sprite.v0;
+            quad.u[1] = sprite.u1;
+            quad.v[1] = sprite.v0;
+            quad.u[2] = sprite.u1;
+            quad.v[2] = sprite.v1;
+            quad.u[3] = sprite.u0;
+            quad.v[3] = sprite.v1;
+            if (sprite.texture < enemy_bank->textures.size()) {
+                quad.texture = &enemy_bank->textures[sprite.texture];
+            }
+        }
+
+        raster_.draw(quad);
+        ++quads;
+    }
+    stats_.quads = quads;
     // Bullets are drawn from the bullet bank when it is loaded, otherwise as
     // tinted squares. Either way the position and lifetime are the real thing.
     const AnimationBank* bullet_bank = nullptr;
@@ -291,6 +381,7 @@ bool Application::load_stage(u32 stage_index) {
     // Each scene names its own animation bank; load it so the picture matches
     // the stage rather than whatever was loaded before.
     load_scene_banks();
+    spawn_test_wave(16);
     render();
     return true;
 }
@@ -328,6 +419,14 @@ bool Application::tick(u32 held) {
     // Input drives the player, which drives its animation instance.
     player_.update(held, &bullets_);
     bullets_.update();
+    enemies_.update();
+    // Collision runs after both pools have moved, so a bullet and a target that
+    // crossed paths this frame are still tested against each other.
+    // Accumulate: a per-frame value would read as 0 whenever the last frame had
+    // no hit, which is what made the first collision test look like a failure.
+    stats_.collision_hits += enemies_.resolve_collisions(&bullets_);
+    stats_.enemies_alive = enemies_.stats().alive;
+    stats_.enemies_killed = enemies_.stats().killed;
     stats_.player_x = player_.x();
     stats_.player_y = player_.y();
     stats_.player_focused = player_.focused();

@@ -295,6 +295,7 @@ async function main() {
           "\"_th185_player_x\",\"_th185_player_y\",\"_th185_player_focused\"," +
           "\"_th185_player_shots\",\"_th185_player_bombs\"," +
           "\"_th185_bullets_alive\",\"_th185_bullets_fired\"," +
+          "\"_th185_enemies_alive\",\"_th185_enemies_killed\",\"_th185_collision_hits\",\"_th185_spawn_test_wave\"," +
           "\"_th185_error\"]",
       ], "app link");
       console.log("ok");

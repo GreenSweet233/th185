@@ -32,6 +32,7 @@
 #include "../game/AnmManager.hpp"
 #include "../game/Player.hpp"
 #include "../game/BulletPool.hpp"
+#include "../game/EnemyPool.hpp"
 #include "../game/AnmResource.hpp"
 #include "../game/AnmTexture.hpp"
 #include "../game/Archive.hpp"
@@ -78,6 +79,9 @@ struct FrameStats {
     u32 player_bombs = 0;
     u32 bullets_alive = 0;
     u32 bullets_fired = 0;
+    u32 enemies_alive = 0;
+    u32 enemies_killed = 0;
+    u32 collision_hits = 0;
 };
 
 class Application {
@@ -109,6 +113,8 @@ public:
     const std::string& animation_bank() const { return animation_bank_; }
 
     const Player& player() const { return player_; }
+    const EnemyPool& enemies() const { return enemies_; }
+    const BulletPool& bullets() const { return bullets_; }
 
     // Number of subroutines currently registered and runnable.
     u32 runnable_subroutines() const { return runnable_; }
@@ -122,6 +128,15 @@ public:
     // Draws every live animation into the framebuffer without advancing time.
     // Exposed so a shell can present a paused frame.
     void render();
+
+    // Spawns a wave of drifting targets. Exposed so a test can set up a
+    // deterministic scenario instead of waiting for ECL to do it.
+    u32 spawn_test_wave(u32 count);
+
+    // Clears bullets and enemies and puts the player back at centre. Tests need
+    // a known starting state; without this each phase inherits the previous
+    // phase's position and the collision test measured nothing.
+    void reset_scenario();
 
 private:
     bool register_stage_scripts(u32 stage_index);
@@ -148,6 +163,7 @@ private:
     AnmManager animations_;
     Player player_;
     BulletPool bullets_;
+    EnemyPool enemies_;
     std::string animation_bank_;
     SoftwareRaster raster_;
     Rng rng_;

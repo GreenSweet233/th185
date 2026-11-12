@@ -171,6 +171,56 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bullets_fired() {
     return th185::app::instance().stats().bullets_fired;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemies_alive() {
+    return th185::app::instance().stats().enemies_alive;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemies_killed() {
+    return th185::app::instance().stats().enemies_killed;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_collision_hits() {
+    return th185::app::instance().stats().collision_hits;
+}
+
+// Spawns `count` drifting targets. Used by tests to set up a scenario.
+EMSCRIPTEN_KEEPALIVE unsigned th185_spawn_test_wave(unsigned count) {
+    return th185::app::instance().spawn_test_wave(count);
+}
+
+// First live enemy position, or 0 when none. For diagnosing collisions.
+EMSCRIPTEN_KEEPALIVE float th185_debug_enemy_x() {
+    for (const th185::Enemy& e : th185::app::instance().enemies().enemies()) {
+        if (e.alive) return e.x;
+    }
+    return 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_debug_enemy_y() {
+    for (const th185::Enemy& e : th185::app::instance().enemies().enemies()) {
+        if (e.alive) return e.y;
+    }
+    return 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_debug_bullet_x() {
+    for (const th185::Bullet& b : th185::app::instance().bullets().bullets()) {
+        if (b.alive) return b.x;
+    }
+    return 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_debug_bullet_y() {
+    for (const th185::Bullet& b : th185::app::instance().bullets().bullets()) {
+        if (b.alive) return b.y;
+    }
+    return 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_reset_scenario() {
+    th185::app::instance().reset_scenario();
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
