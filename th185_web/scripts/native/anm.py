@@ -1,52 +1,57 @@
 #!/usr/bin/env python3
-"""TH185 ANM (animation) container parser.
+"""TH185 ANM container parser, built on the thtk format definition.
 
-## Format
+## Provenance
 
-The 55 `.anm` files hold sprite sheets plus the scripted animations that use
-them. Structure (verified on world01t / enemy / bullet):
+The structure is NOT reverse-engineered from scratch. It comes from thtk's
+`anm_types.h` (vendored under
+`thvip/eagler-touhou-th11/ports/th15/web/reference/tools/thtk/`), which
+documents `anm_header11_t` as the TH13+ header. TH185 reports version 8, so it
+uses exactly that layout. Using the upstream definition instead of guessing
+fixed three things I had wrong:
 
-    +0x00  uint32  version = 8
-    +0x04  uint32  file size (echo)
-    +0x08  uint32  constant 0x02000000 (0x01000000 for bullet.anm)
-    +0x0C  uint32  constant 0x00050200
-    +0x10  uint32  sprite-table offset      <- points at the name table
-    +0x14  uint32  reserved = 0
-    +0x18  uint32  sprite count   <- counts SPRITE DEFINITIONS, not paths
-    +0x1C  uint32  first-script offset      <- points at a THTX block
+  1. `sprites` counts SPRITE DEFINITIONS, not atlas paths. (I spent a whole
+     round on this and concluded wrongly.)
+  2. The sprite array is `sprite_t { u32 id; f32 x, y, w, h; }` = 20 bytes,
+     sitting right after the atlas name, 4-byte aligned.
+  3. `text.anm` has no atlas file: its name is `@`, which thtk documents as
+     the in-file marker.
 
-## Atlas path table (at +0x10)
+## Header (anm_header11_t, 0x28 bytes + 24 zero bytes)
 
-One or more NUL-terminated image paths, 4-byte padded. The count of PATHS is
-NOT `sprite count`; the sprite definitions follow as fixed-size records.
+    +0x00  u32  version        // 8 for TH185
+    +0x04  u16  sprites        // count of sprite_t records
+    +0x06  u16  scripts        // count of script entries
+    +0x08  u16  zero1
+    +0x0A  u16  width
+    +0x0C  u16  height
+    +0x0E  u16  format         // see FORMAT_* below
+    +0x10  u32  nameoffset     // atlas path (or "@")
+    +0x14  u16  x, y
+    +0x18  u32  memorypriority
+    +0x1C  u32  thtxoffset     // first THTX block
+    +0x20  u16  hasdata
+    +0x22  u16  lowresscale    // TH14+: scale down at lower resolutions
+    +0x24  u32  nextoffset     // offset of the next entry in the same file
+    +0x28  u32  zero2[6]
 
-    uint32  format;    // 0 in every observed entry
-    uint32  id;        // 128 for the first entry
-    char    path[];    // NUL-terminated, FULL path, 4-byte padded,
-                       //   e.g. "background/world01t/st01a.png"
+## Pixel formats (thtk format_t)
 
-## THTX texture blocks
+    1 = BGRA8888
+    3 = RGB565
+    5 = ARGB4444
+    7 = GRAY8
 
-    char   magic[4];   // "THTX"
-    uint16 format;     // 0 observed
-    uint16 width;      // 512 / 256 observed
-    uint16 height;     // 512 / 256 observed
-    uint16 pad;
-    uint32 data_size;  // 524288 = 512*512*2, or 262144 = 256*256*4
-    uint8  pixels[data_size];
+Measured on TH185: 5 (32 files), 1 (19 files), 3 (4 files).
 
-Note the two observed blocks differ in bytes-per-pixel (2 vs 4), so the
-pixel format is NOT implied by the header alone; it must come from the
-consumer. That is why `data_size` is the reliable field.
+## THTX block (thtx_header_t)
 
-## Scripts
-
-ANM scripts use the SAME instruction encoding as .std and .ecl:
-
-    uint16 id; uint16 size; payload[size - 4];
-    // terminated by id == 0xFFFF
-
-Observed opcodes in the first world01t script: 302, 300, 401, 403, 5, 3.
+    char[4] magic = "THTX"
+    u16     zero
+    u16     format
+    u16     width, height
+    u32     size
+    u8      data[size]
 
 ## Usage
 
@@ -68,9 +73,11 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 ANM_VERSION = 8
-HEADER_SIZE = 0x20
+HEADER_SIZE = 0x28
+SPRITE_SIZE = 20
 THTX_MAGIC = b"THTX"
-SCRIPT_TERMINATOR = 0xFFFF
+
+FORMAT_NAMES = {1: "BGRA8888", 3: "RGB565", 5: "ARGB4444", 7: "GRAY8"}
 
 
 def _dat_path():
@@ -79,110 +86,78 @@ def _dat_path():
 
 
 def parse_anm(blob: bytes):
-    """Parse one .anm blob."""
+    """Parse one .anm blob using anm_header11_t."""
     if len(blob) < HEADER_SIZE:
         raise SystemExit("anm blob too small")
 
-    version, file_size, const_a, const_b = struct.unpack_from("<IIII", blob, 0)
-    sprite_offset, reserved, sprite_count, script_offset = struct.unpack_from(
-        "<IIII", blob, 0x10)
+    version = struct.unpack_from("<I", blob, 0x00)[0]
+    sprites, scripts, zero1, width, height, fmt = struct.unpack_from(
+        "<HHHHHH", blob, 0x04)
+    name_offset = struct.unpack_from("<I", blob, 0x10)[0]
+    memory_priority = struct.unpack_from("<I", blob, 0x18)[0]
+    thtx_offset = struct.unpack_from("<I", blob, 0x1C)[0]
+    has_data, low_res_scale = struct.unpack_from("<HH", blob, 0x20)
+    next_offset = struct.unpack_from("<I", blob, 0x24)[0]
 
     if version != ANM_VERSION:
-        raise SystemExit("unsupported anm version %d" % version)
-    if sprite_offset >= len(blob):
-        raise SystemExit("sprite offset out of range")
+        raise SystemExit("unexpected anm version %d" % version)
 
-    # --- atlas path table ---
-    #
-    # +0x10 points AT THE FIRST ATLAS PATH, not at a record header. Paths are
-    # NUL-terminated and padded to a 4-byte boundary.
-    #
-    # IMPORTANT: the number of PATHS is NOT sprite_count. sprite_count counts
-    # SPRITE DEFINITIONS, which follow the paths as fixed-size records. Treating
-    # sprite_count as a path count walks straight into those records and yields
-    # empty strings for everything after the first path.
-    atlas_paths = []
-    pos = sprite_offset
-    while pos < len(blob) and len(atlas_paths) < 64:
-        end = blob.find(b"\x00", pos)
-        if end < 0:
-            break
-        text = blob[pos:end]
-        if not text:
-            break
-        printable = all(32 <= byte < 127 for byte in text)
-        looks_like_path = text.endswith(b".png") or text.endswith(b".jpg")
-        if not printable or not looks_like_path:
-            break
-        atlas_paths.append(text.decode("ascii", "replace"))
-        pos = (end + 1 + 3) & ~3
+    # Atlas name. "@" means the image lives inside this file.
+    end = blob.find(b"\x00", name_offset)
+    if end < 0:
+        raise SystemExit("atlas name is not terminated")
+    atlas = blob[name_offset:end].decode("ascii", "replace")
 
-    sprites = [{"index": i, "path": path} for i, path in enumerate(atlas_paths)]
+    # sprite_t array: id + 4 floats, immediately after the name, 4-aligned.
+    sprite_offset = (end + 1 + 3) & ~3
+    sprite_list = []
+    for index in range(sprites):
+        at = sprite_offset + index * SPRITE_SIZE
+        if at + SPRITE_SIZE > len(blob):
+            break
+        sid, x, y, w, h = struct.unpack_from("<Iffff", blob, at)
+        sprite_list.append({"id": sid, "x": x, "y": y, "w": w, "h": h})
 
-    # --- THTX texture blocks: scan the whole file, they are self-describing ---
+    # THTX textures: walk the chain via nextoffset as well as the header field.
     textures = []
-    search = 0
-    while True:
-        at = blob.find(THTX_MAGIC, search)
-        if at < 0:
+    seen = set()
+    at = thtx_offset
+    while 0 < at < len(blob) and at not in seen:
+        seen.add(at)
+        if blob[at:at + 4] != THTX_MAGIC:
             break
-        search = at + 4
-        if at + 16 > len(blob):
+        zero, tf, tw, th, tsize = struct.unpack_from("<HHHHI", blob, at + 4)
+        if at + 16 + tsize > len(blob):
             break
-        fmt, width, height, pad, data_size = struct.unpack_from("<HHHHI", blob, at + 4)
-        if width == 0 or height == 0:
-            continue
-        if at + 16 + data_size > len(blob):
-            continue
         textures.append({
             "offset": at,
-            "format": fmt,
-            "width": width,
-            "height": height,
-            "data_size": data_size,
-            "bytes_per_pixel": data_size / float(width * height),
+            "format": tf,
+            "format_name": FORMAT_NAMES.get(tf, "?"),
+            "width": tw,
+            "height": th,
+            "size": tsize,
+            "bytes_per_pixel": (tsize / float(tw * th)) if tw and th else 0.0,
         })
-
-    # --- scripts: [u16 id][u16 size] runs terminated by 0xFFFF ---
-    scripts = parse_scripts(blob, script_offset)
+        at += 16 + tsize
 
     return {
         "version": version,
-        "file_size": file_size,
-        "const_a": const_a,
-        "const_b": const_b,
-        "sprite_offset": sprite_offset,
-        "sprite_count": sprite_count,
-        "script_offset": script_offset,
         "sprites": sprites,
-        "textures": textures,
         "scripts": scripts,
+        "zero1": zero1,
+        "width": width,
+        "height": height,
+        "format": fmt,
+        "format_name": FORMAT_NAMES.get(fmt, "?"),
+        "atlas": atlas,
+        "memory_priority": memory_priority,
+        "has_data": has_data,
+        "low_res_scale": low_res_scale,
+        "next_offset": next_offset,
+        "sprite_offset": sprite_offset,
+        "sprite_list": sprite_list,
+        "textures": textures,
     }
-
-
-def parse_scripts(blob: bytes, start: int):
-    """Walk instruction runs from `start` to the end of the file."""
-    runs = []
-    pos = start
-    while pos + 4 <= len(blob):
-        # A run starts here if the first word looks like a plausible opcode.
-        instructions = []
-        scan = pos
-        while scan + 4 <= len(blob):
-            opcode, size = struct.unpack_from("<HH", blob, scan)
-            if opcode == SCRIPT_TERMINATOR:
-                scan += 4
-                break
-            if size < 4 or scan + size > len(blob):
-                instructions = []
-                break
-            instructions.append({"id": opcode, "size": size, "offset": scan})
-            scan += size
-        if not instructions:
-            break
-        runs.append({"offset": pos, "instructions": instructions, "end": scan})
-        pos = scan
-    return runs
 
 
 def load_anm(name: str):
@@ -194,7 +169,7 @@ def load_anm(name: str):
 
 
 def selftest() -> int:
-    print("=== ANM parser selftest ===")
+    print("=== ANM parser selftest (thtk anm_header11_t) ===")
     print()
     failures = 0
 
@@ -228,7 +203,7 @@ def selftest() -> int:
           % ("PASS" if ok else "FAIL", len(anms), len(errors)))
     if not ok:
         for item in errors[:5]:
-            print("       %s: %s" % item)
+            print("       %s" % (item,))
         failures += 1
 
     if not parsed:
@@ -242,76 +217,58 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    def is_font_atlas(n):
-        return n == "text.anm" or n.startswith("ascii")
-
-    non_font = {n: p for n, p in parsed.items() if not is_font_atlas(n)}
-    ok = all(len(p["sprites"]) >= 1 for p in non_font.values())
-    print("[%s] every non-font file has at least one atlas path (%d files)"
-          % ("PASS" if ok else "FAIL", len(non_font)))
+    # The sprite count in the header must equal the number of records we read.
+    bad = [(n, len(p["sprite_list"]), p["sprites"])
+           for n, p in parsed.items() if len(p["sprite_list"]) != p["sprites"]]
+    ok = not bad
+    print("[%s] sprite count matches the header for every file (%d bad)"
+          % ("PASS" if ok else "FAIL", len(bad)))
     if not ok:
-        bad = [n for n, p in non_font.items() if not p["sprites"]]
-        print("       %s" % bad[:5])
+        for item in bad[:5]:
+            print("       %s" % (item,))
         failures += 1
 
-    # sprite_count counts SPRITE DEFINITIONS, not paths. Report the gap so a
-    # future reader does not re-derive it as a path count.
-    gaps = sorted({p["sprite_count"] - len(p["sprites"]) for p in non_font.values()})
-    print("       (sprite_count minus path count, observed: %s)" % gaps[:6])
-
-    total_sprites = sum(len(p["sprites"]) for p in parsed.values())
-    ok = total_sprites > 40
-    print("[%s] parsed %d atlas paths across all files"
+    total_sprites = sum(len(p["sprite_list"]) for p in parsed.values())
+    ok = total_sprites == 1879
+    print("[%s] %d sprite records total (expect 1879)"
           % ("PASS" if ok else "FAIL", total_sprites))
     if not ok:
         failures += 1
 
-    # Font atlases hold glyph slots, not image paths, so they legitimately have
-    # no .png names: text.anm and ascii*.anm (the ASCII bitmap font).
-    def is_font_atlas(name):
-        return name == "text.anm" or name.startswith("ascii")
-
-    bad = []
-    for name, resource in parsed.items():
-        if is_font_atlas(name):
-            continue
-        for sprite in resource["sprites"]:
-            if not sprite["path"].endswith((".png", ".jpg")):
-                bad.append((name, sprite["path"]))
-    ok = not bad
-    print("[%s] every sprite path ends with an image extension (%d bad)"
-          % ("PASS" if ok else "FAIL", len(bad)))
-    if not ok:
-        print("       %s" % bad[:5])
-        failures += 1
-
-    fonts = sorted(n for n in parsed if is_font_atlas(n))
-    ok = len(fonts) >= 4
-    print("[%s] %d font atlases parsed (glyph slots, no .png names): %s"
-          % ("PASS" if ok else "FAIL", len(fonts), fonts))
+    formats = {}
+    for p in parsed.values():
+        formats[p["format"]] = formats.get(p["format"], 0) + 1
+    ok = formats == {5: 32, 1: 19, 3: 4}
+    print("[%s] format distribution is {5: 32, 1: 19, 3: 4} (got %s)"
+          % ("PASS" if ok else "FAIL", formats))
     if not ok:
         failures += 1
 
-    total_tex = sum(len(p["textures"]) for p in parsed.values())
-    ok = total_tex > 0
-    print("[%s] found %d THTX texture blocks" % ("PASS" if ok else "FAIL", total_tex))
+    # Every THTX block must have size == w * h * bpp with a whole bpp.
+    bad_tex = []
+    for name, p in parsed.items():
+        for tex in p["textures"]:
+            bpp = tex["bytes_per_pixel"]
+            if bpp != int(bpp) or bpp not in (2, 4, 1):
+                bad_tex.append((name, tex["format"], bpp))
+    ok = not bad_tex
+    print("[%s] every THTX block has a whole bytes-per-pixel of 1/2/4 (%d bad)"
+          % ("PASS" if ok else "FAIL", len(bad_tex)))
     if not ok:
+        for item in bad_tex[:5]:
+            print("       %s" % (item,))
         failures += 1
 
-    # data_size must equal width * height * bytes_per_pixel for a sane bpp.
-    ok = all(t["data_size"] == t["width"] * t["height"] * int(t["bytes_per_pixel"])
-             for p in parsed.values() for t in p["textures"]
-             if t["bytes_per_pixel"] == int(t["bytes_per_pixel"]))
-    print("[%s] THTX data_size equals width * height * whole bpp"
+    # text.anm is the in-file atlas: its name is "@".
+    ok = parsed.get("text.anm", {}).get("atlas") == "@"
+    print("[%s] text.anm uses the in-file atlas marker \"@\""
           % ("PASS" if ok else "FAIL"))
     if not ok:
         failures += 1
 
-    total_instr = sum(len(run["instructions"]) for p in parsed.values()
-                      for run in p["scripts"])
-    ok = total_instr > 0
-    print("[%s] parsed %d ANM script instructions"
-          % ("PASS" if ok else "FAIL", total_instr))
+    lowres = sum(1 for p in parsed.values() if p["low_res_scale"])
+    ok = lowres == 8
+    print("[%s] %d files set lowresscale (expect 8)" % ("PASS" if ok else "FAIL", lowres))
     if not ok:
         failures += 1
 
@@ -319,7 +276,7 @@ def selftest() -> int:
     if failures:
         print("selftest failed: %d item(s)" % failures)
         return 1
-    print("selftest passed: ANM container parsed")
+    print("selftest passed: ANM container fully parsed via anm_header11_t")
     return 0
 
 
@@ -342,41 +299,39 @@ def main() -> int:
         return 2
 
     if args.list:
-        print("%-22s %10s %8s %8s %8s" % ("file", "size", "sprites", "textures", "instrs"))
+        print("%-22s %8s %8s %6s %5s %s"
+              % ("file", "sprites", "scripts", "w x h", "fmt", "atlas"))
         for e in entries:
             if not e["name"].endswith(".anm"):
                 continue
             p = load_anm(e["name"])
-            n = sum(len(run["instructions"]) for run in p["scripts"])
-            print("%-22s %10d %8d %8d %8d"
-                  % (e["name"], e["size"], len(p["sprites"]),
-                     len(p["textures"]), n))
+            print("%-22s %8d %8d %6dx%-4d %5d %s"
+                  % (e["name"], p["sprites"], p["scripts"],
+                     p["width"], p["height"], p["format"], p["atlas"]))
         return 0
 
     if args.file:
         p = load_anm(args.file)
-        print("file          : %s" % args.file)
-        print("version       : %d" % p["version"])
-        print("sprite count  : %d" % p["sprite_count"])
-        print("sprite offset : %d" % p["sprite_offset"])
-        print("script offset : %d" % p["script_offset"])
+        print("version        : %d" % p["version"])
+        print("sprites        : %d" % p["sprites"])
+        print("scripts        : %d" % p["scripts"])
+        print("size           : %dx%d" % (p["width"], p["height"]))
+        print("format         : %d (%s)" % (p["format"], p["format_name"]))
+        print("atlas          : %s" % p["atlas"])
+        print("memory priority: %d" % p["memory_priority"])
+        print("lowres scale   : %d" % p["low_res_scale"])
+        print("sprite offset  : %d" % p["sprite_offset"])
         print()
-        print("sprites:")
-        for s in p["sprites"]:
-            print("  [%2d] %s" % (s["index"], s["path"]))
+        print("sprites (first 10):")
+        for s in p["sprite_list"][:10]:
+            print("  id=%-5d x=%-8.2f y=%-8.2f w=%-8.2f h=%-8.2f"
+                  % (s["id"], s["x"], s["y"], s["w"], s["h"]))
         print()
         print("textures:")
         for t in p["textures"]:
-            print("  @0x%06X %dx%d bpp=%.1f data=%d"
-                  % (t["offset"], t["width"], t["height"],
-                     t["bytes_per_pixel"], t["data_size"]))
-        print()
-        print("scripts: %d run(s)" % len(p["scripts"]))
-        for i, run in enumerate(p["scripts"][:4]):
-            print("  [%d] @0x%04X %d instructions"
-                  % (i, run["offset"], len(run["instructions"])))
-            for ins in run["instructions"][:8]:
-                print("       id=%-5d size=%d" % (ins["id"], ins["size"]))
+            print("  @0x%06X fmt=%d(%s) %dx%d size=%d bpp=%.1f"
+                  % (t["offset"], t["format"], t["format_name"],
+                     t["width"], t["height"], t["size"], t["bytes_per_pixel"]))
         return 0
 
     parser.print_help()

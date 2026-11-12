@@ -38,6 +38,7 @@ const workspace = resolve(repo, "..");        // thvip  <- toolchain lives here
 const verbose = process.argv.includes("--verbose");
 const clean = process.argv.includes("--clean");
 const harness = process.argv.includes("--harness");
+const appBuild = process.argv.includes("--app");
 
 const outDir = resolve(root, "artifacts", "cpp-check");
 const objDir = resolve(outDir, "objects");
@@ -247,6 +248,45 @@ async function main() {
         "-lnodefs.js",
         "-sFORCE_FILESYSTEM=1",
       ], "harness link " + item.source);
+      console.log("ok");
+    }
+  }
+
+  // Optional: build the browser application module. This is the artifact the
+  // web shell (sdl-runtime/th185.html -> /app/shell.mjs) loads. It exports the
+  // th185_* C functions declared in cpp/sdl/Exports.cpp.
+  if (appBuild) {
+    console.log();
+    const appSources = collect("cpp/sdl", ".cpp");
+    if (appSources.length === 0) {
+      console.log("skipping app build: no sources under cpp/sdl");
+    } else {
+      const target = join(outDir, "th185-app.mjs");
+      process.stdout.write("building app module -> " +
+        relative(root, target) + " ... ");
+      await run([
+        ...common,
+        ...appSources,
+        archive,
+        "-o", target,
+        "-sMODULARIZE=1",
+        "-sEXPORT_ES6=1",
+        // web+node so the smoke probe can load the same artifact.
+        "-sENVIRONMENT=web,node",
+        "-sALLOW_MEMORY_GROWTH=1",
+        "-sSTACK_SIZE=5242880",
+        "-sDEFAULT_TO_CXX=1",
+        "-sFORCE_FILESYSTEM=1",
+        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap",
+        // Every th185_* function is EMSCRIPTEN_KEEPALIVE, but exporting them
+        // explicitly keeps the JS surface auditable.
+        "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\",\"_th185_initialize\"," +
+          "\"_th185_start\",\"_th185_tick\",\"_th185_pause\",\"_th185_resume\",\"_th185_restart\"," +
+          "\"_th185_load_stage\",\"_th185_phase\",\"_th185_frame\",\"_th185_ticks\"," +
+          "\"_th185_ecl_instructions\",\"_th185_ecl_faults\"," +
+          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\"," +
+          "\"_th185_error\"]",
+      ], "app link");
       console.log("ok");
     }
   }
