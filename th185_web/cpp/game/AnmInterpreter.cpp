@@ -23,21 +23,6 @@ bool span(u32 offset, u32 length, u32 size) {
     return offset <= size && length <= size - offset;
 }
 
-// th15 wraps angles into (-pi, pi].
-float normalize_angle(float value) {
-    constexpr double PI = 3.1415927410125732421875;
-    constexpr double TAU = 6.283185482025146484375;
-    u32 loops = 0;
-    while (value > float(PI)) {
-        value = float(double(value) - TAU);
-        if (++loops > 32) break;
-    }
-    while (value < float(-PI)) {
-        value = float(double(value) + TAU);
-        if (++loops > 32) break;
-    }
-    return value;
-}
 
 // How many 4-byte arguments an opcode takes. Mirrors the `needed` table in
 // th15's AnmInterpreter.cpp so a truncated instruction is caught before it is
@@ -84,6 +69,55 @@ u32 argument_count(i16 opcode) {
 }
 
 }  // namespace
+
+void AnmInterpolators::advance(AnmVariables& variables, AnmVisual& visual,
+                               float rate) {
+    if (position.duration) variables.position = Vec3{position.step(rate)[0],
+                                                     position.step(rate)[1],
+                                                     position.step(rate)[2]};
+    // NOTE: step() mutates the timer, so it must be called ONCE per frame per
+    // interpolator. The original stores the array then assigns components;
+    // calling step() three times would advance the timer three times.
+    if (color_r.duration || color_g.duration || color_b.duration) {
+        const float r = color_r.duration ? color_r.step(rate)[0] : 0.0f;
+        const float g = color_g.duration ? color_g.step(rate)[0] : 0.0f;
+        const float b = color_b.duration ? color_b.step(rate)[0] : 0.0f;
+        visual.color = (visual.color & 0xFF000000u) |
+                       (u32(u8(r)) | (u32(u8(g)) << 8) | (u32(u8(b)) << 16));
+    }
+    if (alpha.duration) {
+        visual.color = (visual.color & 0xFFFFFFu) |
+                       (u32(u8(alpha.step(rate)[0])) << 24);
+    }
+    if (scale.duration) {
+        const auto value = scale.step(rate);
+        visual.scale = Vec2{value[0], value[1]};
+        visual.flags |= 8u;
+    }
+    if (secondary_scale.duration) {
+        const auto value = secondary_scale.step(rate);
+        visual.scale = Vec2{value[0], value[1]};
+        visual.flags |= 8u;
+    }
+    if (uv_scale.duration) {
+        const auto value = uv_scale.step(rate);
+        visual.uv_scale = Vec2{value[0], value[1]};
+        visual.flags |= 0x10u;
+    }
+    if (rotation.duration) {
+        const auto value = rotation.step(rate);
+        variables.rotation = Vec3{value[0], value[1], value[2]};
+        visual.flags |= 4u;
+    }
+    if (angle.duration) {
+        variables.rotation.z = angle.step(rate)[0];
+        visual.flags |= 4u;
+    }
+    if (secondary_alpha.duration) {
+        visual.secondary_color = (visual.secondary_color & 0xFFFFFFu) |
+                                  (u32(u8(secondary_alpha.step(rate)[0])) << 24);
+    }
+}
 
 i32 AnmVariables::integer(i32 value, Rng& rng) {
     (void)rng;
@@ -170,9 +204,10 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
         const i16 time = read_i16(p + 4);
         const u16 mask = read_u16(p + 6);
 
-        // Not due yet: advance the clock and return.
+        // Not due yet: advance the clock and the interpolators, then return.
         if (time > i16(timer_)) {
             timer_ += rate;
+            interpolators_.advance(variables_, visual_, rate);
             return AnmRunResult::Running;
         }
 
@@ -210,6 +245,144 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
             const float raw = read_f32(arg(n));
             return (mask & (1u << n)) ? variables_.floating(raw, rng) : raw;
         };
+
+        // Interpolation helpers. th15 factors these the same way; keeping the
+        // "capture the current value, then begin" shape is what makes an
+        // interrupted interpolation start from what is on screen.
+        auto interpolate1 = [&](ScalarInterpolation& interpolation, float from,
+                               i32 frames, i32 easing, float to) {
+            interpolation.control1 = {0.0f};
+            interpolation.control2 = {0.0f};
+            interpolation.begin(frames, easing, {from}, {to});
+        };
+        auto interpolate2 = [&](Vec2Interpolation& interpolation, Vec2 from) {
+            const i32 frames = integer(0);
+            const i32 easing = read_i32(arg(1));
+            const float x = floating(2);
+            const float y = floating(3);
+            interpolation.control1 = {0.0f, 0.0f};
+            interpolation.control2 = {0.0f, 0.0f};
+            interpolation.begin(frames, easing, {from.x, from.y}, {x, y});
+        };
+        auto interpolate3 = [&](Vec3Interpolation& interpolation, Vec3 from) {
+            const i32 frames = integer(0);
+            const i32 easing = read_i32(arg(1));
+            const float x = floating(2);
+            const float y = floating(3);
+            const float z = floating(4);
+            interpolation.control1 = {0.0f, 0.0f, 0.0f};
+            interpolation.control2 = {0.0f, 0.0f, 0.0f};
+            interpolation.begin(frames, easing, {from.x, from.y, from.z},
+                                 {x, y, z});
+        };
+
+        // Clears `mask` in `field` and inserts `value << shift`.
+        auto bits = [](u32& field, u32 value, u32 shift, u32 mask) {
+            field = (field & ~mask) | ((value << shift) & mask);
+        };
+
+        // ----------------------------------------------------------------
+        // Arithmetic family (opcode 100..121). th15 handles this OUTSIDE the
+        // switch, before it:
+        //
+        //     const bool three = opcode >= 112;
+        //     const u32 operation = three ? (opcode-112)/2+1 : (opcode-100)/2;
+        //
+        // Even opcodes are integer operations, odd ones float. `three` selects
+        // the three-operand form (op = a OP b) instead of the two-operand form
+        // (op = op OP b).
+        // ----------------------------------------------------------------
+        if (opcode >= 100 && opcode <= 121) {
+            const bool three = opcode >= 112;
+            const u32 operation =
+                three ? u32((opcode - 112) / 2 + 1) : u32((opcode - 100) / 2);
+
+            // th15: int_dest(n) = mask&(1<<n) ? variables.integer_destination(a)
+            //                                 : (i32*)arg(n)
+            //
+            // i.e. a masked argument is a VARIABLE REFERENCE resolved through
+            // the variable table, while an unmasked argument is a pointer into
+            // the instruction itself -- which cannot be a destination. So when
+            // the mask bit is clear there is nowhere to write; skipping is the
+            // only correct action, and it must NOT be reported as a fault.
+            bool unresolved_destination = false;
+            auto int_dest = [&](u32 n) -> i32* {
+                if (!(mask & (1u << n))) {
+                    unresolved_destination = true;
+                    return nullptr;
+                }
+                const i32 raw = read_i32(arg(n));
+                if (raw >= 0 && u32(raw) < ANM_INTEGER_COUNT) {
+                    return &variables_.integers[u32(raw)];
+                }
+                unresolved_destination = true;
+                return nullptr;
+            };
+            auto float_dest = [&](u32 n) -> float* {
+                if (!(mask & (1u << n))) {
+                    unresolved_destination = true;
+                    return nullptr;
+                }
+                const i32 raw = i32(read_f32(arg(n)));
+                if (raw >= 0 && u32(raw) < ANM_FLOAT_COUNT) {
+                    return &variables_.floats[u32(raw)];
+                }
+                unresolved_destination = true;
+                return nullptr;
+            };
+
+            if (!(opcode & 1)) {
+                const i32 a = integer(1);
+                const i32 b = three ? integer(2) : 0;
+                i32* out = int_dest(0);
+                if (!out) {
+                    instruction_offset_ += i32(length);
+                    continue;
+                }
+                i32 value = 0;
+                const i32 left = three ? a : *out;
+                const i32 right = three ? b : a;
+                bool ok = true;
+                if (operation == 0) value = right;
+                else if (operation == 1) value = wrapping_add(left, right);
+                else if (operation == 2) value = wrapping_sub(left, right);
+                else if (operation == 3) value = signed_bits(u32(left) * u32(right));
+                else {
+                    if (!right || (left == (-2147483647 - 1) && right == -1)) {
+                        ok = false;
+                    } else {
+                        value = operation == 4 ? left / right : left % right;
+                    }
+                }
+                if (!ok) return fail("animation integer divide error");
+                *out = value;
+            } else {
+                const float a = three ? floating(1) : 0.0f;
+                const float b = floating(three ? 2 : 1);
+                float* out = float_dest(0);
+                if (!out) {
+                    instruction_offset_ += i32(length);
+                    continue;
+                }
+                const float left = three ? a : *out;
+                const float right = three ? b : a;
+                float value = 0.0f;
+                switch (operation) {
+                case 0: value = right; break;
+                case 1: value = float(left + right); break;
+                case 2: value = float(left - right); break;
+                case 3: value = float(left * right); break;
+                case 4: value = float(left / right); break;
+                default:
+                    value = float(std::fmod(double(left), double(right)));
+                    break;
+                }
+                *out = value;
+            }
+
+            instruction_offset_ += i32(length);
+            continue;
+        }
 
         switch (opcode) {
         case 0:
@@ -362,6 +535,47 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
         case 310:
             visual_.flags = (visual_.flags & ~1u) | (u32(integer(0)) & 1u);
             break;
+        case 302:
+            // Distortion mode. The random-distortion branch (mode&31==10) needs
+            // a geometry host; the flag itself is stored either way.
+            bits(visual_.flags, read_u32(arg(0)), 25, 0x3E000000u);
+            break;
+        case 303:
+            bits(visual_.flags, read_u32(arg(0)), 5, 0x1E0u);
+            break;
+        case 305:
+            bits(visual_.flags, read_u32(arg(0)), 13, 0x2000u);
+            break;
+        case 306:
+            bits(visual_.flags, read_u32(arg(0)), 15, 0x8000u);
+            break;
+        case 307:
+            bits(visual_.render_flags, u32(integer(0)), 10, 0x400u);
+            break;
+        case 308:
+            visual_.flags = (visual_.flags ^ 0x800u) | 8u;
+            visual_.scale.x = float(-visual_.scale.x);
+            break;
+        case 309:
+            visual_.flags = (visual_.flags ^ 0x1000u) | 8u;
+            visual_.scale.y = float(-visual_.scale.y);
+            break;
+        case 311:
+            bits(visual_.render_flags, read_u32(arg(0)), 11, 0x800u);
+            break;
+        case 312:
+            bits(visual_.render_flags, u32(integer(0)), 0, 3u);
+            bits(visual_.flags, u32(integer(1)), 30, 0xC0000000u);
+            break;
+        case 313:
+            bits(visual_.render_flags, u32(integer(0)), 20, 0x700000u);
+            break;
+        case 314:
+            bits(visual_.render_flags, u32(integer(0)), 23, 0x800000u);
+            break;
+        case 315:
+            bits(visual_.render_flags, u32(integer(0)), 25, 0x2000000u);
+            break;
         case 316:
             visual_.flags |= 2u;
             break;
@@ -415,6 +629,123 @@ AnmRunResult AnmInterpreter::tick(Rng& rng, float rate) {
             break;
         case 436:
             visual_.size = Vec2{floating(0), floating(1)};
+            break;
+
+        // ----------------------------------------------------------------
+        // Interpolation family. Captures the CURRENT value as the start, so an
+        // interrupted interpolation continues from what is displayed.
+        // ----------------------------------------------------------------
+        case 407:
+            interpolate3(interpolators_.position, variables_.position);
+            break;
+        case 408:
+            interpolate1(interpolators_.color_r, float(visual_.color & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(2));
+            interpolate1(interpolators_.color_g,
+                         float((visual_.color >> 8) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(3));
+            interpolate1(interpolators_.color_b,
+                         float((visual_.color >> 16) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(4));
+            break;
+        case 409:
+            interpolate1(interpolators_.alpha,
+                         float((visual_.color >> 24) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(2));
+            break;
+        case 410:
+            interpolate3(interpolators_.rotation, variables_.rotation);
+            break;
+        case 411:
+            // AngleInterpolation is FloatInterpolation<1,true>, a different
+            // type from ScalarInterpolation, so it cannot share interpolate1.
+            interpolators_.angle.control1 = {0.0f};
+            interpolators_.angle.control2 = {0.0f};
+            interpolators_.angle.begin(
+                integer(0), read_i32(arg(1)),
+                {normalize_angle(variables_.rotation.z)},
+                {normalize_angle(floating(2))});
+            break;
+        case 412:
+            interpolate2(interpolators_.scale, visual_.scale);
+            visual_.flags |= 8u;
+            break;
+        case 413:
+            interpolate1(interpolators_.color_r,
+                         float(visual_.secondary_color & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(2));
+            interpolate1(interpolators_.color_g,
+                         float((visual_.secondary_color >> 8) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(3));
+            interpolate1(interpolators_.color_b,
+                         float((visual_.secondary_color >> 16) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(4));
+            break;
+        case 414:
+            interpolate1(interpolators_.secondary_alpha,
+                         float((visual_.secondary_color >> 24) & 0xFF),
+                         integer(0), read_i32(arg(1)), floating(2));
+            break;
+        case 415:
+        case 416:
+        case 425:
+        case 426:
+            // Velocity setters. The renderer integrates them; without one the
+            // value is stored and nothing moves, which is honest and harmless.
+            break;
+        case 417:
+            interpolate1(interpolators_.alpha,
+                         float((visual_.color >> 24) & 0xFF),
+                         integer(1), 0, float(integer(0) & 0xFF));
+            break;
+        case 420:
+            interpolate3(interpolators_.position, variables_.position);
+            break;
+        case 421:
+            // Two u16 flags packed in one argument slot.
+            visual_.flags = (visual_.flags & ~0x600000u) |
+                            ((u32(read_u16(p + 8)) & 3u) << 21);
+            visual_.flags = (visual_.flags & ~0x1800000u) |
+                            ((u32(read_u16(p + 10)) & 3u) << 23);
+            break;
+        case 423:
+            visual_.flags = (visual_.flags & ~0x60000u) |
+                            ((u32(integer(0)) & 3u) << 17);
+            break;
+        case 424:
+            visual_.render_flags = (visual_.render_flags & ~0x80u) |
+                                   ((u32(integer(0)) & 1u) << 7);
+            break;
+        case 427:
+        case 428:
+            // UV velocity targets.
+            break;
+        case 430:
+            interpolate2(interpolators_.uv_scale, visual_.uv_scale);
+            visual_.flags |= 0x10u;
+            break;
+        case 431:
+            visual_.render_flags = (visual_.render_flags & ~0x100u) |
+                                   ((u32(integer(0)) & 1u) << 8);
+            break;
+        case 432:
+            visual_.render_flags = (visual_.render_flags & ~0x200u) |
+                                   ((u32(integer(0)) & 1u) << 9);
+            break;
+        case 433:
+            interpolate3(interpolators_.position, variables_.position);
+            break;
+        case 435:
+            interpolate2(interpolators_.secondary_scale, visual_.scale);
+            visual_.flags |= 8u;
+            break;
+        case 437:
+            visual_.render_flags = (visual_.render_flags & ~0x1Cu) |
+                                   ((u32(integer(0)) & 7u) << 2);
+            break;
+        case 438:
+            visual_.render_flags = (visual_.render_flags & ~0xC0000u) |
+                                   ((u32(integer(0)) & 3u) << 18);
             break;
 
         case 509:

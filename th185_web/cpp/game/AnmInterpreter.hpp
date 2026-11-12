@@ -29,6 +29,7 @@
 // are reported as unsupported rather than silently skipped.
 
 #include "AnmResource.hpp"
+#include "Interpolation.hpp"
 #include "Rng.hpp"
 #include "Types.hpp"
 
@@ -69,6 +70,19 @@ struct AnmVisual {
     bool visible() const { return (flags & 1u) != 0; }
 };
 
+// The interpolator set, mirroring th15's AnmInterpolators.
+struct AnmInterpolators {
+    Vec3Interpolation position;
+    ScalarInterpolation color_r, color_g, color_b;
+    ScalarInterpolation alpha;
+    Vec3Interpolation rotation;
+    AngleInterpolation angle;
+    Vec2Interpolation scale, secondary_scale, uv_scale;
+    ScalarInterpolation secondary_alpha;
+
+    // Applies every active interpolator to `variables` / `visual`.
+    void advance(AnmVariables& variables, AnmVisual& visual, float rate);
+};
 enum class AnmRunResult : u8 {
     Running,       // still executing, call again next frame
     Finished,      // hit opcode 1 (delete)
@@ -116,8 +130,10 @@ private:
     i32 saved_offset_ = 0;
     AnmVariables variables_{};
     AnmVisual visual_{};
+    AnmInterpolators interpolators_{};
     AnmRunStats stats_{};
     std::string error_;
 };
+
 
 }  // namespace th185

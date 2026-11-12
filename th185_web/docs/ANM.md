@@ -642,3 +642,148 @@ ANMRUN files=54 scripts=2121 ran=2121 finished=26 stopped=128
 [PASS] zero execution faults (0)
 [PASS] at least 20000 ANM instructions executed (20480)
 ```
+
+---
+
+## 25. ★★★ 插值器：完成脚本 26 → 948（36 倍）
+
+### 25.1 为什么先做插值
+
+之前 1967 个脚本（92.7%）停在未实现的 opcode 上。
+其中插值族不需要渲染器，也不需要 object host，是最便宜的大块收益。
+
+### 25.2 移植来源
+
+| 文件 | 内容 |
+|---|---|
+| th15 Interpolation.hpp | FloatInterpolation<N,Angle> / IntegerInterpolation<N> |
+| th15 Interpolation.cpp | interpolation_weight() —— 32 种缓动曲线 |
+| th15 Timer.hpp | Timer 结构（20 字节） |
+
+原注释强调：
+
+> Arithmetic order is preserved because interpolation changes collision and
+> replay state as well as visual effects.
+
+所以运算次序是逐字照抄的，不是重新推导的。
+
+### 25.3 缓动曲线覆盖
+
+| mode | 曲线 |
+|---|---|
+| 0 | 线性 |
+| 1-3 | 幂次缓入 |
+| 4-6 | 幂次缓出 |
+| 7 | 线性增量（每帧加） |
+| 8 | 三次 Hermite |
+| 9-14 | 幂次缓入缓出 |
+| 15-16 | 常量 0 / 1 |
+| 17 | 线性增量（累加） |
+| 18-21 | 正弦 |
+| 22-31 | 回弹（back） |
+
+### 25.4 关键设计：捕获当前值作为起点
+
+```cpp
+interpolate3(interpolators_.position, variables_.position);
+```
+
+被中断的插值从屏幕现值继续，而不是从上次的目标值。
+这是原版的语义，不是我的选择。
+
+### 25.5 ★ 标志类 opcode 是收益最大的一批
+
+302/303/305/306/307/308/309/311/312/313/314/315 全是纯位域操作：
+
+```cpp
+auto bits = [](u32& field, u32 value, u32 shift, u32 mask) {
+    field = (field & ~mask) | ((value << shift) & mask);
+};
+```
+
+不需要渲染器就能完整实现。补上后：
+
+| 指标 | 补之前 | 补之后 |
+|---|---|---|
+| 完成脚本 | 49 | 568 |
+| 指令 | 31265 | 258768 |
+
+### 25.6 ★ 数学运算族 100-121
+
+th15 在 switch 之外单独处理，容易漏看：
+
+```cpp
+if(opcode>=100&&opcode<=121){
+    const bool three=opcode>=112;
+    const u32 operation=three?(opcode-112)/2+1:(opcode-100)/2;
+    if(!(opcode&1)){ /* 整数运算 */ }
+    else{ /* 浮点运算 */ }
+}
+```
+
+| 属性 | 规则 |
+|---|---|
+| opcode >= 112 | 三操作数形式 dest = a OP b |
+| 否则 | 两操作数形式 dest = dest OP b |
+| 偶数 | 整数运算 |
+| 奇数 | 浮点运算 |
+| operation 0-5 | 赋值/加/减/乘/除/取模 |
+
+### 25.7 ★ 一个必须避免的误报
+
+int_dest(n) 在 mask 位未置位时无法解析目标：
+
+```
+mask&(1<<n) ? 变量表里的槽 : (i32*)arg(n)   <- 参数本身是指令内指针，不是可写槽
+```
+
+这种情况应当跳过，而不是报 fault。
+我第一版返回 nullptr 后直接 break，结果落进 default 分支，
+560 个脚本被误报为 fault。
+
+修正后 fault 归零。
+
+---
+
+## 26. 本轮累积效果
+
+| 阶段 | 完成脚本 | 指令 | fault | unsupported |
+|---|---|---|---|---|
+| 上轮结束 | 26 | 20480 | 0 | 1967 |
+| + 插值族 | 49 | 31265 | 0 | 1840 |
+| + 标志类 | 568 | 258768 | 0 | 903 |
+| + 数学族（首版） | 568 | 258768 | 560 | 343 |
+| + 数学族（修正） | 948 | 288748 | 0 | 490 |
+
+```
+ANMRUN files=54 scripts=2121 ran=2121 finished=948 stopped=683
+       unsupported=490 faulted=0 instrs=288748 frames=435044
+```
+
+948 / 2121 = 44.7% 的脚本可以完整执行。
+
+### 26.1 剩余 490 个 unsupported
+
+首个未实现的是 501（对象生成族 500-508）。
+
+| 族 | opcode | 缺什么 |
+|---|---|---|
+| 对象生成 | 500-508 | object host（生成子动画） |
+| 混合模式 | 600-611 | 渲染状态 |
+
+这两族都需要渲染层，不是解释器能单独完成的。
+
+---
+
+## 27. 验证（15 项）
+
+```
+[PASS] zero execution faults (0)
+[PASS] the C++ ANM parser produced output
+[PASS] C++ parsed 54 of 55 .anm files (1 known tail-block miss)
+[PASS] the C++ ANM interpreter produced output
+[PASS] interpreter ran over 54 of 55 .anm files
+[PASS] at least 2000 scripts executed (2121)
+[PASS] at least 900 scripts ran to completion (948)
+[PASS] at least 250000 ANM instructions executed (288748)
+```
