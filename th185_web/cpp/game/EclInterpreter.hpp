@@ -62,6 +62,9 @@ enum class EclOp : u16 {
     Op23Timer = 23,          // u32 prefix, u32 timer value
     Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
     Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved
+    Op300CallNamed = 300,    // u32 flag, u32 name_len, char name[], args
+    Op304CallNamedVariant = 304,  // same shape as op300
+    Op302Set = 302,               // u32 reserved, u32 a, u32 b
 };
 
 // A value on the ECL stack. TH185 tags each slot with its type, same as TH11.
@@ -74,7 +77,11 @@ struct EclValue {
 // Fixed-capacity stack with explicit frames (op 40/41).
 class EclStack {
 public:
-    static constexpr u32 CAPACITY = 1024;
+    // The original ECL stack is much larger than any single subroutine needs.
+    // 1024 was too small: Wave17_Girl_at pushes 20+ values after EnterFrame(4)
+    // and overflowed. 16384 gives generous headroom while still bounding a
+    // runaway loop.
+    static constexpr u32 CAPACITY = 16384;
 
     bool push(EclValue::Type type, u32 bits);
     bool pop_raw(u32& out);

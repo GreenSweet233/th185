@@ -210,13 +210,20 @@ def main() -> int:
               % ("PASS" if ok else "FAIL", fields.get("faulted")))
         if not ok:
             failures += 1
-        ok = int(fields.get("ran", "0")) >= 28
-        print("[%s] at least 28 subroutines ran (%s)"
+        ok = int(fields.get("ran", "0")) >= 100
+        print("[%s] at least 100 subroutines ran (%s)"
               % ("PASS" if ok else "FAIL", fields.get("ran")))
         if not ok:
             failures += 1
-        ok = int(fields.get("instrs", "0")) > 10000
-        print("[%s] over 10000 instructions executed (%s)"
+        # A runaway stack means some opcode was wrongly treated as stack-neutral.
+        # 26 is the measured healthy maximum; anything near the capacity is a bug.
+        ok = int(fields.get("maxdepth", "0")) < 256
+        print("[%s] stack depth stays sane (%s, limit 256)"
+              % ("PASS" if ok else "FAIL", fields.get("maxdepth")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) > 100000
+        print("[%s] over 100000 instructions executed (%s)"
               % ("PASS" if ok else "FAIL", fields.get("instrs")))
         if not ok:
             failures += 1

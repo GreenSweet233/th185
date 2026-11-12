@@ -2,6 +2,23 @@
 
 namespace th185 {
 
+void EclContext::record_op(u16 opcode, const u8* payload, u32 payload_size) {
+    ++recorded_total;
+    // Keep memory bounded: a long-running script must not grow without limit.
+    if (recorded.size() >= 4096) return;
+
+    RecordedOp entry;
+    entry.opcode = opcode;
+    const u32 words = payload_size / 4;
+    entry.word_count = (words > 8) ? 8 : words;
+    for (u32 i = 0; i < entry.word_count; ++i) {
+        const u8* at = payload + i * 4;
+        entry.words[i] = u32(at[0]) | (u32(at[1]) << 8) | (u32(at[2]) << 16) |
+                         (u32(at[3]) << 24);
+    }
+    recorded.push_back(entry);
+}
+
 void EclContext::add_subroutine(std::string name, std::vector<u8> code) {
     EclCallable entry;
     entry.name = std::move(name);

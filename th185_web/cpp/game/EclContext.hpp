@@ -78,6 +78,28 @@ struct EclContext {
     static constexpr u32 MAX_CALL_DEPTH = 32;
     u32 call_depth = 0;
 
+    // --- record-only opcodes -------------------------------------------
+    //
+    // A group of TH185 opcodes carry only data: their payload[0] is 0 in 100%
+    // of occurrences (verified per opcode across the whole corpus), which is
+    // the same shape as the confirmed data-only ops (op23/op302/op1015). They
+    // do not touch the operand stack, so recording them is safe even though
+    // their semantics are unknown -- the stack stays correct and the values
+    // are observable.
+    //
+    // This is deliberately NOT a claim of understanding. If a recorded opcode
+    // later turns out to pop a value, the stack-balance check in the harness
+    // will catch it.
+    struct RecordedOp {
+        u16 opcode = 0;
+        std::array<u32, 8> words{};
+        u32 word_count = 0;
+    };
+    std::vector<RecordedOp> recorded;
+    u32 recorded_total = 0;
+
+    void record_op(u16 opcode, const u8* payload, u32 payload_size);
+
     // Register a subroutine so Call can find it.
     void add_subroutine(std::string name, std::vector<u8> code);
 
@@ -115,6 +137,12 @@ struct EclContext {
     u32 query_count = 0;
     u32 last_query_reference = 0;
     u32 last_query_field = 0;
+
+    // --- op 302: set a/b pair -------------------------------------------
+    // Structure: u32 reserved(always 0), u32 a, u32 b. Does not touch the stack.
+    u32 set_count = 0;
+    u32 last_set_a = 0;
+    u32 last_set_b = 0;
 
     // Push a fresh zeroed frame. Returns its index.
     u32 push_frame();

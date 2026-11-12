@@ -101,10 +101,32 @@ const OpName kOpNames[] = {
     {80, "Cos"}, {81, "Polar"}, {82, "NormalizeAngle"}, {83, "Wait"},
     {84, "NegateInt"}, {85, "NegateFloatBits"}, {86, "LengthSquared"},
     {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1013, "Op1013Schedule"},
-    {1015, "Op1015Query"},
+    {1015, "Op1015Query"}, {300, "Op300CallNamed"},
+    {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
 };
 
 }  // namespace
+
+// Opcodes treated as data-only: they are recorded and skipped.
+//
+// IMPORTANT: this list is deliberately SHORT. I first included the whole 600
+// family (601/602/604/605/606/607/611) on the grounds that payload[0] is 0 in
+// most occurrences. Running it proved that wrong: Wave17_Girl_at pushes 8
+// integers then calls op604/op601, and if those do not pop, the stack grows by
+// 7 slots per loop iteration and overflows within ~2000 iterations.
+//
+// A payload[0] of 0 says "no leading prefix", NOT "no stack effect". Only
+// opcodes with independent evidence of being stack-neutral belong here.
+const u16 kRecordOnly[] = {
+    306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
+};
+
+bool is_record_only(u16 opcode) {
+    for (u16 candidate : kRecordOnly) {
+        if (candidate == opcode) return true;
+    }
+    return false;
+}
 
 const char* EclInterpreter::opcode_name(u16 opcode) {
     for (const OpName& entry : kOpNames) {
@@ -114,6 +136,7 @@ const char* EclInterpreter::opcode_name(u16 opcode) {
 }
 
 bool EclInterpreter::is_supported(u16 opcode) {
+    if (is_record_only(opcode)) return true;
     return opcode_name(opcode)[0] != 0;
 }
 
@@ -216,6 +239,15 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
         const u8* payload = instruction + INSTRUCTION_HEADER;
 
+        // Record-only opcodes are handled before the switch: they have no
+        // stack effect, so there is nothing to dispatch.
+        if (is_record_only(opcode)) {
+            context.record_op(opcode, payload,
+                              u32(size - INSTRUCTION_HEADER));
+            pc += size;
+            continue;
+        }
+
         if (!is_supported(opcode)) {
             ++stats_.unsupported_count;
             if (stats_.first_unsupported_opcode == 0) {
@@ -274,6 +306,10 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
+        // EnterFrame(n): n is the number of PARAMETERS the frame declares, not
+        // a total slot budget. A subroutine is free to push more values than n
+        // (Wave17_Girl_at declares 4 and pushes 20+), so this must not be
+        // treated as a capacity reservation.
         case EclOp::EnterFrame: {
             if (!stack_.enter_frame(u32(arg_i32(payload, 0)))) {
                 ++stats_.fault_count;
@@ -609,6 +645,87 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
+            break;
+        }
+
+        // op300 / op304: named subroutine call.
+        //
+        // Payload shape (verified 244/244 and 53/53):
+        //   u32 flag;        // 0, 8 or 16 -- NOT a prefix length
+        //   u32 name_length; // length of the name region (NUL + padding)
+        //   char name[];     // ALWAYS starts at payload + 8
+        //   u32 args[6];     // always 24 bytes remain after the name
+        //
+        // My first attempt treated payload[0] as a prefix length (as it is for
+        // op 11 Call) and started the name at 8 + prefix. That produced
+        // truncated names like "irlA01" instead of "Wave01_GirlA01" and failed
+        // on 18 of 297 instructions. For these two opcodes the name is at a
+        // fixed offset and payload[0] is just a flag.
+        case EclOp::Op300CallNamed:
+        case EclOp::Op304CallNamedVariant: {
+            if (u32(size - INSTRUCTION_HEADER) < 10) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const u32 name_length = read_u32(payload + 4);
+            if (name_length < 2 || 8 + name_length > u32(size - INSTRUCTION_HEADER)) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const char* name = reinterpret_cast<const char*>(payload + 8);
+            u32 nul = 0;
+            while (nul < name_length && name[nul] != 0) ++nul;
+            if (nul == 0 || nul >= name_length) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            const std::string key(name, nul);
+            const auto found = context.subroutines.find(key);
+            if (found == context.subroutines.end()) {
+                ++stats_.unsupported_count;
+                if (stats_.first_unsupported_opcode == 0) {
+                    stats_.first_unsupported_opcode = opcode;
+                }
+                return EclRunResult::Unsupported;
+            }
+            if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+                ++stats_.fault_count;
+                return EclRunResult::Fault;
+            }
+            ++context.call_depth;
+            EclInterpreter nested;
+            nested.context = context;
+            const EclRunResult nested_result = nested.run(
+                found->second.code, 0, found->second.code_base);
+            context = nested.context;
+            --context.call_depth;
+            stats_.instructions += nested.stats().instructions;
+            stats_.unsupported_count += nested.stats().unsupported_count;
+            stats_.fault_count += nested.stats().fault_count;
+            if (stats_.first_unsupported_opcode == 0) {
+                stats_.first_unsupported_opcode =
+                    nested.stats().first_unsupported_opcode;
+            }
+            if (stats_.max_stack_depth < nested.stats().max_stack_depth) {
+                stats_.max_stack_depth = nested.stats().max_stack_depth;
+            }
+            if (nested_result == EclRunResult::Unsupported) {
+                return EclRunResult::Unsupported;
+            }
+            if (nested_result == EclRunResult::Fault) {
+                return EclRunResult::Fault;
+            }
+            break;
+        }
+
+        case EclOp::Op302Set: {
+            // payload: u32 reserved(always 0), u32 a, u32 b.
+            // Verified across all 268 occurrences: payload[0] is always 0,
+            // a is a builtin reference (-9895 = slot 105) or a small int,
+            // b is 0/1/60/90. Does not touch the stack.
+            context.last_set_a = arg_u32(payload, 0);
+            context.last_set_b = arg_u32(payload, 1);
+            ++context.set_count;
             break;
         }
 

@@ -306,6 +306,13 @@ void emit_ecl_run(const std::vector<u8>& file) {
             if (runner.stats().max_stack_depth > max_depth) {
                 max_depth = runner.stats().max_stack_depth;
             }
+            if (runner.stats().max_stack_depth >= 1000 && faulted < 12) {
+                std::printf("ECLRUN OVERFLOW %s / %s op=%u instrs=%u depth=%u\n",
+                            name.c_str(), sub.name.c_str(),
+                            unsigned(runner.stats().first_unsupported_opcode),
+                            runner.stats().instructions,
+                            runner.stack().depth());
+            }
             if (result == EclRunResult::Unsupported && unsupported < 10) {
                 std::printf("ECLRUN UNSUP %s / %s op=%u after=%u\n",
                             name.c_str(), sub.name.c_str(),

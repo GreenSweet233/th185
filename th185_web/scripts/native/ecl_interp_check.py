@@ -28,6 +28,8 @@ sys.path.insert(0, str(HERE))
 # Opcodes the C++ skeleton implements (mirrors EclInterpreter.hpp).
 IMPLEMENTED = {
     0, 1, 10, 11, 12, 13, 14, 23, 30, 40, 41, 42, 43, 44, 78, 83, 1013, 1015,
+    300, 302, 304,
+    306, 307, 502, 516, 525, 600, 616, 1002, 1003, 1023,
     50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67,
     68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 79, 80, 88,
 }
@@ -97,7 +99,7 @@ def selftest() -> int:
     # StoreInt/StoreFloat are now implemented via EclContext (reference
     # resolution). What remains blocked is Call (subroutine calls) and
     # Spawn (thread management), which need an owner object.
-    ok = 0.62 <= implemented_share / total <= 0.70
+    ok = 0.68 <= implemented_share / total <= 0.76
     print('[%s] implemented opcodes cover %.2f%% of instructions (pure stack ops)'
           % ('PASS' if ok else 'FAIL', 100.0 * implemented_share / total))
     if not ok:
