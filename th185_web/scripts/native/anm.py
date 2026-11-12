@@ -12,8 +12,12 @@ fixed three things I had wrong:
 
   1. `sprites` counts SPRITE DEFINITIONS, not atlas paths. (I spent a whole
      round on this and concluded wrongly.)
-  2. The sprite array is `sprite_t { u32 id; f32 x, y, w, h; }` = 20 bytes,
-     sitting right after the atlas name, 4-byte aligned.
+  2. Sprites and scripts are addressed THROUGH OFFSET TABLES, not stored in
+     order. Right after sizeof(anm_header11_t) = 0x40 comes
+     `u32 sprite_offsets[sprites]`, then `anm_offset_t script_offsets[scripts]`
+     where anm_offset_t is { u32 id; u32 offset; }. My earlier guess (records
+     follow the atlas name) happened to land on the right address for
+     world01t.anm only because the table pointed there too.
   3. `text.anm` has no atlas file: its name is `@`, which thtk documents as
      the in-file marker.
 
@@ -53,6 +57,30 @@ Measured on TH185: 5 (32 files), 1 (19 files), 3 (4 files).
     u32     size
     u8      data[size]
 
+## Instruction formats (thtk formats_v8 + th18_patch)
+
+thtk's anm_find_format() handles header_version 8 with version 185 explicitly:
+
+    case 8:
+        switch (version) {
+        case 20: case 19: case 185: case 18:
+            if ((format = find_format(th18_patch, id))) break;
+        default:
+            format = find_format(formats_v8, id);
+
+So TH185 looks up th18_patch first (a single entry: 439 -> Sff), then
+formats_v8. Both tables are extracted to reference/anm-opcodes.json.
+
+Format characters and their widths, measured against the data:
+
+    n / N / f / o / t   4 bytes
+    s                   2 bytes   (op 421 is ss = 4 bytes -> 12 total)
+    S                   variable  (u32 length + text + padding)
+
+An instruction header is 8 bytes, so the size is 8 + fixed fields + strings.
+The selftest asserts that formats_v8 predicts the size of every opcode it
+covers; 71 of them appear in TH185 and all 71 match.
+
 ## Usage
 
     python th185_web/scripts/native/anm.py --selftest
@@ -73,7 +101,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 ANM_VERSION = 8
-HEADER_SIZE = 0x28
+HEADER_SIZE = 0x40  # sizeof(anm_header11_t)
 SPRITE_SIZE = 20
 THTX_MAGIC = b"THTX"
 
@@ -108,15 +136,45 @@ def parse_anm(blob: bytes):
         raise SystemExit("atlas name is not terminated")
     atlas = blob[name_offset:end].decode("ascii", "replace")
 
-    # sprite_t array: id + 4 floats, immediately after the name, 4-aligned.
-    sprite_offset = (end + 1 + 3) & ~3
+    # thtk layout (thanm.c):
+    #   uint32_t sprite_offsets[sprites];   right after sizeof(anm_header11_t)
+    #   anm_offset_t script_offsets[scripts]; then each { u32 id; u32 offset; }
+    #
+    # The sprite records are addressed THROUGH this table, not stored in order.
+    # My earlier guess ("records follow the atlas name") happened to land on the
+    # right address for world01t.anm because the table pointed there too, but it
+    # is wrong in general: the table is what makes it work for every file.
     sprite_list = []
     for index in range(sprites):
-        at = sprite_offset + index * SPRITE_SIZE
+        table_at = HEADER_SIZE + index * 4
+        if table_at + 4 > len(blob):
+            break
+        at = struct.unpack_from("<I", blob, table_at)[0]
         if at + SPRITE_SIZE > len(blob):
             break
         sid, x, y, w, h = struct.unpack_from("<Iffff", blob, at)
-        sprite_list.append({"id": sid, "x": x, "y": y, "w": w, "h": h})
+        sprite_list.append({"id": sid, "x": x, "y": y, "w": w, "h": h,
+                            "offset": at})
+
+    # Script table, and the instruction stream each entry points at.
+    script_table = HEADER_SIZE + sprites * 4
+    script_list = []
+    for index in range(scripts):
+        entry_at = script_table + index * 8
+        if entry_at + 8 > len(blob):
+            break
+        sid, offset = struct.unpack_from("<II", blob, entry_at)
+        instructions = []
+        at = offset
+        while at + 4 <= len(blob):
+            opcode, length = struct.unpack_from("<HH", blob, at)
+            if opcode == 0xFFFF or length < 4 or at + length > len(blob):
+                break
+            instructions.append({"opcode": opcode, "length": length,
+                                 "offset": at})
+            at += length
+        script_list.append({"id": sid, "offset": offset,
+                            "instructions": instructions})
 
     # THTX textures: walk the chain via nextoffset as well as the header field.
     textures = []
@@ -154,8 +212,10 @@ def parse_anm(blob: bytes):
         "has_data": has_data,
         "low_res_scale": low_res_scale,
         "next_offset": next_offset,
-        "sprite_offset": sprite_offset,
+        "sprite_table": HEADER_SIZE,
+        "script_table": script_table,
         "sprite_list": sprite_list,
+        "script_list": script_list,
         "textures": textures,
     }
 
@@ -271,6 +331,90 @@ def selftest() -> int:
     print("[%s] %d files set lowresscale (expect 8)" % ("PASS" if ok else "FAIL", lowres))
     if not ok:
         failures += 1
+
+    # Script entries and their instruction streams.
+    total_scripts = sum(len(p['script_list']) for p in parsed.values())
+    ok = total_scripts == 610
+    print('[%s] %d script entries total (expect 610)'
+          % ('PASS' if ok else 'FAIL', total_scripts))
+    if not ok:
+        failures += 1
+
+    total_instr = sum(len(s['instructions']) for p in parsed.values()
+                      for s in p['script_list'])
+    ok = total_instr == 10566
+    print('[%s] %d script instructions total (expect 10566)'
+          % ('PASS' if ok else 'FAIL', total_instr))
+    if not ok:
+        failures += 1
+
+    # Every instruction must have a length >= 8 and the stream must be
+    # self-consistent (offset + length lands on the next instruction).
+    bad_instr = []
+    for name, p in parsed.items():
+        for script in p['script_list']:
+            instrs = script['instructions']
+            for index, ins in enumerate(instrs):
+                if ins['length'] < 8 or ins['length'] % 4 != 0:
+                    bad_instr.append((name, ins['offset'], ins['length']))
+                    break
+                if index + 1 < len(instrs):
+                    if ins['offset'] + ins['length'] != instrs[index + 1]['offset']:
+                        bad_instr.append((name, ins['offset'], 'gap'))
+                        break
+    ok = not bad_instr
+    print('[%s] every instruction is 8+ bytes, 4-aligned, and contiguous (%d bad)'
+          % ('PASS' if ok else 'FAIL', len(bad_instr)))
+    if not ok:
+        for item in bad_instr[:5]:
+            print('       %s' % (item,))
+        failures += 1
+
+    # The thtk formats_v8 table must predict the sizes of the opcodes it covers.
+    # This is the check that validates the vendored table against real data.
+    import json as _json
+    table_path = HERE.parent.parent / 'reference' / 'anm-opcodes.json'
+    if table_path.is_file():
+        table = _json.loads(table_path.read_text(encoding='utf-8'))
+        v8 = {int(k): v for k, v in table['formats_v8'].items()}
+        patch = {int(k): v for k, v in table['th18_patch'].items()}
+        observed = {}
+        for p2 in parsed.values():
+            for script in p2['script_list']:
+                for ins in script['instructions']:
+                    observed.setdefault(ins['opcode'], set()).add(ins['length'])
+
+        mismatched = []
+        covered = 0
+        for opcode, lengths in observed.items():
+            fmt = patch.get(opcode, v8.get(opcode))
+            if fmt is None:
+                continue
+            covered += 1
+            # Field widths, measured against the data:
+            #   n / N / f / o / t  -> 4 bytes
+            #   s                  -> 2 bytes  (op 421 is "ss" = 4 bytes total,
+            #                        which is 12 with the 8-byte header)
+            #   S                  -> variable (u32 length + text + padding)
+            fixed = sum(4 for c in fmt if c in 'nfotN') + sum(2 for c in fmt if c == 's')
+            has_string = 'S' in fmt
+            if has_string:
+                # Strings are variable length, so only the minimum is known.
+                if min(lengths) < 8 + fixed:
+                    mismatched.append((opcode, fmt, sorted(lengths)))
+            else:
+                expected = 8 + fixed
+                if lengths != {expected}:
+                    mismatched.append((opcode, fmt, sorted(lengths), expected))
+        ok = not mismatched
+        print('[%s] thtk formats_v8 predicts the size of all %d covered opcodes (%d bad)'
+              % ('PASS' if ok else 'FAIL', covered, len(mismatched)))
+        if not ok:
+            for item in mismatched[:5]:
+                print('       %s' % (item,))
+            failures += 1
+    else:
+        print('[SKIP] reference/anm-opcodes.json not found')
 
     print()
     if failures:
