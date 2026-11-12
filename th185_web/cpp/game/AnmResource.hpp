@@ -33,7 +33,11 @@
 
 namespace th185 {
 
-constexpr u32 ANM_HEADER_SIZE = 0x28;
+// sizeof(anm_header11_t) = 0x40, NOT 0x28: the struct ends with
+// `uint32_t zero2[6]` (24 bytes). Getting this wrong shifts the sprite and
+// script offset tables by 24 bytes, so the tables read plausible-looking
+// garbage. The Python side was fixed to 0x40 first; this C++ copy lagged.
+constexpr u32 ANM_HEADER_SIZE = 0x40;
 constexpr u32 ANM_SPRITE_SIZE = 20;
 constexpr u32 ANM_VERSION = 8;
 
@@ -48,6 +52,20 @@ struct AnmTexture {
     u16 width = 0;
     u16 height = 0;
     u32 size = 0;        // payload bytes after the 16-byte header
+};
+
+struct AnmInstruction {
+    u16 opcode = 0;
+    u16 length = 0;
+    u32 offset = 0;
+};
+
+struct AnmScriptEntry {
+    u32 id = 0;
+    u32 offset = 0;
+    std::vector<AnmInstruction> instructions;
+    // Raw instruction bytes, so the interpreter can walk them directly.
+    std::vector<u8> bytes;
 };
 
 struct AnmResource {
@@ -70,6 +88,7 @@ struct AnmResource {
     u32 sprite_offset = 0;
     std::vector<AnmSprite> sprites;
     std::vector<AnmTexture> textures;
+    std::vector<AnmScriptEntry> script_list;
 
     // Parses `blob`. Returns false and fills `error` on failure.
     bool parse(std::vector<u8> blob, std::string* error);

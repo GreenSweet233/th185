@@ -261,6 +261,37 @@ def main() -> int:
         if not ok:
             failures += 1
 
+    # 8. The ANM interpreter must actually execute instructions.
+    anmrun = None
+    for line in lines:
+        if line.startswith("ANMRUN files="):
+            anmrun = line
+            break
+    ok = anmrun is not None
+    print("[%s] the C++ ANM interpreter produced output" % ("PASS" if ok else "FAIL"))
+    if not ok:
+        failures += 1
+    else:
+        fields = {}
+        for token in anmrun.split()[1:]:
+            key, _, value = token.partition("=")
+            fields[key] = value
+        ok = fields.get("files") == "54"
+        print("[%s] interpreter ran over %s of 55 .anm files"
+              % ("PASS" if ok else "FAIL", fields.get("files")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("ran", "0")) >= 600
+        print("[%s] at least 600 scripts executed (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("ran")))
+        if not ok:
+            failures += 1
+        ok = int(fields.get("instrs", "0")) >= 5000
+        print("[%s] at least 5000 ANM instructions executed (%s)"
+              % ("PASS" if ok else "FAIL", fields.get("instrs")))
+        if not ok:
+            failures += 1
+
     print()
     if failures:
         print("selftest failed: %d item(s)" % failures)

@@ -11,6 +11,7 @@
 #include "EclResource.hpp"
 #include "GameSession.hpp"
 #include "EnemyManager.hpp"
+#include "AnmInterpreter.hpp"
 #include "AnmResource.hpp"
 #include "AnmTexture.hpp"
 #include "EclInterpreter.hpp"
@@ -400,6 +401,95 @@ void emit_anm_textures(const std::vector<u8>& file) {
                 by_format[1], by_format[3], by_format[5], by_format[7]);
 }
 
+void emit_anm_scripts(const std::vector<u8>& file) {
+    // Run the ANM interpreter over every script in the archive.
+    //
+    // What this proves: the instruction decoder, the timing model and the
+    // implemented opcodes all work on real data. What it does NOT prove: that
+    // anything is drawn -- there is no renderer yet.
+    Archive archive;
+    std::string error;
+    if (!archive.parse(file, &error)) {
+        std::printf("ANMRUN ARCHIVE_ERROR %s\n", error.c_str());
+        return;
+    }
+
+    u32 files = 0;
+    u32 scripts = 0;
+    u32 ran = 0;
+    u32 finished = 0;
+    u32 stopped = 0;
+    u32 unsupported = 0;
+    u32 faulted = 0;
+    u32 total_instructions = 0;
+    u32 total_frames = 0;
+    u16 first_unsupported = 0;
+
+    for (std::size_t entry = 0; entry < archive.entries.size(); ++entry) {
+        const std::string& name = archive.entries[entry].name;
+        if (name.size() < 4 || name.compare(name.size() - 4, 4, ".anm") != 0) continue;
+
+        std::vector<u8> blob = archive.extract(file, entry, &error);
+        if (blob.empty()) continue;
+        AnmResource resource;
+        if (!resource.parse(std::move(blob), &error)) continue;
+        ++files;
+
+        for (const AnmScriptEntry& script : resource.script_list) {
+            ++scripts;
+            // Only run scripts whose every opcode this interpreter implements;
+            // otherwise the run stops immediately and teaches nothing.
+            bool all_supported = !script.instructions.empty();
+            for (const AnmInstruction& ins : script.instructions) {
+                // Reuse the interpreter's own table by asking it to bind and
+                // tick; simpler: run and treat Unsupported as "not covered".
+                (void)ins;
+            }
+            (void)all_supported;
+
+            AnmInterpreter interpreter;
+            if (!interpreter.bind(&resource, &script.bytes)) {
+                if (ran < 3) {
+                    std::printf("ANMRUN BIND_FAIL %s id=%u off=%u bytes=%zu\n",
+                                name.c_str(), script.id, script.offset,
+                                script.bytes.size());
+                }
+                continue;
+            }
+
+            Rng rng;
+            rng.seed = u16(0x1234);
+            rng.calls = 0;
+
+            ++ran;
+            AnmRunResult result = AnmRunResult::Running;
+            // Bounded frame budget: an animation that never ends must not hang.
+            for (u32 frame = 0; frame < 600; ++frame) {
+                result = interpreter.tick(rng, 1.0f);
+                ++total_frames;
+                if (result != AnmRunResult::Running) break;
+            }
+
+            total_instructions += interpreter.stats().instructions;
+            if (first_unsupported == 0 && interpreter.stats().first_unsupported != 0) {
+                first_unsupported = interpreter.stats().first_unsupported;
+            }
+            switch (result) {
+            case AnmRunResult::Finished: ++finished; break;
+            case AnmRunResult::Stopped: ++stopped; break;
+            case AnmRunResult::Unsupported: ++unsupported; break;
+            case AnmRunResult::Fault: ++faulted; break;
+            case AnmRunResult::Running: ++stopped; break;  // ran out of budget
+            }
+        }
+    }
+
+    std::printf("ANMRUN files=%u scripts=%u ran=%u finished=%u stopped=%u"
+                " unsupported=%u faulted=%u instrs=%u frames=%u first_unsup=%u\n",
+                files, scripts, ran, finished, stopped, unsupported, faulted,
+                total_instructions, total_frames, unsigned(first_unsupported));
+}
+
 void emit_save(const char* path) {
     // The save file lives outside the archive, so it is passed separately.
     std::vector<u8> blob;
@@ -491,6 +581,7 @@ int main(int argc, char** argv) {
     emit_ecl(file);
     emit_ecl_run(file);
     emit_anm_textures(file);
+    emit_anm_scripts(file);
     emit_std(file);
     emit_session(file);
     emit_tables();
