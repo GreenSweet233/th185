@@ -123,6 +123,7 @@ public:
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
+    const StageScript& stage() const { return stage_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
     const EnemyPool& enemies() const { return enemies_; }
     const BulletPool& bullets() const { return bullets_; }
@@ -192,6 +193,9 @@ private:
     std::string error_;
     u32 runnable_ = 0;
     u32 stage_index_ = 0;
+    // Parsed .std for the current stage. The group table holds the real
+    // formation coordinates; op1013 slots index into it.
+    StageScript stage_;
 };
 
 // Global instance used by the exported C functions.

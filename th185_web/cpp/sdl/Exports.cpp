@@ -288,6 +288,47 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_sprite(unsigned index) {
     return 0xFFFFFFFFu;
 }
 
+// Position of the i-th live enemy, for verifying that the .std group table
+// really drives the formation.
+EMSCRIPTEN_KEEPALIVE float th185_enemy_x_at(unsigned index) {
+    unsigned seen = 0;
+    for (const th185::Enemy& e : th185::app::instance().enemies().enemies()) {
+        if (!e.alive) continue;
+        if (seen++ == index) return e.x;
+    }
+    return 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_enemy_y_at(unsigned index) {
+    unsigned seen = 0;
+    for (const th185::Enemy& e : th185::app::instance().enemies().enemies()) {
+        if (!e.alive) continue;
+        if (seen++ == index) return e.y;
+    }
+    return 0.0f;
+}
+
+// Number of .std group entries loaded for the current stage. Zero means the
+// scene has no group table (the tutorial stages) or the .std failed to parse.
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_groups() {
+    return unsigned(th185::app::instance().stage().groups.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_waves() {
+    return unsigned(th185::app::instance().stage().waves.size());
+}
+
+// Raw .std group values, for verifying the formation mapping.
+EMSCRIPTEN_KEEPALIVE float th185_group_x(unsigned index) {
+    const auto& g = th185::app::instance().stage().groups;
+    return index < g.size() ? g[index].x : 0.0f;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_group_y(unsigned index) {
+    const auto& g = th185::app::instance().stage().groups;
+    return index < g.size() ? g[index].y : 0.0f;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

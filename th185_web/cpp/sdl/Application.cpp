@@ -64,6 +64,37 @@ bool Application::register_stage_scripts(u32 stage_index) {
         return false;
     }
 
+    // Load the scene layout first: its group table holds the real formation
+    // coordinates that op1013 slots index into.
+    stage_ = StageScript{};
+    {
+        static const char* kStageFiles[kSceneCount] = {
+            "world01t.std", "world01.std", "world02.std", "world03.std",
+            "world04.std", "world05.std", "world06.std", "world07.std",
+            "world08.std",
+        };
+        std::size_t entry = archive_.entries.size();
+        for (std::size_t k = 0; k < archive_.entries.size(); ++k) {
+            if (archive_.entries[k].name == kStageFiles[stage_index]) {
+                entry = k;
+                break;
+            }
+        }
+        if (entry < archive_.entries.size()) {
+            std::string extract_error;
+            std::vector<u8> blob =
+                archive_.extract(archive_bytes_, entry, &extract_error);
+            if (!blob.empty()) {
+                std::string parse_error;
+                if (!stage_.parse(std::move(blob), &parse_error)) {
+                    // A layout we cannot parse is not fatal: the scene still
+                    // runs, it just falls back to the synthetic formation.
+                    stage_ = StageScript{};
+                }
+            }
+        }
+    }
+
     // Register the scene script plus default.ecl. default.ecl holds the shared
     // subroutines that the scene scripts call, so without it Call resolution
     // fails for most of the stage logic.
@@ -122,14 +153,16 @@ bool Application::register_stage_scripts(u32 stage_index) {
         // The interpreter stops cleanly on an unsupported opcode, so a partial
         // run still executes everything before that point -- which is where the
         // schedules are emitted.
-        const bool is_controller = sub.name == "main";
-        if (all_implemented || is_controller) {
-            // The controller runs FIRST. Every other script in the file is a
-            // helper it calls by name; running them standalone spends the
-            // per-frame budget on their wait loops before the controller ever
-            // gets a turn, which is why `main` never advanced.
-            if (is_controller) active_scripts_.insert(active_scripts_.begin(), sub.name);
-            else active_scripts_.push_back(sub.name);
+        // ONLY the controller runs as a top-level coroutine. Every other
+        // subroutine in the file is a helper that `main` reaches through Call,
+        // and running them standalone is actively harmful: world04's helpers
+        // burn ~80000 instructions per frame on their own wait loops, which
+        // starves the controller and it never reaches its op1013 block.
+        //
+        // The subroutines are still REGISTERED (add_subroutine below), so Call
+        // resolution keeps working.
+        if (sub.name == "main") {
+            active_scripts_.push_back(sub.name);
             ++runnable_;
         }
         ecl_.add_subroutine(sub.name, std::move(code));
@@ -237,11 +270,29 @@ void Application::consume_schedules() {
             fired_schedule_keys_.insert(key);
             ++stats_.schedules_fired;
 
-            // Spread slots across the top of the field. Slots come in pairs
-            // (0/1, 4/5, 8/9, 12/13, 16/17), so the pair index gives a column.
-            const u32 pair = schedule.slot / 4;
-            const float x = (float(pair) - 2.0f) * 60.0f;
-            const float y = -180.0f;
+            // Position comes from the scene's own group table when it has
+            // one. `.std` groups carry the real formation coordinates
+            // (world04's 15 groups are two 7-point rings), so using them
+            // beats inventing a layout. The group index is the slot taken
+            // modulo the group count -- the exact slot->group mapping is
+            // still inferred, and this keeps every group reachable.
+            float x = 0.0f;
+            float y = -180.0f;
+            float group_size = 16.0f;
+            if (!stage_.groups.empty()) {
+                const StageGroup& group =
+                    stage_.groups[schedule.slot % stage_.groups.size()];
+                // The .std coordinate space is 384x448 centred on the field;
+                // the field itself is 384x448, so shift by half.
+                x = group.x - 192.0f;
+                y = group.y - 224.0f;
+                if (group.size_a > 0.0f) group_size = group.size_a;
+            } else {
+                // No group table (the tutorial stages have none): fall back
+                // to spreading the slots in a row.
+                const u32 pair = schedule.slot / 4;
+                x = (float(pair) - 2.0f) * 60.0f;
+            }
 
             // The wave template selected by op1011 picks the sprite and the
             // drift speed. Falling back to template 0 keeps the game playable
@@ -254,7 +305,7 @@ void Application::consume_schedules() {
             // Higher templates drift a little faster, which makes the wave
             // progression visible without inventing per-template data.
             const float speed = 0.30f + float(template_index % 8u) * 0.05f;
-            enemies_.spawn(x, y, 0.0f, speed, 16.0f, 2, sprite);
+            enemies_.spawn(x, y, 0.0f, speed, group_size, 2, sprite);
         }
     }
     stats_.enemies_alive = enemies_.stats().alive;
@@ -448,7 +499,9 @@ bool Application::load_stage(u32 stage_index) {
     // Each scene names its own animation bank; load it so the picture matches
     // the stage rather than whatever was loaded before.
     load_scene_banks();
-    spawn_test_wave(16);
+    // No synthetic wave: the ECL scene controller now schedules the real
+    // enemies through op1013, so seeding a test wave would only pollute the
+    // formation with enemies that are not in the stage data.
     render();
     return true;
 }
