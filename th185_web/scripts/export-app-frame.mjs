@@ -47,7 +47,7 @@ if (!module._th185_start()) {
 const SHOOT = 1 << 0;
 // No spawn_test_wave: the enemies in this frame come from the ECL scene
 // controller's op1013 schedules, which is the real data path.
-module._th185_load_stage(4);
+module._th185_load_stage(1);
 module._th185_reset_scenario();
 // Long enough for the enemies to return fire, so the frame shows both sides.
 // Long enough for the ECL schedules to spawn several waves.

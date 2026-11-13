@@ -193,7 +193,7 @@ const NetEffect kInferredNet[] = {
     // [42] JumpIfNonzero -> [31]. Each iteration pushes 8 and op601 eats
     // them, so its net is -8. Leaving it at +1 grew the stack without bound
     // (maxdepth 4042 against a 16384 capacity).
-    {601, 0}, {603, 0}, {609, 0}, {610, 0},
+    {603, 0}, {609, 0}, {610, 0},
     {615, 0}, {626, 0}, {627, 0}, {628, 0},
     // other TH185-only
     // NOTE: op82 NormalizeAngle is NOT here either -- same reason as op1011.
@@ -937,6 +937,28 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.pending_bullet.angle_hi = arg_float(payload, 2);
             break;
         }
+        case EclOp::Op601BulletConsume: {
+            // Consumes the values pushed by the pattern loop.
+            //
+            // Measured from Wave01_GirlA_at's loop body [31..42]:
+            //   op42 x8 (+8), op23 (0), op78 (+1), op14 (-1)  => net +8
+            // so op601 must remove 8 to keep the loop balanced. Leaving it at
+            // 0 grew the stack to 3805; hard-popping 8 underflowed on call
+            // sites that enter with fewer values (85 faults).
+            //
+            // Pop what is available, up to 8, and record a shortfall. A
+            // shortfall means the caller's own stack was already short, which
+            // is a signal rather than something to abort on.
+            u32 popped = 0;
+            while (popped < 8) {
+                u32 bits = 0;
+                if (!stack_.pop_raw(bits)) break;
+                ++popped;
+            }
+            if (popped < 8) ++context.short_pops;
+            break;
+        }
+
         case EclOp::Op611BulletEmit: {
             // EMIT. The op44 pushes before this are the bullet angles.
             EclContext::BulletRequest request = context.pending_bullet;
