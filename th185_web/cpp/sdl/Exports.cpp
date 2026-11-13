@@ -698,6 +698,34 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_boss_index_sets() {
     return th185::app::instance().ecl().boss_index_sets;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_patterns() {
+    return th185::app::instance().ecl().bullet_patterns;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_launches() {
+    return th185::app::instance().ecl().bullet_launches;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_effect_slot_calls() {
+    return th185::app::instance().ecl().effect_slot_calls;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_boss_phases() {
+    return th185::app::instance().ecl().boss_phases;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_position_pairs() {
+    return th185::app::instance().ecl().position_pairs;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_attack_prepares() {
+    return th185::app::instance().ecl().attack_prepares;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_timed_values() {
+    return th185::app::instance().ecl().timed_values;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

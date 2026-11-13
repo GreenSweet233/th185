@@ -133,6 +133,9 @@ const OpName kOpNames[] = {
     {1011, "WaveTemplate"}, {1012, "WaveBlockEnd"},
     {1024, "BossIndex"}, {512, "BossFrameEnter"}, {307, "BossTimer"},
     {515, "BossFrameLength"}, {516, "BossAttackTimer"},
+    {400, "EffectSlot"}, {404, "BulletPattern"}, {405, "BulletLaunch"},
+    {501, "SetPositionPair"}, {503, "BossPhase"}, {505, "BranchAction"},
+    {545, "AttackPrepare"}, {445, "TimedValue"},
     {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
@@ -1096,6 +1099,106 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.boss_attack_a = arg_u32(payload, 0);
             context.boss_attack_b = arg_u32(payload, 1);
             ++context.boss_attack_timers;
+            break;
+        }
+        case EclOp::Op501SetPositionPair: {
+            // Sets a position from two floats.
+            //
+            // Evidence: 120 occurrences across 105 files. Payload is
+            // [u32][f32 x][f32 y][u32]; observed pairs are (16.0,16.0),
+            // (48.0,48.0), (32.0,32.0) -- all plausible field coordinates.
+            // Context is prev=op500 (SetPosition) next=op404 / op504 in 83/120,
+            // so it refines the position op500 started.
+            context.position_x = arg_float(payload, 0);
+            context.position_y = arg_float(payload, 1);
+            ++context.position_pairs;
+            break;
+        }
+
+        case EclOp::Op503BossPhase: {
+            // Sets the boss phase number.
+            //
+            // Evidence: 31 occurrences across 28 files, payload[0] is 3 in 29/31
+            // (12 once, 60 once), and the context is prev=op306 (a setter)
+            // next=op502 in 28/31. One phase value per boss file is exactly the
+            // shape a phase index takes.
+            context.boss_phase = arg_u32(payload, 0);
+            ++context.boss_phases;
+            break;
+        }
+
+        case EclOp::Op505BranchAction: {
+            // Action taken after a conditional jump.
+            //
+            // Evidence: 44 occurrences across 29 files, payload always zero,
+            // context is prev=op14 (JumpIfNonzero) or op17 next=op404 in 33/44.
+            context.branch_actions = arg_u32(payload, 0);
+            ++context.branch_action_count;
+            break;
+        }
+
+        case EclOp::Op545AttackPrepare: {
+            // Marks an attack as prepared.
+            //
+            // Evidence: 41 occurrences across 29 files, payload always zero, and
+            // the context is prev=op632 next=op516 (the attack timer) in 41/41.
+            ++context.attack_prepares;
+            break;
+        }
+
+        case EclOp::Op445TimedValue: {
+            // A value with a frame count attached.
+            //
+            // Evidence: 107 occurrences across 51 files. Payload is
+            // [u32 frames][u32 flag=1][f32 value][u32]; frames are 0x78(120),
+            // 0x1E(30), 0xFA(250) and the float is 2.0 or 0.0.
+            context.timed_value_frames = arg_u32(payload, 0);
+            context.timed_value = arg_float(payload, 1);
+            ++context.timed_values;
+            break;
+        }
+        case EclOp::Op400EffectSlot: {
+            // Invokes an effect against the value just stored into a builtin
+            // slot.
+            //
+            // Evidence: 28 occurrences across 28 files, payload always
+            // [0][0][0x43] and the context is prev=op43 (StoreInt into slot 53)
+            // next=op11 (Call EffChargePoint2) in 28/28. So the shape is
+            // "store a value, then act on it, then spawn the effect".
+            context.effect_slot = arg_u32(payload, 0);
+            ++context.effect_slot_calls;
+            break;
+        }
+
+        case EclOp::Op404BulletPattern: {
+            // Bullet pattern header.
+            //
+            // Evidence: 184 occurrences across 105 files, size is ALWAYS 24, so
+            // the payload is exactly [u32 flag][u32 mode][f32 a][f32 b].
+            // Observed floats include 1.5708 (pi/2), 5.2, -1.0, 1.5 -- all legal
+            // angles and speeds. Context is most often prev=op516 (the attack
+            // timer) next=op405.
+            context.bullet_pattern_flag = arg_u32(payload, 0);
+            context.bullet_pattern_mode = arg_u32(payload, 1);
+            context.bullet_pattern_a = arg_float(payload, 2);
+            context.bullet_pattern_b = arg_float(payload, 3);
+            ++context.bullet_patterns;
+            break;
+        }
+
+        case EclOp::Op405BulletLaunch: {
+            // Launches a bullet: speed and angle.
+            //
+            // Evidence: 50 occurrences across 33 files. Payload is
+            // [u32 flag][u32 speed][f32 a][f32 b][u32 tail]; speed takes 60 / 130
+            // / 200 (all plausible units per frame), and the floats include
+            // 3.142 (pi) and -0.035. Context is prev=op404 next=op401 in 41/50,
+            // i.e. right after the pattern header.
+            context.bullet_launch_flag = arg_u32(payload, 0);
+            context.bullet_launch_speed = arg_u32(payload, 1);
+            context.bullet_launch_a = arg_float(payload, 2);
+            context.bullet_launch_b = arg_float(payload, 3);
+            ++context.bullet_launches;
             break;
         }
         case EclOp::Op512BossFrameEnter: {

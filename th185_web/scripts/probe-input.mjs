@@ -472,6 +472,25 @@ console.log('boss        : active=' + active + ' indexSets=' + bossSets);
 check('every boss entry runs as a top-level coroutine', active === 28);
 check('op1024 sets the boss index in every boss file', bossSets === 27);
 
+// Boss opcode coverage.
+//
+// The boss scripts run in a chain: each opcode implemented moves
+// firstUnsupported deeper. These counters prove the newly implemented ones
+// actually execute rather than just being listed as supported.
+module._th185_load_stage(0);
+module._th185_reset_scenario();
+tick(0, 400);
+const effectSlots = module._th185_effect_slot_calls();
+const phases = module._th185_boss_phases();
+const posPairs = module._th185_position_pairs();
+const unsup = module._th185_first_unsupported();
+console.log('boss ops    : effectSlot=' + effectSlots + ' phase=' + phases
+            + ' posPair=' + posPairs + ' firstUnsupported=' + unsup);
+check('op400 (effect slot) executes', effectSlots > 0);
+check('op503 (boss phase) executes', phases > 0);
+check('op501 (position pair) executes', posPairs > 0);
+check('the boss chain has advanced past op400', unsup !== 400);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

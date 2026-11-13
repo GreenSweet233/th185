@@ -234,6 +234,29 @@ struct EclContext {
     // The "stage signal" flag that op1017 raises and op1019 waits on. See the
     // op1017 case for how the two were identified from control flow.
     // Which boss this script is running as (op1024). See the case for evidence.
+    float position_x = 0.0f;
+    float position_y = 0.0f;
+    u32 position_pairs = 0;
+    u32 boss_phase = 0;
+    u32 boss_phases = 0;
+    u32 branch_actions = 0;
+    u32 branch_action_count = 0;
+    u32 attack_prepares = 0;
+    u32 timed_value_frames = 0;
+    float timed_value = 0.0f;
+    u32 timed_values = 0;
+    u32 effect_slot = 0;
+    u32 effect_slot_calls = 0;
+    u32 bullet_pattern_flag = 0;
+    u32 bullet_pattern_mode = 0;
+    float bullet_pattern_a = 0.0f;
+    float bullet_pattern_b = 0.0f;
+    u32 bullet_patterns = 0;
+    u32 bullet_launch_flag = 0;
+    u32 bullet_launch_speed = 0;
+    float bullet_launch_a = 0.0f;
+    float bullet_launch_b = 0.0f;
+    u32 bullet_launches = 0;
     u32 boss_frame = 0;
     u32 boss_frame_length = 0;
     u32 boss_frame_lengths = 0;

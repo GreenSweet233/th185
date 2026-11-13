@@ -944,6 +944,29 @@ bool Application::tick(u32 held) {
         // op1019 consumes it, and both live in main's coroutine. Without these
         // three lines the flag never leaves the runner copy, so `sets` and
         // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.position_x = runner.context.position_x;
+        ecl_.position_y = runner.context.position_y;
+        ecl_.position_pairs = runner.context.position_pairs;
+        ecl_.boss_phase = runner.context.boss_phase;
+        ecl_.boss_phases = runner.context.boss_phases;
+        ecl_.branch_actions = runner.context.branch_actions;
+        ecl_.branch_action_count = runner.context.branch_action_count;
+        ecl_.attack_prepares = runner.context.attack_prepares;
+        ecl_.timed_value_frames = runner.context.timed_value_frames;
+        ecl_.timed_value = runner.context.timed_value;
+        ecl_.timed_values = runner.context.timed_values;
+        ecl_.effect_slot = runner.context.effect_slot;
+        ecl_.effect_slot_calls = runner.context.effect_slot_calls;
+        ecl_.bullet_pattern_flag = runner.context.bullet_pattern_flag;
+        ecl_.bullet_pattern_mode = runner.context.bullet_pattern_mode;
+        ecl_.bullet_pattern_a = runner.context.bullet_pattern_a;
+        ecl_.bullet_pattern_b = runner.context.bullet_pattern_b;
+        ecl_.bullet_patterns = runner.context.bullet_patterns;
+        ecl_.bullet_launch_flag = runner.context.bullet_launch_flag;
+        ecl_.bullet_launch_speed = runner.context.bullet_launch_speed;
+        ecl_.bullet_launch_a = runner.context.bullet_launch_a;
+        ecl_.bullet_launch_b = runner.context.bullet_launch_b;
+        ecl_.bullet_launches = runner.context.bullet_launches;
         ecl_.boss_frame = runner.context.boss_frame;
         ecl_.boss_frame_length = runner.context.boss_frame_length;
         ecl_.boss_frame_lengths = runner.context.boss_frame_lengths;
