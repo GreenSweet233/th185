@@ -491,6 +491,18 @@ check('op503 (boss phase) executes', phases > 0);
 check('op501 (position pair) executes', posPairs > 0);
 check('the boss chain has advanced past op400', unsup !== 400);
 
+// Boss spawn boxes.
+//
+// op504 sets a spawn area (centre plus field-scale extents 280x64). It runs
+// once per boss frame, so its counter grows quickly once the boss chain
+// reaches it.
+const spawnBoxes = module._th185_spawn_boxes();
+const unsup2 = module._th185_first_unsupported();
+console.log('boss spawn  : spawnBoxes=' + spawnBoxes
+            + ' firstUnsupported=' + unsup2);
+check('op504 (boss spawn box) executes', spawnBoxes > 0);
+check('the boss chain has advanced past op504', unsup2 !== 504);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

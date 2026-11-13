@@ -726,6 +726,22 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_timed_values() {
     return th185::app::instance().ecl().timed_values;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_pattern_extras() {
+    return th185::app::instance().ecl().pattern_extras;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_spawn_boxes() {
+    return th185::app::instance().ecl().spawn_boxes;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_named_call_exts() {
+    return th185::app::instance().ecl().named_call_exts;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_named_effect_calls() {
+    return th185::app::instance().ecl().named_effect_calls;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

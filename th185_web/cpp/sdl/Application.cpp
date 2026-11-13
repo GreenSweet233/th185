@@ -944,6 +944,31 @@ bool Application::tick(u32 held) {
         // op1019 consumes it, and both live in main's coroutine. Without these
         // three lines the flag never leaves the runner copy, so `sets` and
         // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.pattern_extra_frames = runner.context.pattern_extra_frames;
+        ecl_.pattern_extra_mode = runner.context.pattern_extra_mode;
+        ecl_.pattern_extra_scale = runner.context.pattern_extra_scale;
+        ecl_.pattern_extra_tail = runner.context.pattern_extra_tail;
+        ecl_.pattern_extras = runner.context.pattern_extras;
+        ecl_.pattern_aux_a = runner.context.pattern_aux_a;
+        ecl_.pattern_aux_b = runner.context.pattern_aux_b;
+        ecl_.pattern_aux_c = runner.context.pattern_aux_c;
+        ecl_.pattern_aux_count = runner.context.pattern_aux_count;
+        ecl_.spawn_box_x = runner.context.spawn_box_x;
+        ecl_.spawn_box_y = runner.context.spawn_box_y;
+        ecl_.spawn_box_flag = runner.context.spawn_box_flag;
+        ecl_.spawn_boxes = runner.context.spawn_boxes;
+        ecl_.spawn_param_a = runner.context.spawn_param_a;
+        ecl_.spawn_param_b = runner.context.spawn_param_b;
+        ecl_.spawn_param_sets = runner.context.spawn_param_sets;
+        ecl_.script_marks = runner.context.script_marks;
+        ecl_.named_call_length = runner.context.named_call_length;
+        ecl_.named_call_target = std::move(runner.context.named_call_target);
+        ecl_.named_call_exts = runner.context.named_call_exts;
+        ecl_.named_effect_length = runner.context.named_effect_length;
+        ecl_.named_effect_target = std::move(runner.context.named_effect_target);
+        ecl_.named_effect_calls = runner.context.named_effect_calls;
+        ecl_.boss_timer_value = runner.context.boss_timer_value;
+        ecl_.boss_timer_values = runner.context.boss_timer_values;
         ecl_.position_x = runner.context.position_x;
         ecl_.position_y = runner.context.position_y;
         ecl_.position_pairs = runner.context.position_pairs;

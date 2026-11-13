@@ -234,6 +234,31 @@ struct EclContext {
     // The "stage signal" flag that op1017 raises and op1019 waits on. See the
     // op1017 case for how the two were identified from control flow.
     // Which boss this script is running as (op1024). See the case for evidence.
+    u32 pattern_extra_frames = 0;
+    u32 pattern_extra_mode = 0;
+    float pattern_extra_scale = 0.0f;
+    u32 pattern_extra_tail = 0;
+    u32 pattern_extras = 0;
+    u32 pattern_aux_a = 0;
+    u32 pattern_aux_b = 0;
+    u32 pattern_aux_c = 0;
+    u32 pattern_aux_count = 0;
+    float spawn_box_x = 0.0f;
+    float spawn_box_y = 0.0f;
+    u32 spawn_box_flag = 0;
+    u32 spawn_boxes = 0;
+    u32 spawn_param_a = 0;
+    u32 spawn_param_b = 0;
+    u32 spawn_param_sets = 0;
+    u32 script_marks = 0;
+    u32 named_call_length = 0;
+    std::string named_call_target;
+    u32 named_call_exts = 0;
+    u32 named_effect_length = 0;
+    std::string named_effect_target;
+    u32 named_effect_calls = 0;
+    u32 boss_timer_value = 0;
+    u32 boss_timer_values = 0;
     float position_x = 0.0f;
     float position_y = 0.0f;
     u32 position_pairs = 0;

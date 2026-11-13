@@ -135,6 +135,9 @@ const OpName kOpNames[] = {
     {515, "BossFrameLength"}, {516, "BossAttackTimer"},
     {400, "EffectSlot"}, {404, "BulletPattern"}, {405, "BulletLaunch"},
     {501, "SetPositionPair"}, {503, "BossPhase"}, {505, "BranchAction"},
+    {412, "PatternExtra"}, {401, "PatternAux"}, {504, "BossSpawnBox"},
+    {513, "ScriptMark"}, {514, "CallNamedExt"}, {521, "CallNamedEffect"},
+    {507, "SpawnParams"}, {1026, "BossTimerValue"},
     {545, "AttackPrepare"}, {445, "TimedValue"},
     {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
@@ -1099,6 +1102,116 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.boss_attack_a = arg_u32(payload, 0);
             context.boss_attack_b = arg_u32(payload, 1);
             ++context.boss_attack_timers;
+            break;
+        }
+        case EclOp::Op412PatternExtra: {
+            // Trailing parameters of a bullet pattern.
+            //
+            // Evidence: 95 occurrences across 47 files, size ALWAYS 28 so the
+            // payload is [u32][u32][u32][f32][u32]. Payload is
+            // [0][0x3C=60][4][1.0][tail] with tail in {0, 120, 60}. Context is
+            // most often prev=op23 next=op23 (40/95) -- it sits inside a wait
+            // loop, refining the pattern each iteration.
+            context.pattern_extra_frames = arg_u32(payload, 1);
+            context.pattern_extra_mode = arg_u32(payload, 2);
+            context.pattern_extra_scale = arg_float(payload, 3);
+            context.pattern_extra_tail = arg_u32(payload, 4);
+            ++context.pattern_extras;
+            break;
+        }
+
+        case EclOp::Op401PatternAux: {
+            // Auxiliary pattern data.
+            //
+            // Evidence: 92 occurrences across 29 files, size ALWAYS 32 so the
+            // payload is [u32 x6][f32 x2]. 41/92 are all-zero (a no-op variant),
+            // the rest carry [0][0x3C=60][4][0][0][0x43]. Context is
+            // prev=op405 (bullet launch) next=op42 in 41/92.
+            context.pattern_aux_a = arg_u32(payload, 1);
+            context.pattern_aux_b = arg_u32(payload, 2);
+            context.pattern_aux_c = arg_u32(payload, 5);
+            ++context.pattern_aux_count;
+            break;
+        }
+
+        case EclOp::Op504BossSpawnBox: {
+            // Spawn area for a boss object: centre plus extents.
+            //
+            // Evidence: 85 occurrences across 49 files, size ALWAYS 32 so the
+            // payload is [u32][u32][u32][f32][f32][u32]. Payload is
+            // [0][0][0x43][280.0][64.0][flag]; 280 and 64 are field-scale
+            // dimensions. Context is prev=op501 (the position pair) next=op302
+            // in 28/85 -- it follows a position being set.
+            context.spawn_box_x = arg_float(payload, 3);
+            context.spawn_box_y = arg_float(payload, 4);
+            context.spawn_box_flag = arg_u32(payload, 5);
+            ++context.spawn_boxes;
+            break;
+        }
+
+        case EclOp::Op513ScriptMark: {
+            // Zero-argument marker.
+            //
+            // Evidence: 69 occurrences across 29 files, size ALWAYS 16 (so the
+            // payload is 8 zero bytes in every case), context is
+            // prev=op616 next=op21 in 39/69 and prev=op43 next=op514 in 27/69.
+            // A no-argument marker that always precedes op514/op521, which are
+            // the named-call instructions.
+            ++context.script_marks;
+            break;
+        }
+
+        case EclOp::Op514CallNamedExt: {
+            // Named subroutine call, extended form.
+            //
+            // Evidence: 69 occurrences across 28 files, sizes 44/48/52/56 -- the
+            // variable part is the trailing parameter block, and the fixed part
+            // carries a plain-text name. Observed names: "BossDead" (0x0C=12
+            // chars, matching the length field at +0x10). This is the same
+            // calling convention as op300/op304: length at +0x10, name at +0x14.
+            context.named_call_length = arg_u32(payload, 4);
+            context.named_call_target.assign(
+                reinterpret_cast<const char*>(payload) + 12, 16);
+            ++context.named_call_exts;
+            break;
+        }
+
+        case EclOp::Op521CallNamedEffect: {
+            // Named effect call.
+            //
+            // Evidence: 68 occurrences across 28 files, size ALWAYS 36, and the
+            // payload carries "BossEscape" (10 chars) after a length field at
+            // +8. Context is prev=op514 next=op1023 / op527 in 67/68, i.e. right
+            // after the other named call.
+            context.named_effect_length = arg_u32(payload, 2);
+            context.named_effect_target.assign(
+                reinterpret_cast<const char*>(payload) + 8, 16);
+            ++context.named_effect_calls;
+            break;
+        }
+
+        case EclOp::Op507SpawnParams: {
+            // Spawn parameters: two small integers.
+            //
+            // Evidence: 55 occurrences across 24 files, size ALWAYS 24 so the
+            // payload is [u32][u32][u32][u32]. Observed pairs are (20,15),
+            // (2,4), (2,8) -- counts and modes. Context is prev=op573 next=op573
+            // in 22/55 and prev=op504 next=op573 in 19/55.
+            context.spawn_param_a = arg_u32(payload, 1);
+            context.spawn_param_b = arg_u32(payload, 2);
+            ++context.spawn_param_sets;
+            break;
+        }
+
+        case EclOp::Op1026BossTimerValue: {
+            // A single timer value, often self-looping.
+            //
+            // Evidence: 51 occurrences across 26 files, size ALWAYS 20 so the
+            // payload is [u32][u32]. Values are 100, 50, and -1 (0xFFFFFFFF).
+            // Context is prev=op1026 next=op1026 in 20/51 -- it repeats to build
+            // a delay sequence.
+            context.boss_timer_value = arg_u32(payload, 0);
+            ++context.boss_timer_values;
             break;
         }
         case EclOp::Op501SetPositionPair: {
