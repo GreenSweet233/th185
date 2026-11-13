@@ -129,6 +129,15 @@ u32 AnmManager::update(Rng& rng, float rate) {
     return ticked;
 }
 
+void AnmManager::clear() {
+    // pool_ is a vector that grows on demand, so iterate its actual size --
+    // looping to ANM_MAX_LIVE reads past the end and traps in WASM.
+    for (u32 i = 0; i < u32(pool_.size()); ++i) {
+        if (pool_[i] && pool_[i]->alive) kill(i);
+    }
+    collect();
+}
+
 void AnmManager::collect() {
     // Slots are returned to free_slots_ the moment an instance dies, so the
     // only work left is dropping stale child lists.

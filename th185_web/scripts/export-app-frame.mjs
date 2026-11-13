@@ -47,11 +47,16 @@ if (!module._th185_start()) {
 const SHOOT = 1 << 0;
 // No spawn_test_wave: the enemies in this frame come from the ECL scene
 // controller's op1013 schedules, which is the real data path.
+module._th185_load_stage(4);
 module._th185_reset_scenario();
 // Long enough for the enemies to return fire, so the frame shows both sides.
 // Long enough for the ECL schedules to spawn several waves.
+// The scene needs ~400 frames of ECL scheduling before the wave is dense, and
+// shooting from there cleared all 20 enemies (hits hit exactly 20 x HP) before
+// the frame was captured. Fire only in the last 20 frames: that puts player
+// bullets in flight while the enemies are still on screen.
 for (let i = 0; i < 600; ++i) {
-  const held = i >= 20 ? SHOOT : 0;
+  const held = i >= 580 ? SHOOT : 0;
   if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
     process.exit(1);

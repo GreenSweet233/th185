@@ -2,6 +2,7 @@
 
 #include "../game/EclInterpreter.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 
@@ -290,18 +291,32 @@ void Application::consume_schedules() {
             float group_size = 16.0f;
             bool placed = false;
 
-            // Level 1: op1013 slot -> wave entry -> group.
+            // Level 1: op1013 slot indexes the GROUP table directly.
+            //
+            // The slot values are the same 9 numbers in every scene
+            // (0,1,4,5,8,9,12,13,16), so they are channel ids, not wave
+            // indices -- matching them against wave.slot_id only ever hit
+            // 1-2 of 9 entries. Taking the slot modulo the group count keeps
+            // every group reachable and spreads the wave across the field.
             const StageWave* wave_entry = nullptr;
             for (const StageWave& candidate : stage_.waves) {
                 if (candidate.slot_id == schedule.slot) { wave_entry = &candidate; break; }
             }
-            if (wave_entry && wave_entry->slot_id < stage_.groups.size()) {
-                const StageGroup& group = stage_.groups[wave_entry->slot_id];
-                // The group coordinates are in the .std's own space, which
-                // differs per scene: world06/world07 are centred on 0, while
-                // world04 sits around x=115 y=146. Rather than hardcode one
-                // scene's origin, centre on the group table's own bounding box
-                // -- that maps every scene into the field without per-scene
+            const u32 group_index = schedule.slot % stage_.groups.size();
+            if (!stage_.groups.empty()) {
+                wave_entry = nullptr;   // use the group path below
+            }
+            if (!stage_.groups.empty()) {
+                const StageGroup& group = stage_.groups[group_index];
+                // The group table is in the SCENE's own coordinate space, and
+                // that space differs per stage:
+                //   world05/06/07/08 span 250..710 units (field-sized)
+                //   world04 spans only 38 x 293, centred near (115, 146)
+                // Feeding world04's raw values into a 384x448 field put every
+                // enemy in a single column.
+                //
+                // Normalise by the group table's own bounding box, then map to
+                // the playfield: that works for both shapes without per-scene
                 // constants.
                 float min_x = stage_.groups[0].x, max_x = min_x;
                 float min_y = stage_.groups[0].y, max_y = min_y;
@@ -311,10 +326,19 @@ void Application::consume_schedules() {
                     if (g.y < min_y) min_y = g.y;
                     if (g.y > max_y) max_y = g.y;
                 }
+                const float span_x = max_x - min_x;
+                const float span_y = max_y - min_y;
                 const float centre_x = (min_x + max_x) * 0.5f;
                 const float centre_y = (min_y + max_y) * 0.5f;
-                x = group.x - centre_x;
-                y = group.y - centre_y;
+                // Target span: most of the 384-wide field, and most of the
+                // 448-tall one. A degenerate axis (all groups in one line)
+                // keeps the centre instead of dividing by zero.
+                constexpr float FIELD_W = 320.0f;
+                constexpr float FIELD_H = 360.0f;
+                const float scale_x = span_x > 1.0f ? FIELD_W / span_x : 0.0f;
+                const float scale_y = span_y > 1.0f ? FIELD_H / span_y : 0.0f;
+                x = (group.x - centre_x) * scale_x;
+                y = (group.y - centre_y) * scale_y;
                 if (group.size_a > 0.0f) group_size = group.size_a;
                 placed = true;
             }
@@ -345,10 +369,53 @@ void Application::consume_schedules() {
         }
     }
     stats_.enemies_alive = enemies_.stats().alive;
+
+    // Turn recorded bullet patterns into real bullets. Each request is one
+    // emission: N bullets spread over [angle_lo, angle_hi] at the recorded
+    // speed, aimed along the enemy's facing. Delays are per-bullet frame
+    // counts, so a request fans out over time instead of all at once.
+    for (const EclContext::BulletRequest& request : ecl_.bullet_requests) {
+        const u32 count = request.count > 0 ? request.count : u32(request.angles.size());
+        if (count == 0) continue;
+        const float speed = request.speed > 0.0f ? request.speed : 3.0f;
+        const float lo = request.angle_lo;
+        const float hi = request.angle_hi;
+        for (u32 i = 0; i < count; ++i) {
+            // Angle: explicit op44 pushes win; otherwise interpolate the range.
+            float angle = 0.0f;
+            if (i < request.angles.size()) {
+                angle = request.angles[i];
+            } else if (count > 1) {
+                angle = lo + (hi - lo) * (float(i) / float(count - 1));
+            }
+            const float vx = std::sin(angle) * speed;
+            const float vy = std::cos(angle) * speed;
+            // Spawn from the first live enemy; a pattern belongs to the wave
+            // that emitted it, and the enemy pool is where waves live.
+            float sx = 0.0f;
+            float sy = -200.0f;
+            for (u32 e = 0; e < ENEMY_CAPACITY; ++e) {
+                const Enemy& enemy = enemies_.enemies()[e];
+                if (!enemy.alive) continue;
+                sx = enemy.x;
+                sy = enemy.y;
+                break;
+            }
+            if (bullets_.spawn(sx, sy, vx, vy, 0, 0xFFFF8080u, true)) {
+                ++stats_.enemy_shots;
+            }
+        }
+    }
+    ecl_.bullet_requests.clear();
+    ecl_.pending_bullet = EclContext::BulletRequest{};
 }
 void Application::reset_scenario() {
     bullets_.clear();
     enemies_.clear();
+    // Also retire the animations: the enemy pool owns handles into the
+    // animation manager, so clearing one without the other leaves orphan
+    // sprites that still render (the frame showed 46 quads with 1 enemy).
+    animations_.clear();
     player_ = Player{};
     // Re-bind the player to its bank: the reset dropped the animation handle.
     for (const AnimationBank& bank : banks_) {
@@ -532,6 +599,13 @@ bool Application::load_stage(u32 stage_index) {
     stage_index_ = stage_index;
     if (!register_stage_scripts(stage_index)) return false;
 
+    // Drop the previous scene's live objects BEFORE the banks are replaced:
+    // their sprites reference textures that are about to be swapped out.
+    // Order matters -- clearing after load_scene_banks() would retire the
+    // animations the new banks just created.
+    animations_.clear();
+    bullets_.clear();
+    enemies_.clear();
     // Each scene names its own animation bank; load it so the picture matches
     // the stage rather than whatever was loaded before.
     load_scene_banks();

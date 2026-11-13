@@ -174,8 +174,11 @@ struct NetEffect {
 };
 
 const NetEffect kInferredNet[] = {
-    // 600 family
-    {601, +1}, {603, -1}, {604, 0}, {605, -1}, {609, 0}, {610, 0},
+    // 600 family: only the ones with no dedicated case stay here.
+    // op600/602/604/605/606/607/611/535 have cases below that record the
+    // bullet pattern, so listing them here would swallow them (same trap as
+    // op1011 earlier).
+    {601, +1}, {603, -1}, {609, 0}, {610, 0},
     {615, 0}, {626, -2}, {627, +1}, {628, -2},
     // other TH185-only
     // NOTE: op82 NormalizeAngle is NOT here either -- same reason as op1011.
@@ -843,6 +846,72 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 if (existing == value) { seen = true; break; }
             }
             if (!seen) context.wave_templates.push_back(value);
+            break;
+        }
+
+        // --- 600 family: bullet pattern description -----------------------
+        //
+        // These record the pattern instead of acting on it: the interpreter has
+        // no bullet pool, and the Application turns a finished BulletRequest
+        // into real bullets. See EclContext::BulletRequest for the field map.
+        case EclOp::Op600BulletPattern: {
+            context.pending_bullet = EclContext::BulletRequest{};
+            context.pending_bullet.mode = arg_u32(payload, 0);
+            break;
+        }
+        case EclOp::Op607BulletVariant: {
+            context.pending_bullet.submode = arg_u32(payload, 0);
+            break;
+        }
+        case EclOp::Op602BulletPair: {
+            context.pending_bullet.mode = arg_u32(payload, 0);
+            context.pending_bullet.submode = arg_u32(payload, 1);
+            break;
+        }
+        case EclOp::Op606BulletCount: {
+            // Two integers; observed (2,1) and (1,1). Recorded, not acted on.
+            context.pending_bullet.count = arg_u32(payload, 0);
+            break;
+        }
+        case EclOp::Op604BulletSpeed: {
+            // (a, b, speed, 0). The third float is the bullet speed.
+            context.pending_bullet.speed = arg_float(payload, 2);
+            break;
+        }
+        case EclOp::Op605BulletFan: {
+            // (count, lo, hi): N bullets across an angular range.
+            context.pending_bullet.count = arg_u32(payload, 0);
+            context.pending_bullet.angle_lo = arg_float(payload, 1);
+            context.pending_bullet.angle_hi = arg_float(payload, 2);
+            break;
+        }
+        case EclOp::Op611BulletEmit: {
+            // EMIT. The op44 pushes before this are the bullet angles.
+            EclContext::BulletRequest request = context.pending_bullet;
+            // Drain the operand stack into `angles`: every float pushed since
+            // the pattern block started belongs to this emission.
+            request.angles.clear();
+            while (!stack_.empty() && request.angles.size() < 64) {
+                u32 bits = 0;
+                EclValue::Type type = EclValue::Type::Integer;
+                if (!stack_.pop(bits, type)) break;
+                if (type != EclValue::Type::Float) {
+                    // Not an angle: stop draining and put nothing back.
+                    break;
+                }
+                request.angles.push_back(as_float(bits));
+            }
+            ++request.emitted;
+            context.bullet_requests.push_back(std::move(request));
+            context.pending_bullet = EclContext::BulletRequest{};
+            break;
+        }
+        case EclOp::Op535BulletDelays: {
+            // Per-bullet delay in frames; 8 entries, monotonically
+            // non-decreasing in every observed sample.
+            for (u32 i = 0; i < 8; ++i) {
+                context.pending_bullet.delays[i] = arg_u32(payload, i);
+            }
             break;
         }
 

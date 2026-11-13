@@ -135,6 +135,39 @@ struct EclContext {
     // Subroutine names reached through Call, for diagnostics.
     std::vector<std::string> calls_made;
 
+    // --- bullet emission (600 family) -----------------------------------
+    //
+    // The 600 family is how a wave subroutine describes a bullet pattern.
+    // Structure recovered from wave01.ecl's Wave01_GirlA_at:
+    //
+    //   op600 (mode)                     pattern class
+    //   op607 (submode)                  pattern variant
+    //   op602 (a, b)                     two integers
+    //   op606 (a, b)                     two integers
+    //   op604 (a, b, speed, 0)           speed / acceleration
+    //   op44  x N                        N angles pushed on the stack
+    //   op605 (count, lo, hi)            N bullets, angular range
+    //   op611 (a, b, ...)                EMIT -- consumes the stack
+    //   op535 (d0..d7)                   per-bullet delay in frames
+    //
+    // op611 consumes the values pushed by the op44 sequence, which is why it
+    // is listed as net 0 in the inferred table: the pushes and the consume
+    // cancel out over the whole block.
+    struct BulletRequest {
+        u32 mode = 0;
+        u32 submode = 0;
+        u32 count = 0;
+        float speed = 0.0f;
+        float angle_lo = 0.0f;
+        float angle_hi = 0.0f;
+        std::array<u32, 8> delays{};
+        std::vector<float> angles;   // pushed by op44 before op611
+        u32 emitted = 0;
+    };
+    std::vector<BulletRequest> bullet_requests;
+    // Working values accumulated between op600 and op611.
+    BulletRequest pending_bullet;
+
     // --- coroutine state ------------------------------------------------
     //
     // The interpreter is a REPLAY interpreter: it restarts a subroutine from

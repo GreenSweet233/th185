@@ -109,6 +109,11 @@ public:
     AnmVm* find(u32 handle);
     // Marks a handle dead and returns its slot to the free list.
     void kill(u32 handle);
+
+    // Retires every live animation. Loading a different scene must not keep
+    // the previous scene's sprites alive: they belong to banks that are about
+    // to be unloaded, so their textures would be dangling.
+    void clear();
     u32 live_count() const { return live_; }
     const AnmManagerStats& stats() const { return stats_; }
     const std::string& error() const { return error_; }

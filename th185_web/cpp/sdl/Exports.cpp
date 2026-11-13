@@ -371,6 +371,17 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_probe_decrypt(const char* name,
     return stored;
 }
 
+// Number of ECL bullet patterns recorded so far (cumulative).
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_requests() {
+    return unsigned(th185::app::instance().ecl().bullet_requests.size());
+}
+
+// Slot of the i-th recorded schedule, for verifying the slot -> group mapping.
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedule_slot(unsigned index) {
+    const auto& s = th185::app::instance().ecl().schedules;
+    return index < s.size() ? s[index].slot : 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
