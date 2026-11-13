@@ -61,6 +61,21 @@ bool Application::initialize(std::vector<u8> archive_bytes) {
     return true;
 }
 
+namespace {
+
+// A boss script's entry subroutine is named BossNN or BossNNt (the tutorial
+// variant). Boss01Boss, Boss01Boss1, Boss01BossCard1 and friends are helpers.
+bool is_boss_entry(const std::string& name) {
+    // BossNN   (6 chars)  or  BossNNt (7 chars).
+    if (name.size() != 6 && name.size() != 7) return false;
+    if (name.compare(0, 4, "Boss") != 0) return false;
+    if (name[4] < '0' || name[4] > '9') return false;
+    if (name[5] < '0' || name[5] > '9') return false;
+    if (name.size() == 7 && name[6] != 't') return false;
+    return true;
+}
+
+}  // namespace
 bool Application::register_stage_scripts(u32 stage_index) {
     if (stage_index >= kSceneCount) {
         error_ = "stage index out of range";
@@ -183,12 +198,21 @@ bool Application::register_stage_scripts(u32 stage_index) {
     // relative to its own data). All that remains is deciding which
     // subroutines run as top-level coroutines.
     for (const EclSubroutine& sub : resource.subs) {
-        // ONLY `main` runs as a top-level coroutine. Every other subroutine in
-        // the file is a helper the controller reaches through Call, and running
-        // them standalone burns the per-frame budget on their own wait loops --
-        // world04's helpers alone spent ~80000 instructions per frame, which
-        // starved the controller before it reached its op1013 block.
-        if (sub.name == "main") {
+        // Top-level coroutines are the ENTRY points, not every subroutine.
+        //
+        //   main       the scene controller
+        //   BossNN     a boss script's entry (Boss01, Boss02, ...)
+        //
+        // Everything else is a helper the entry reaches through Call, and
+        // running helpers standalone burns the per-frame budget on their own
+        // wait loops -- world04's helpers alone spent ~80000 instructions per
+        // frame, which starved the controller before it reached op1013.
+        //
+        // BossNN was identified as an entry point by its shape: no file outside
+        // its own calls it, and it starts with op40 / op502 / op30 / op1006 /
+        // op1024 / op307 then op300 Call BossNNBoss -- the same prologue main
+        // uses.
+        if (sub.name == "main" || is_boss_entry(sub.name)) {
             active_scripts_.push_back(sub.name);
             ++runnable_;
         }
@@ -920,6 +944,18 @@ bool Application::tick(u32 held) {
         // op1019 consumes it, and both live in main's coroutine. Without these
         // three lines the flag never leaves the runner copy, so `sets` and
         // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.boss_frame = runner.context.boss_frame;
+        ecl_.boss_frame_length = runner.context.boss_frame_length;
+        ecl_.boss_frame_lengths = runner.context.boss_frame_lengths;
+        ecl_.boss_attack_a = runner.context.boss_attack_a;
+        ecl_.boss_attack_b = runner.context.boss_attack_b;
+        ecl_.boss_attack_timers = runner.context.boss_attack_timers;
+        ecl_.boss_frame_enters = runner.context.boss_frame_enters;
+        ecl_.boss_timer_a = runner.context.boss_timer_a;
+        ecl_.boss_timer_b = runner.context.boss_timer_b;
+        ecl_.boss_timer_sets = runner.context.boss_timer_sets;
+        ecl_.boss_index = runner.context.boss_index;
+        ecl_.boss_index_sets = runner.context.boss_index_sets;
         ecl_.stage_signal = runner.context.stage_signal;
         ecl_.stage_signal_sets = runner.context.stage_signal_sets;
         ecl_.stage_signal_waits = runner.context.stage_signal_waits;

@@ -233,6 +233,19 @@ struct EclContext {
     u32 short_pops = 0;
     // The "stage signal" flag that op1017 raises and op1019 waits on. See the
     // op1017 case for how the two were identified from control flow.
+    // Which boss this script is running as (op1024). See the case for evidence.
+    u32 boss_frame = 0;
+    u32 boss_frame_length = 0;
+    u32 boss_frame_lengths = 0;
+    u32 boss_attack_a = 0;
+    u32 boss_attack_b = 0;
+    u32 boss_attack_timers = 0;
+    u32 boss_frame_enters = 0;
+    u32 boss_timer_a = 0;
+    u32 boss_timer_b = 0;
+    u32 boss_timer_sets = 0;
+    u32 boss_index = 0;
+    u32 boss_index_sets = 0;
     u32 stage_signal = 0;
     u32 stage_signal_sets = 0;
     u32 stage_signal_waits = 0;

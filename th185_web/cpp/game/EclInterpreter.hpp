@@ -74,6 +74,11 @@ enum class EclOp : u16 {
     Op611BulletEmit = 611,
     Op535BulletDelays = 535,
     Op1012WaveBlockEnd = 1012,
+    Op1024BossIndex = 1024,
+    Op512BossFrameEnter = 512,
+    Op515BossFrameLength = 515,
+    Op516BossAttackTimer = 516,
+    Op307BossTimer = 307,
     Op1017StageSignalSet = 1017,
     Op1019StageSignalWait = 1019,
     Op1011WaveTemplate = 1011, // one argument: wave template index (-1..104)

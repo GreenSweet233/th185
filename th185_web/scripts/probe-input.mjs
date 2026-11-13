@@ -457,6 +457,21 @@ console.log('boss scripts: subroutines=' + subs);
 check('boss scripts are registered (scene + default + waves + bosses)',
       subs > 700);
 
+// Boss scripts driven.
+//
+// BossNN is an entry subroutine, not a helper: nothing outside its own file
+// calls it, and it opens with the same prologue main uses (op40 / op502 / op30
+// / op1006 / op1024 / op307). Running all 27 plus main gives 28 top-level
+// coroutines, and op1024 sets each boss's index.
+module._th185_load_stage(0);
+module._th185_reset_scenario();
+tick(0, 300);
+const bossSets = module._th185_boss_index_sets();
+const active = module._th185_active_script_count();
+console.log('boss        : active=' + active + ' indexSets=' + bossSets);
+check('every boss entry runs as a top-level coroutine', active === 28);
+check('op1024 sets the boss index in every boss file', bossSets === 27);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

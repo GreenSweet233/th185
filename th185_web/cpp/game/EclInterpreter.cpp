@@ -131,6 +131,8 @@ const OpName kOpNames[] = {
     {605, "BulletFan"}, {606, "BulletCount"}, {607, "BulletVariant"},
     {611, "BulletEmit"}, {535, "BulletDelays"},
     {1011, "WaveTemplate"}, {1012, "WaveBlockEnd"},
+    {1024, "BossIndex"}, {512, "BossFrameEnter"}, {307, "BossTimer"},
+    {515, "BossFrameLength"}, {516, "BossAttackTimer"},
     {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
@@ -209,7 +211,7 @@ const NetEffect kInferredNet[] = {
     // template was never recorded even though WorldWave01 ran 20000
     // instructions.
     // data-only opcodes already established (net 0)
-    {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0},
+    {306, 0}, {502, 0}, {525, 0},
     {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
     // op1004 closes the schedule block (always follows op1013, payload
     // [0][1][0][0]); without it the controller stops before its Calls.
@@ -1072,6 +1074,66 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
+        case EclOp::Op515BossFrameLength: {
+            // Frame length for the block op512 opened.
+            //
+            // Evidence: 29 occurrences across 29 files, 28/29 with payload 0x78
+            // (120) and one 0x5A (90); context is prev=op512 next=op502 in 28/29.
+            // A frame that follows "frame enter" and carries a frame count is
+            // the frame's duration.
+            context.boss_frame_length = arg_u32(payload, 0);
+            ++context.boss_frame_lengths;
+            break;
+        }
+
+        case EclOp::Op516BossAttackTimer: {
+            // Per-attack timer inside a boss frame.
+            //
+            // Evidence: 182 occurrences across 38 files. Payload is
+            // [u32 reserved][u32 a][u32 b]; a takes 0x1B(27)/0x36(54)/0x06(6) and
+            // b is 0 or 0x3C(60). Context is most often prev=op307 (the boss
+            // timer) which places it right after the timer is set.
+            context.boss_attack_a = arg_u32(payload, 0);
+            context.boss_attack_b = arg_u32(payload, 1);
+            ++context.boss_attack_timers;
+            break;
+        }
+        case EclOp::Op512BossFrameEnter: {
+            // Marks the start of a boss frame block.
+            //
+            // Evidence: 31 occurrences across 29 files, 28/31 with an all-zero
+            // payload, and the context is prev=op40 (EnterFrame) next=op515 in
+            // 28/31. So it sits right after EnterFrame, which is where a frame
+            // block opens.
+            context.boss_frame = arg_u32(payload, 0);
+            ++context.boss_frame_enters;
+            break;
+        }
+
+        case EclOp::Op307BossTimer: {
+            // A boss-side timer / wait.
+            //
+            // Evidence: 153 occurrences across 29 files, payload is
+            // [u32 flag(1)][u32 a][u32 b] with a in 0x4B..0x60 (75..96) and b
+            // either 0 or 0x3C (60). The 0/60 split is a frames argument, and the
+            // 75..96 range matches the series' per-attack intervals.
+            context.boss_timer_a = arg_u32(payload, 0);
+            context.boss_timer_b = arg_u32(payload, 1);
+            ++context.boss_timer_sets;
+            break;
+        }
+        case EclOp::Op1024BossIndex: {
+            // Sets the boss index this script is running as.
+            //
+            // Evidence: 27 occurrences, exactly one per bossNN.ecl, payload[0]
+            // equals NN (boss01 -> 1, boss02 -> 2, ... boss27 -> 27). Context is
+            // identical in 27/27: prev=op1006 (the file's comment) next=op307.
+            //
+            // This is what tells the rest of the script which boss is on screen.
+            context.boss_index = arg_u32(payload, 0);
+            ++context.boss_index_sets;
+            break;
+        }
         case EclOp::Op1015Query: {
             // payload: u32 reserved, u32 reference, u32 field, u32 reserved
             context.last_query_reference = arg_u32(payload, 0);

@@ -686,6 +686,18 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_call_depth() {
     return th185::app::instance().ecl().call_depth;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_active_script_count() {
+    return th185::app::instance().active_script_count();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_boss_index() {
+    return th185::app::instance().ecl().boss_index;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_boss_index_sets() {
+    return th185::app::instance().ecl().boss_index_sets;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
