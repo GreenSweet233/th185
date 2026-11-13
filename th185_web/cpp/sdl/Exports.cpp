@@ -778,6 +778,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_coro_wait(const char* prefix, unsigned i) {
     return 0xFFFFFFFFu;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_boss_spawned() {
+    return th185::app::instance().stats().boss_spawned;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_boss_alive() {
+    return th185::app::instance().enemies().boss_alive() ? 1u : 0u;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

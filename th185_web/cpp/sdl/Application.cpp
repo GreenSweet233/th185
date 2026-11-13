@@ -554,6 +554,8 @@ void Application::reset_scenario() {
     stats_.frames_since_schedule = 0;
     stats_.stage_clear = 0;
     last_schedules_fired_ = 0;
+    boss_spawned_ = false;
+    stats_.boss_spawned = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
     stats_.sounds_played = 0;
@@ -1262,7 +1264,21 @@ bool Application::tick(u32 held) {
     // The boss kill is. `boss_index` is set by op1024 (one per bossNN.ecl), so a
     // non-zero boss_index means a boss script is live; when the enemy count
     // reaches zero with a boss live, the boss is down.
-    const bool boss_live = ecl_.boss_index != 0;
+    // Spawn the boss entity the first time op1024 reports a boss index.
+    //
+    // Without an entity the boss script runs but nothing can kill it, so the
+    // stage can never finish. `boss_index` is set exactly once per boss file
+    // (op1024), which makes it the natural spawn trigger.
+    // Spawn once per stage; a defeated boss must not come back.
+    if (ecl_.boss_index != 0 && !boss_spawned_ && !stats_.stage_clear) {
+        boss_spawned_ = true;
+        // Upper field, centred. The card's own position opcodes are not wired
+        // yet, so this uses the conventional boss placement.
+        const u32 slot = enemies_.spawn_boss(0.0f, -140.0f, BOSS_STARTING_HP, 0);
+        stats_.boss_spawned = slot == 0xFFFFFFFFu ? 0u : 1u;
+    }
+
+    const bool boss_live = enemies_.boss_alive();
     const bool field_empty = enemies_.stats().alive == 0;
 
     // Waves must have stopped arriving. `schedules_fired` only grows, so a

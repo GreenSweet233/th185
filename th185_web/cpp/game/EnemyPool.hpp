@@ -45,6 +45,9 @@ struct Enemy {
     u32 script = 0;
     // The animation instance owned by this enemy, or UINT32_MAX.
     u32 handle = 0xFFFFFFFFu;
+    // A boss is an enemy with a large HP pool that does not drift off-screen.
+    // Only one is live at a time; its defeat is what ends the stage.
+    bool is_boss = false;
     bool alive = false;
 };
 
@@ -83,6 +86,13 @@ public:
     // Applies `damage` to every live enemy, retiring the ones that reach 0 HP.
     // Returns how many died.
     u32 damage_all(i32 damage);
+
+    // Spawns the stage boss at (x, y) with `hp` health. Returns its slot, or
+    // 0xFFFFFFFF when the pool is full.
+    u32 spawn_boss(float x, float y, i32 hp, u32 sprite);
+
+    // True when a boss is alive.
+    bool boss_alive() const;
 
     const std::vector<Enemy>& enemies() const { return enemies_; }
     const EnemyStats& stats() const { return stats_; }

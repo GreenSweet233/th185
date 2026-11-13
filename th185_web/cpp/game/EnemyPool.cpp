@@ -155,6 +155,35 @@ u32 EnemyPool::fire_at(BulletPool* bullets, float target_x, float target_y) {
     return fired;
 }
 
+u32 EnemyPool::spawn_boss(float x, float y, i32 hp, u32 sprite) {
+    if (free_slots_.empty()) return 0xFFFFFFFFu;
+    const u32 index = free_slots_.back();
+    free_slots_.pop_back();
+
+    Enemy& enemy = enemies_[index];
+    enemy = Enemy{};
+    enemy.x = x;
+    enemy.y = y;
+    // A boss holds position: drifting would take it off-screen and the stage
+    // could never be finished.
+    enemy.vx = 0.0f;
+    enemy.vy = 0.0f;
+    enemy.radius = 32.0f;
+    enemy.hp = hp;
+    enemy.sprite = sprite;
+    enemy.is_boss = true;
+    enemy.alive = true;
+    ++stats_.spawned;
+    ++stats_.alive;
+    return index;
+}
+
+bool EnemyPool::boss_alive() const {
+    for (u32 i = 0; i < ENEMY_CAPACITY; ++i) {
+        if (enemies_[i].alive && enemies_[i].is_boss) return true;
+    }
+    return false;
+}
 u32 EnemyPool::damage_all(i32 damage) {
     if (damage <= 0) return 0;
     u32 killed = 0;

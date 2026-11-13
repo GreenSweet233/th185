@@ -11,6 +11,10 @@ constexpr unsigned STAGE_CLEAR_SLOT = 104;
 
 // Frames the field must stay empty (with a boss live) before a kill counts.
 constexpr unsigned BOSS_DOWN_CONFIRM_FRAMES = 30;
+
+// Boss health. The original's value is unknown; 60 gives a fight long enough
+// to observe without being unkillable.
+constexpr int BOSS_STARTING_HP = 60;
 }  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
@@ -121,6 +125,7 @@ struct FrameStats {
     // between waves, so a clear needs several.
     u32 clear_frames = 0;
     u32 boss_kill_frames = 0;
+    u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;
     u32 stage_clear = 0;
     u32 sounds_played = 0;
@@ -263,6 +268,8 @@ private:
     u32 last_lives_ = PLAYER_STARTING_LIVES;
     // Schedule count seen last frame, to detect when waves stop arriving.
     u32 last_schedules_fired_ = 0;
+    // Set once the boss entity has been created for this stage.
+    bool boss_spawned_ = false;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     // per-index bitmap because the interpreter re-records the same schedules
     // every tick (main is re-run from the start each frame).
