@@ -49,7 +49,7 @@ def selftest() -> int:
     result = subprocess.run(
         ['node', str(script), str(module), str(dat)],
         capture_output=True, text=True, encoding='utf-8', errors='replace',
-        timeout=900)
+        timeout=1500)
     output = result.stdout + result.stderr
     for line in output.splitlines():
         print(line)

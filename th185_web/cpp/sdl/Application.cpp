@@ -83,6 +83,26 @@ namespace {
 // (the tutorial) pairs with boss01t. Every other boss file must stay idle:
 // each BossNNtest carries nine op1013 wave schedules of its own, so running
 // them all keeps the field populated forever.
+namespace {
+
+// Identity of one firing: the schedule entry plus the index of the time slot.
+//
+// The entry is identified by its slot and its whole times[] array, so two
+// scripts declaring the same (slot, time) stay distinct -- which they must,
+// because they are two separate spawn events.
+u64 schedule_key(const EclContext::SpawnSchedule& schedule, u32 index) {
+    u64 h = 1469598103934665603ull;   // FNV-1a offset basis
+    const auto mix = [&h](u64 value) {
+        h ^= value;
+        h *= 1099511628211ull;
+    };
+    mix(schedule.slot);
+    for (u32 k = 0; k < 8; ++k) mix(schedule.times[k]);
+    mix(index);
+    return h;
+}
+
+}  // namespace
 bool boss_script_matches(const std::string& name, u32 stage_index) {
     // BossNNtest  -> "BossNN" + "test"
     // BossNNttest -> "BossNNt" + "test"
@@ -367,10 +387,19 @@ void Application::consume_schedules() {
             if (due == 0) continue;
             if (stats_.ticks < due) continue;
 
-            // Pack (slot, time) into one key. Slot is < 32 and time < 2^27 for
-            // every observed value, so a u64 is enough and collisions cannot
-            // happen within the data.
-            const u64 key = (u64(schedule.slot) << 32) | u64(due);
+            // Key on the whole schedule entry plus the index within it.
+            //
+            // (slot, time) alone is NOT unique: stage 0 has 112 time points
+            // but only 103 distinct (slot, time) pairs. The repeats are real --
+            // the same slot fires twice at the same frame from two different
+            // scripts (world01t and boss01t both schedule slot 16 at 1800, for
+            // example). Collapsing them made schedules_fired stop at 103/112,
+            // so `waves_quiet` never became true and stage 0 could never end.
+            //
+            // The entry's identity is (slot, its whole times[] array). Adding
+            // the index inside that array keeps duplicate times within one
+            // entry distinct too.
+            const u64 key = schedule_key(schedule, i);
             if (fired_schedule_keys_.count(key)) continue;
             fired_schedule_keys_.insert(key);
             ++stats_.schedules_fired;

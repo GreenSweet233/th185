@@ -84,7 +84,7 @@ checks.push(
   { name: "shell-contract", args: [resolve(here, "native", "shell_contract_check.py")], python: true },
   // Rendering a frame and moving a character are different claims; this proves
   // the bitmask the shell sends actually reaches an entity.
-  { name: "player-input", args: [resolve(here, "native", "player_input_check.py")], python: true, timeoutMs: 900000 },
+  { name: "player-input", args: [resolve(here, "native", "player_input_check.py")], python: true, timeoutMs: 1800000 },
 );
 
 let failures = 0;

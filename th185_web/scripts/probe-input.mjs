@@ -486,6 +486,33 @@ check('main plus exactly one boss controller runs', active === 2);
 // controller starts. Assert that the mechanism works, not a fixed count.
 check('op1024 (boss index) fires once the body is reached', bossSets > 0);
 
+// Every stage must be completable.
+//
+// The clear condition needs all three at once: the boss was spawned and is now
+// gone, the field is empty, and every scheduled wave has fired. `schedules_fired
+// reaches `schedules_expected` exactly, which is why this can be asserted as an
+// equality rather than a threshold.
+{
+    const stages = 9;
+    let cleared = 0;
+    const rows = [];
+    for (let s = 0; s < stages; ++s) {
+        module._th185_load_stage(s);
+        module._th185_reset_scenario();
+        let at = -1;
+        // 8000 is comfortably above the slowest observed clear (stage0 at
+        // 2183 frames) while keeping the whole probe inside its budget.
+        for (let f = 0; f < 8000; ++f) {
+            tick(SHOOT, 1);
+            if (module._th185_stage_clear() && at < 0) { at = f; break; }
+        }
+        if (module._th185_stage_clear()) ++cleared;
+        rows.push(s + ':' + at + ' ' + module._th185_schedules_fired() +
+                  '/' + module._th185_schedules_expected());
+    }
+    console.log('stage clear : ' + rows.join('  '));
+    check('every stage can be cleared', cleared === stages);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves
