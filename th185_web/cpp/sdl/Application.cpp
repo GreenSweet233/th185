@@ -1321,7 +1321,15 @@ bool Application::tick(u32 held) {
         stats_.boss_spawned = slot == 0xFFFFFFFFu ? 0u : 1u;
     }
 
-    const bool boss_live = enemies_.boss_alive();
+    // The boss must have EXISTED and be gone. Requiring it to still be alive
+    // was backwards: the stage ends when the boss dies, so `boss_live` is
+    // false exactly when the condition should hold.
+    //
+    // `boss_spawned_` is the "it existed" half; `!boss_alive()` is the "it is
+    // gone" half. Measured on stage 1: schedules 72/72, enemies 0,
+    // bossAlive 0 -- every other condition was already satisfied and only
+    // this inverted test blocked the clear.
+    const bool boss_defeated = boss_spawned_ && !enemies_.boss_alive();
     const bool field_empty = enemies_.stats().alive == 0;
 
     // Waves must have stopped arriving. `schedules_fired` only grows, so a
@@ -1332,9 +1340,22 @@ bool Application::tick(u32 held) {
     } else {
         ++stats_.frames_since_schedule;
     }
+    // Every schedule has a fixed list of due frames, so the total number of
+    // firings is known up front: 8 per entry (a zero time means "unused").
+    //
+    // Measured on stage 0: 14 entries (5 from world01t, 9 from boss01t) with
+    // 112 non-zero times between them. Waiting for schedules_fired to STOP
+    // growing was wrong -- it grows in bursts and the 30-frame window closed
+    // during a gap. Counting the total is exact.
+    u32 expected_fires = 0;
+    for (const EclContext::SpawnSchedule& schedule : ecl_.schedules) {
+        for (u32 k = 0; k < 8; ++k) {
+            if (schedule.times[k] != 0) ++expected_fires;
+        }
+    }
+    stats_.schedules_expected = expected_fires;
     const bool waves_quiet =
-        stats_.schedules_fired > 0 &&
-        stats_.frames_since_schedule >= BOSS_DOWN_CONFIRM_FRAMES;
+        expected_fires > 0 && stats_.schedules_fired >= expected_fires;
 
     // All three must hold at once: a boss is live, the field has been empty
     // for the confirmation window, and no new wave has been scheduled.
@@ -1343,7 +1364,7 @@ bool Application::tick(u32 held) {
     // between ordinary waves (clear=1 with 22 enemies still due); field-empty
     // alone fires between every wave; waves-quiet alone never becomes true
     // while the controller is looping.
-    if (boss_live && field_empty && waves_quiet) {
+    if (boss_defeated && field_empty && waves_quiet) {
         ++stats_.boss_kill_frames;
     } else {
         stats_.boss_kill_frames = 0;

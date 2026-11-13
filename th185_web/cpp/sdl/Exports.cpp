@@ -786,6 +786,24 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_boss_alive() {
     return th185::app::instance().enemies().boss_alive() ? 1u : 0u;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedule_count() {
+    return unsigned(th185::app::instance().ecl().schedules.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedule_slot_at(unsigned i) {
+    const auto& s = th185::app::instance().ecl().schedules;
+    return i < s.size() ? s[i].slot : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedule_time_at(unsigned i, unsigned k) {
+    const auto& s = th185::app::instance().ecl().schedules;
+    return (i < s.size() && k < 8) ? s[i].times[k] : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_schedules_expected() {
+    return th185::app::instance().stats().schedules_expected;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

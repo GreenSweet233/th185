@@ -127,6 +127,7 @@ struct FrameStats {
     u32 boss_kill_frames = 0;
     u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;
+    u32 schedules_expected = 0;
     u32 stage_clear = 0;
     u32 sounds_played = 0;
     u32 sounds_loaded = 0;
