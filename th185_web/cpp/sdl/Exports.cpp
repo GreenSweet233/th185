@@ -561,6 +561,46 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_sounds_throttled() {
     return th185::app::instance().stats().sounds_throttled;
 }
 
+// --- BGM ---
+//
+// thbgm.dat is passed through its own path because it is a separate file from
+// the archive. The bytes are copied into the module heap once.
+EMSCRIPTEN_KEEPALIVE int th185_attach_bgm(const unsigned char* data, unsigned size) {
+    std::vector<th185::u8> bytes(data, data + size);
+    return th185::app::instance().attach_bgm(std::move(bytes)) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_tracks() {
+    return th185::app::instance().stats().bgm_tracks;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_play(unsigned index) {
+    return th185::app::instance().play_bgm(index) ? 1u : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_track() {
+    return th185::app::instance().stats().bgm_track;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_playing() {
+    return th185::app::instance().stats().bgm_playing;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_start(unsigned i) {
+    const auto& t = th185::app::instance().bgm().tracks();
+    return i < t.size() ? t[i].start_offset : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_length(unsigned i) {
+    const auto& t = th185::app::instance().bgm().tracks();
+    return i < t.size() ? t[i].length_bytes : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_rate(unsigned i) {
+    const auto& t = th185::app::instance().bgm().tracks();
+    return i < t.size() ? t[i].sample_rate : 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

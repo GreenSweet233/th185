@@ -37,6 +37,7 @@
 #include "../game/AnmResource.hpp"
 #include "../game/AnmTexture.hpp"
 #include "../game/Archive.hpp"
+#include "../game/BgmPlayer.hpp"
 #include "../game/EclContext.hpp"
 #include "../game/EclInterpreter.hpp"
 #include "../game/EclResource.hpp"
@@ -107,6 +108,9 @@ struct FrameStats {
     u32 sounds_loaded = 0;
     u32 sounds_dropped = 0;
     u32 sounds_throttled = 0;
+    u32 bgm_tracks = 0;
+    u32 bgm_track = 0xFFFFFFFFu;
+    u32 bgm_playing = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -117,6 +121,11 @@ public:
     // Loads the archive from `bytes` and prepares a stage. Returns false and
     // fills error() on failure.
     bool initialize(std::vector<u8> archive_bytes);
+
+    // Attaches the BGM stream (thbgm.dat). The bytes are borrowed, not copied:
+    // the file is 255 MB and the player reads it in place.
+    bool attach_bgm(std::vector<u8> bgm_bytes);
+    bool play_bgm(u32 index);
 
     // Advances one logic tick. `held` is a bitmask of held buttons.
     // Returns false on a fatal error.
@@ -152,6 +161,7 @@ public:
     const ScoreSystem& scoring() const { return scoring_; }
     const ItemPool& items() const { return items_; }
     const SoundBank& sounds() const { return sounds_; }
+    const BgmPlayer& bgm() const { return bgm_; }
     const Archive& archive() const { return archive_; }
     const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
@@ -184,6 +194,7 @@ public:
 private:
     bool register_stage_scripts(u32 stage_index);
     void load_sound_effects();
+    void load_bgm_index();
     bool load_animation_bank(const char* name, u32 script_limit);
     // Loads the background bank named by the scene, then the enemy bank.
     void load_scene_banks();
@@ -212,6 +223,8 @@ private:
     EnemyPool enemies_;
     ItemPool items_;
     SoundBank sounds_;
+    BgmPlayer bgm_;
+    std::vector<u8> bgm_bytes_;
     // Scratch buffer for one frame of mixed stereo audio.
     std::vector<float> mix_buffer_;
     // Scratch buffer reused each frame; avoids a per-frame allocation.

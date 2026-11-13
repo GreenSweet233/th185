@@ -402,6 +402,15 @@ console.log('sound mix   : played=' + played + ' dropped=' + dropped
 check('game events start sounds', played > 0);
 check('throttling prevents voice starvation', dropped === 0);
 
+// BGM index.
+//
+// thbgm.fmt lives inside th185.dat and describes the tracks in thbgm.dat.
+// Parsing it does not need the 255 MB stream, so the index is checked here;
+// the stream itself is exercised by export-bgm.mjs.
+const bgmTracks = module._th185_bgm_tracks();
+console.log('bgm index   : tracks=' + bgmTracks);
+check('the BGM index parses', bgmTracks === 10);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

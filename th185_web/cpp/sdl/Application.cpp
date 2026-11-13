@@ -764,6 +764,44 @@ void Application::load_sound_effects() {
     }
     stats_.sounds_loaded = sounds_.stats().loaded;
 }
+bool Application::attach_bgm(std::vector<u8> bgm_bytes) {
+    if (bgm_bytes.size() < BGM_ZWAV_HEADER) return false;
+    if (!(bgm_bytes[0] == 'Z' && bgm_bytes[1] == 'W' && bgm_bytes[2] == 'A' &&
+          bgm_bytes[3] == 'V')) {
+        return false;
+    }
+
+    bgm_bytes_ = std::move(bgm_bytes);
+    bgm_.attach_stream(bgm_bytes_.data(), bgm_bytes_.size());
+
+    // The index lives in th185.dat, not in the BGM file.
+    load_bgm_index();
+    stats_.bgm_tracks = bgm_.stats().tracks;
+    return bgm_.stats().tracks > 0;
+}
+void Application::load_bgm_index() {
+    if (bgm_.stats().tracks > 0) return;   // already parsed
+
+    // thbgm.fmt is a small table inside th185.dat; parsing it does not need the
+    // 255 MB stream, so the index is available even before attach_bgm().
+    std::size_t entry = archive_.entries.size();
+    for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
+        if (archive_.entries[i].name == "thbgm.fmt") { entry = i; break; }
+    }
+    if (entry >= archive_.entries.size()) return;
+
+    std::string fmt_error;
+    std::vector<u8> fmt_blob = archive_.extract(archive_bytes_, entry, &fmt_error);
+    if (fmt_blob.empty()) return;
+    bgm_.parse_index(std::move(fmt_blob));
+}
+bool Application::play_bgm(u32 index) {
+    const bool ok = bgm_.play(index);
+    stats_.bgm_track = bgm_.current_track();
+    stats_.bgm_playing = bgm_.is_playing() ? 1u : 0u;
+    return ok;
+}
+
 void Application::set_difficulty(u32 difficulty) {
     // Out-of-range tiers fall back to 0 rather than propagating an invalid
     // value into the score-cap table, which only has 5 real entries.
@@ -791,6 +829,8 @@ bool Application::load_stage(u32 stage_index) {
     // per name: a stage reload does not duplicate samples.
     load_sound_effects();
     stats_.sounds_loaded = sounds_.stats().loaded;
+    load_bgm_index();
+    stats_.bgm_tracks = bgm_.stats().tracks;
     last_killed_ = 0;
     // Publish immediately: a caller that reads the cap right after load_stage
     // must not see the previous stage's value (stats_ is otherwise only synced
@@ -1065,6 +1105,9 @@ bool Application::tick(u32 held) {
         mix_buffer_.resize(std::size_t(FRAMES_PER_TICK) * 2);
         sounds_.mix(mix_buffer_.data(), FRAMES_PER_TICK);
         sounds_.advance_frame();
+        bgm_.mix(mix_buffer_.data(), FRAMES_PER_TICK);
+        stats_.bgm_track = bgm_.current_track();
+        stats_.bgm_playing = bgm_.is_playing() ? 1u : 0u;
     }
 
     // Advance the animation tree, then draw it.
