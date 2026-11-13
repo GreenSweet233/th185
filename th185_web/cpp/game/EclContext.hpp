@@ -202,6 +202,10 @@ struct EclContext {
         u32 pc = 0;             // resume point, a buffer index
         u32 wait_frames = 0;    // frames still to wait; 0 = not waiting
         bool started = false;
+        // Reached the end of its code. A finished coroutine must not be
+        // re-entered: only a wait updates pc, so without this flag the next
+        // frame re-ran the block it last suspended in.
+        bool finished = false;
         // Operand stack snapshot. A coroutine resumes MID-subroutine, so the
         // values pushed before the wait must survive: `main` pushes -9891 then
         // immediately branches on it, and resuming with an empty stack loses
@@ -234,6 +238,9 @@ struct EclContext {
     // The "stage signal" flag that op1017 raises and op1019 waits on. See the
     // op1017 case for how the two were identified from control flow.
     // Which boss this script is running as (op1024). See the case for evidence.
+    u32 spawn_commits = 0;
+    u32 scene_syncs = 0;
+    u32 scene_sync_count = 0;
     u32 wait_value = 0;
     u32 wait_values = 0;
     u32 boss_extra_a = 0;

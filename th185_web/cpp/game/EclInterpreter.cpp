@@ -137,8 +137,9 @@ const OpName kOpNames[] = {
     {501, "SetPositionPair"}, {503, "BossPhase"}, {505, "BranchAction"},
     {412, "PatternExtra"}, {401, "PatternAux"}, {504, "BossSpawnBox"},
     {629, "BossConfig"}, {632, "AttackSlot"}, {573, "SpawnCount"}, {316, "BossExtra"},
+    {524, "SceneSync"},
     {601, "BulletConsume"},
-    {527, "SpawnRect"}, {523, "BossWaitMark"}, {536, "AngleTable"},
+    {527, "SpawnRect"}, {523, "BossWaitMark"}, {536, "AngleTable"}, {540, "SpawnCommit"},
     {513, "ScriptMark"}, {514, "CallNamedExt"}, {521, "CallNamedEffect"},
     {507, "SpawnParams"}, {1026, "BossTimerValue"},
     {545, "AttackPrepare"}, {445, "TimedValue"},
@@ -264,7 +265,7 @@ const NetEffect kInferredNet[] = {
     //
     // Both are treated as net 0 and recorded. If either turns out to pop, the
     // harness stack-depth check will catch the drift.
-    {524, 0}, {1009, 0},
+    {1009, 0},
 };
 
 // Returns true and fills `net` when the opcode has an inferred effect.
@@ -845,11 +846,15 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             EclInterpreter nested;
             nested.context = context;
             nested.nesting_ = nesting_ + 1;
+            // Same protection as op300: the callee's context snapshot must not
+            // overwrite the caller's coroutine pc when it is copied back.
+            const auto saved_coroutines = context.coroutines;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
 
             // Preserve variable/frame state written by the callee.
             context = nested.context;
+            context.coroutines = saved_coroutines;
             context.call_depth = nesting_ + 1;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
@@ -1121,6 +1126,28 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             ++context.boss_attack_timers;
             break;
         }
+        case EclOp::Op524SceneSync: {
+            // Scene synchronisation point.
+            //
+            // Evidence: 121 occurrences across 88 files, size ALWAYS 20 so the
+            // payload is one u32 plus a reserved word; 87/121 are zero and
+            // 28/121 are [0x2B=43][1]. Context is prev=op23 (a wait) next=op300
+            // (a named call) or op42 in 63/121 -- so it sits between a wait and
+            // the next action.
+            //
+            // It YIELDS. Boss01ttest stops here with wait_frames == 0, which
+            // means the coroutine is not waiting but also not advancing: the
+            // instruction must be a synchronisation barrier, not a no-op. Yielding
+            // one frame lets the frame loop run and the coroutine resume.
+            context.scene_syncs = arg_u32(payload, 0);
+            ++context.scene_sync_count;
+            if (out_wait) {
+                if (out_pc) *out_pc = u32(pc) + u32(size);
+                *out_wait = 1;
+                return EclRunResult::Running;
+            }
+            break;
+        }
         case EclOp::Op316BossExtra: {
             // Boss extra parameter block.
             //
@@ -1170,6 +1197,14 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
+        case EclOp::Op540SpawnCommit: {
+            // Commits the spawn rectangle op527 configured.
+            //
+            // Evidence: 18 occurrences across 18 files, size ALWAYS 20 (payload
+            // all zero), context is prev=op527 (SpawnRect) next=op1023 in 17/18.
+            ++context.spawn_commits;
+            break;
+        }
         case EclOp::Op527SpawnRect: {
             // Spawn rectangle: two floats plus a sentinel.
             //
@@ -1542,9 +1577,16 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             stack_ = EclStack{};
             EclInterpreter nested;
             nested.context = context;
+            // Protect the CALLER's coroutine table. `context = nested.context`
+            // below copies the callee's view back, and that view was taken
+            // before the callee ran -- so the caller's own pc and wait_frames
+            // reverted to their pre-call values. Measured on Boss01test: its pc
+            // sat at 548 forever because every op300 call rewound it.
+            const auto saved_coroutines = context.coroutines;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
             context = nested.context;
+            context.coroutines = saved_coroutines;
             --context.call_depth;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
@@ -1681,6 +1723,8 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
                                            u32 code_base) {
     EclContext::CoroutineState& state = context.coroutines[key];
 
+    if (state.finished) return EclRunResult::Finished;
+
     if (state.wait_frames > 0) {
         --state.wait_frames;
         return EclRunResult::Running;
@@ -1703,6 +1747,18 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
     // forever now that every opcode is implemented.
     const EclRunResult result = run(code, 20000, code_base, state.pc, &state.pc,
                                     &state.wait_frames);
+
+    // A coroutine that reached its end must NOT be re-run from a stale pc.
+    //
+    // Only a wait updates state.pc; a script that runs to completion leaves the
+    // pc pointing at wherever it last suspended, so the next frame re-executed
+    // that block. Measured: Boss01test re-ran its op42/op43/op300 block every
+    // frame, which is why bossIndexSets reached 8046 and effectSlots 10746 for
+    // a script that should have run once.
+    if (result == EclRunResult::Finished) {
+        state.finished = true;
+        state.pc = u32(code.size());
+    }
 
     // Save the stack for the next resume.
     if (state.wait_frames > 0) {

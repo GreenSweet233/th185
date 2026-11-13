@@ -957,6 +957,9 @@ bool Application::tick(u32 held) {
         // op1019 consumes it, and both live in main's coroutine. Without these
         // three lines the flag never leaves the runner copy, so `sets` and
         // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.spawn_commits = runner.context.spawn_commits;
+        ecl_.scene_syncs = runner.context.scene_syncs;
+        ecl_.scene_sync_count = runner.context.scene_sync_count;
         ecl_.wait_value = runner.context.wait_value;
         ecl_.wait_values = runner.context.wait_values;
         ecl_.boss_extra_a = runner.context.boss_extra_a;

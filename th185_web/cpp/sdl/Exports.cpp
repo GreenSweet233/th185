@@ -742,6 +742,42 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_named_effect_calls() {
     return th185::app::instance().ecl().named_effect_calls;
 }
 
+// PC and wait of the i-th coroutine whose name starts with `prefix`.
+// Returns 0xFFFFFFFF when there is no i-th match.
+EMSCRIPTEN_KEEPALIVE unsigned th185_coro_count(const char* prefix) {
+    const auto& c = th185::app::instance().ecl().coroutines;
+    unsigned n = 0;
+    const std::string p(prefix);
+    for (const auto& kv : c) {
+        if (kv.first.compare(0, p.size(), p) == 0) ++n;
+    }
+    return n;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_coro_pc(const char* prefix, unsigned i) {
+    const auto& c = th185::app::instance().ecl().coroutines;
+    const std::string p(prefix);
+    unsigned n = 0;
+    for (const auto& kv : c) {
+        if (kv.first.compare(0, p.size(), p) != 0) continue;
+        if (n == i) return kv.second.pc;
+        ++n;
+    }
+    return 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_coro_wait(const char* prefix, unsigned i) {
+    const auto& c = th185::app::instance().ecl().coroutines;
+    const std::string p(prefix);
+    unsigned n = 0;
+    for (const auto& kv : c) {
+        if (kv.first.compare(0, p.size(), p) != 0) continue;
+        if (n == i) return kv.second.wait_frames;
+        ++n;
+    }
+    return 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
