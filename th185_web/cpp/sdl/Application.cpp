@@ -669,6 +669,16 @@ void Application::render() {
     stats_.live_animations = animations_.live_count();
 }
 
+void Application::set_difficulty(u32 difficulty) {
+    // Out-of-range tiers fall back to 0 rather than propagating an invalid
+    // value into the score-cap table, which only has 5 real entries.
+    difficulty_ = is_valid_difficulty(difficulty) ? difficulty : 0u;
+    ecl_.set_difficulty(difficulty_);
+    scoring_.configure(difficulty_, stage_index_);
+    stats_.score_cap = scoring_.cap();
+    stats_.difficulty = difficulty_;
+}
+
 bool Application::load_stage(u32 stage_index) {
     if (!session_.load_stage(stage_index, &error_)) return false;
     stage_index_ = stage_index;
@@ -677,7 +687,8 @@ bool Application::load_stage(u32 stage_index) {
     // Score cap depends on difficulty and stage (Difficulty::score_cap_for_stage
     // mirrors the original's `imul eax, [0x4D1004]`). Difficulty is fixed at 0
     // (Normal) until the shell can select one.
-    scoring_.configure(0, stage_index);
+    ecl_.set_difficulty(difficulty_);
+    scoring_.configure(difficulty_, stage_index);
     scoring_.reset();
     last_killed_ = 0;
     // Publish immediately: a caller that reads the cap right after load_stage

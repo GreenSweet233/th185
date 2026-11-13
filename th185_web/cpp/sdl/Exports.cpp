@@ -468,6 +468,22 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_score_kills() {
     return th185::app::instance().scoring().stats().kills;
 }
 
+// --- difficulty ---
+EMSCRIPTEN_KEEPALIVE void th185_set_difficulty(unsigned difficulty) {
+    th185::app::instance().set_difficulty(difficulty);
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_difficulty() {
+    return th185::app::instance().difficulty();
+}
+
+// Reads a builtin slot back, so a test can confirm the ECL scripts will see
+// the difficulty the shell selected.
+EMSCRIPTEN_KEEPALIVE unsigned th185_builtin_slot(unsigned slot) {
+    const auto& b = th185::app::instance().ecl().builtins;
+    return slot < b.size() ? b[slot] : 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

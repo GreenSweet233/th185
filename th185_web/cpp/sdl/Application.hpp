@@ -92,6 +92,7 @@ struct FrameStats {
     u32 score_cap = 0;
     u32 grazes = 0;
     u32 score_capped = 0;
+    u32 difficulty = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -116,6 +117,11 @@ public:
 
     // Loads `stage_index` (0..8) and starts its ECL subroutines.
     bool load_stage(u32 stage_index);
+
+    // Selects the run's difficulty (0..7). Affects the score cap and the
+    // builtin slots the ECL scripts branch on.
+    void set_difficulty(u32 difficulty);
+    u32 difficulty() const { return difficulty_; }
 
     const std::string& error() const { return error_; }
     Phase phase() const { return phase_; }
@@ -205,6 +211,7 @@ private:
     std::string error_;
     u32 runnable_ = 0;
     u32 stage_index_ = 0;
+    u32 difficulty_ = 0;
     // Parsed .std for the current stage. The group table holds the real
     // formation coordinates; op1013 slots index into it.
     StageScript stage_;

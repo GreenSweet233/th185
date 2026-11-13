@@ -272,6 +272,30 @@ check('killing enemies scores', score > 0);
 check('kills are counted', kills > 0);
 check('the score stays under the cap', capped === 0 || score <= cap1);
 
+// Difficulty.
+//
+// The 8 tiers are named in the executable; the score-cap table has 5 real
+// entries and tiers 5..7 read past it (undefined in the original). The
+// builtin slots 41 and 47..50 are the ones the ECL scripts branch on.
+const diffCaps = [];
+for (let d = 0; d < 8; ++d) {
+  module._th185_set_difficulty(d);
+  module._th185_load_stage(0);
+  diffCaps.push(module._th185_score_cap());
+}
+module._th185_set_difficulty(2);
+module._th185_load_stage(0);
+const slot41 = module._th185_builtin_slot(41);
+const isDiff = [0, 1, 2, 3].map((i) => module._th185_builtin_slot(47 + i));
+console.log('difficulty  : caps=' + JSON.stringify(diffCaps));
+console.log('              slot41=' + slot41 + ' is0..3=' + JSON.stringify(isDiff));
+
+check('every difficulty has a non-zero score cap', diffCaps.every((c) => c > 0));
+check('difficulty 0 caps lower than difficulty 3', diffCaps[0] < diffCaps[3]);
+check('the difficulty slot reflects the selection', slot41 === 2);
+check('only the matching is_difficulty_N slot is set',
+      isDiff.join(',') === '0,0,1,0');
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

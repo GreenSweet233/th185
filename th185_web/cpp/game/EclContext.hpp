@@ -48,6 +48,15 @@ constexpr i32 ECL_BUILTIN_BASE = 10000;
 // Number of builtin slots reachable through the dispatcher (0..110).
 constexpr u32 ECL_BUILTIN_COUNT = 111;
 
+// Builtin slot indices, identified in docs/ECL.md. Only these are named; any
+// other negative reference reads as 0 rather than a guess.
+constexpr u32 BUILTIN_SLOT_DIFFICULTY = 41;
+constexpr u32 BUILTIN_SLOT_IS_DIFFICULTY_0 = 47;
+constexpr u32 BUILTIN_SLOT_IS_DIFFICULTY_1 = 48;
+constexpr u32 BUILTIN_SLOT_IS_DIFFICULTY_2 = 49;
+constexpr u32 BUILTIN_SLOT_IS_DIFFICULTY_3 = 50;
+constexpr u32 BUILTIN_SLOT_STAGE_MINUS_2 = 110;
+
 // Frame-local storage: 64 slots of 4 bytes = 256 bytes of addressable offset.
 constexpr u32 ECL_FRAME_BYTES = 256;
 
@@ -107,6 +116,12 @@ struct EclContext {
 
     // Register a subroutine so Call can find it.
     void add_subroutine(std::string name, std::vector<u8> code);
+
+    // Publishes the run's difficulty into the builtin slots the ECL scripts
+    // read. `difficulty` is 0..7; the is_difficulty_N slots are set to 1 for
+    // the matching tier and 0 for the rest, which is what the original's
+    // virtual predicates return.
+    void set_difficulty(u32 difficulty);
 
     // --- op 1013: spawn schedule ---------------------------------------
     //

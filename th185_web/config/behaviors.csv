@@ -291,3 +291,6 @@ BHV-SCORE-003,SYS-GAME-SCORE,"★ 关键修正：VA 0x4D1004 在文件里是 0�
 BHV-SCORE-004,SYS-GAME-SCORE,"★ 擦弹半径 24.0（判定点 2.0 的 12 倍；半径数值 inferred，去重行为 observed），同一发子弹只计一次（Bullet.grazed 标记），延迟中的子弹不计",original,observed,verified,"th185_web/scripts/probe-input.mjs","grazes 17-75"
 BHV-SCORE-005,SYS-GAME-SCORE,"★ 击杀计分用「累计 killed 差值」而非每帧计数，保证一帧内多个敌人同时死亡时每个都计分（last_killed_ 追踪）",original,observed,verified,"th185_web/scripts/probe-input.mjs","kills 1-112"
 BHV-SCORE-006,SYS-GAME-SCORE,"★ 上限钳制而非回绕：超出上限时 score=cap 并计 capped，避免 9 位数回绕成小值",original,observed,verified,"th185_web/scripts/probe-input.mjs","capped=0"
+BHV-DIFF-020,SYS-GAME-DIFFICULTY,"★★★ 8 档难度接入运行时：builtin 槽 41 = 难度索引、47..50 = is_difficulty_0..3（仅匹配档为 1），ECL 脚本通过这两个槽分支",original,observed,verified,"th185_web/scripts/probe-input.mjs","slot41=2 is0..3=0,0,1,0"
+BHV-DIFF-021,SYS-GAME-DIFFICULTY,"★★ 分数上限按难度实测：500000/1000000/1500000/2000000/1000000；tiers 5..7 原版读取越界（表仅 5 项），钳制到表末项 1000000",original,observed,verified,"th185_web/scripts/probe-input.mjs","caps 500000..2000000"
+BHV-DIFF-022,SYS-GAME-DIFFICULTY,"★ 关键修正：ScoreSystem 原在 out_of_range 时把 cap 设为 0xFFFFFFFF（无上限哨兵），导致所有分数立即被钳制；改为只在 cap==0 时用哨兵",original,observed,verified,"th185_web/scripts/probe-input.mjs","-1 → 1000000"

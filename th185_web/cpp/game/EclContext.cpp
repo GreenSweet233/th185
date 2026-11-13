@@ -26,6 +26,14 @@ void EclContext::add_subroutine(std::string name, std::vector<u8> code) {
     subroutines[entry.name] = std::move(entry);
 }
 
+void EclContext::set_difficulty(u32 difficulty) {
+    builtins[BUILTIN_SLOT_DIFFICULTY] = difficulty;
+    builtins[BUILTIN_SLOT_IS_DIFFICULTY_0] = (difficulty == 0) ? 1u : 0u;
+    builtins[BUILTIN_SLOT_IS_DIFFICULTY_1] = (difficulty == 1) ? 1u : 0u;
+    builtins[BUILTIN_SLOT_IS_DIFFICULTY_2] = (difficulty == 2) ? 1u : 0u;
+    builtins[BUILTIN_SLOT_IS_DIFFICULTY_3] = (difficulty == 3) ? 1u : 0u;
+}
+
 u32 EclContext::push_frame() {
     frames.emplace_back();
     frames.back().fill(0);

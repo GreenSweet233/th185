@@ -8,9 +8,13 @@ void ScoreSystem::configure(u32 difficulty, u32 stage) {
     // score_cap_for_stage already applies the per-stage multiplier the
     // original uses (imul eax, [0x4D1004]). A difficulty outside 0..7 leaves
     // the cap at its initial value rather than guessing.
+    // score_cap_for already clamps tiers 5..7 to the last table entry (the
+    // original reads past the 5-slot table there, so its value is undefined).
+    // Using 0xFFFFFFFF as a "no cap" sentinel made every score clamp
+    // instantly, which is worse than the clamped value.
     bool out_of_range = false;
     cap_ = score_cap_for_stage(difficulty, stage, &out_of_range);
-    if (out_of_range || cap_ == 0) cap_ = 0xFFFFFFFFu;
+    if (cap_ == 0) cap_ = 0xFFFFFFFFu;
 }
 
 void ScoreSystem::add(u32 points) {
