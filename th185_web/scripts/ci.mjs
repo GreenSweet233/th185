@@ -71,6 +71,11 @@ checks.push(
   { name: "cpp-runtime", args: [resolve(here, "native", "cpp_runtime_check.py"), "--selftest"], python: true },
   { name: "cpp-archive", args: [resolve(here, "native", "cpp_archive_runtime.py"), "--selftest"], python: true },
   { name: "cpp-session", args: [resolve(here, "native", "cpp_session_runtime.py"), "--selftest"], python: true },
+  // The interpreter runs against a COPY of EclContext and merges back only the
+  // fields Application names. A field written by the interpreter but missing
+  // from that list is silently discarded, and the symptom is "the counter is 0"
+  // rather than a crash. That trap was hit twice, so it is now a check.
+  { name: "ecl-merge", args: [resolve(here, "native", "ecl_merge_check.py")], python: true },
   // The application module is what the web shell loads, so its render is the
   // end-to-end check that everything below it is wired correctly.
   { name: "app-frame", args: [resolve(here, "native", "app_frame_check.py")], python: true, timeoutMs: 900000 },

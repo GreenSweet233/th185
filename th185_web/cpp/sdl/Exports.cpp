@@ -659,6 +659,33 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_clear_frames() {
     return th185::app::instance().stats().clear_frames;
 }
 
+// ECL interpreter counters, exported so a test can prove they actually move.
+// Before ecl_merge_check.py these were written by the interpreter and then
+// thrown away by the context merge, so every one of them read as 0.
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_query_count() {
+    return th185::app::instance().ecl().query_count;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_set_count() {
+    return th185::app::instance().ecl().set_count;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_position_sets() {
+    return th185::app::instance().ecl().position_sets;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_comments() {
+    return unsigned(th185::app::instance().ecl().comments.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_timer_writes() {
+    return th185::app::instance().ecl().timer_writes;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_call_depth() {
+    return th185::app::instance().ecl().call_depth;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

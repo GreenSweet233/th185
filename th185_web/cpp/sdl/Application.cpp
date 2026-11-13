@@ -108,6 +108,17 @@ bool Application::register_stage_scripts(u32 stage_index) {
     std::vector<std::string> wanted;
     wanted.push_back(kSceneScripts[stage_index]);
     wanted.push_back("default.ecl");
+    // Boss scripts. They are separate files (bossNN.ecl) that worldNN.ecl never
+    // calls by name -- the engine picks one from the stage's card. Loading all
+    // 27 makes their subroutines reachable; which one runs is a separate
+    // question this build does not answer yet.
+    {
+        char boss[32];
+        for (u32 i = 1; i <= 27; ++i) {
+            std::snprintf(boss, sizeof(boss), "boss%02u.ecl", i);
+            wanted.push_back(boss);
+        }
+    }
     {
         char name[32];
         for (u32 i = 1; i <= 74; ++i) {
@@ -913,6 +924,25 @@ bool Application::tick(u32 held) {
         ecl_.stage_signal_sets = runner.context.stage_signal_sets;
         ecl_.stage_signal_waits = runner.context.stage_signal_waits;
         ecl_.last_timer_value = runner.context.last_timer_value;
+
+        // Everything else the interpreter writes. These were missing until
+        // ecl_merge_check.py compared the struct against this list: the
+        // counters looked like they never moved, which is the same symptom as
+        // wave_blocks and stage_signal before them.
+        ecl_.timer_writes = runner.context.timer_writes;
+        ecl_.difficulty_mask = runner.context.difficulty_mask;
+        ecl_.call_depth = runner.context.call_depth;
+        ecl_.pending_bullet = runner.context.pending_bullet;
+        ecl_.query_count = runner.context.query_count;
+        ecl_.last_query_reference = runner.context.last_query_reference;
+        ecl_.last_query_field = runner.context.last_query_field;
+        ecl_.set_count = runner.context.set_count;
+        ecl_.last_set_a = runner.context.last_set_a;
+        ecl_.last_set_b = runner.context.last_set_b;
+        ecl_.last_position_x = runner.context.last_position_x;
+        ecl_.last_position_y = runner.context.last_position_y;
+        ecl_.position_sets = runner.context.position_sets;
+        ecl_.comments = std::move(runner.context.comments);
         ecl_.timer_writes = runner.context.timer_writes;
 
 

@@ -445,6 +445,18 @@ check('the mixer produces 367 frames per tick at 22050 Hz',
 check('the audio buffer is not silent', audioNonZero > 0);
 check('the audio stays inside -1..1', audioPeak <= 1.0);
 
+// Boss scripts.
+//
+// bossNN.ecl are separate files that worldNN.ecl never names. They hold 264
+// subroutines (Boss01, Boss01Boss1, Boss01BossCard1, ...). Loading them makes
+// the subroutines reachable; they are not yet DRIVEN, because only main runs
+// as a top-level coroutine.
+module._th185_load_stage(0);
+const subs = module._th185_sub_count();
+console.log('boss scripts: subroutines=' + subs);
+check('boss scripts are registered (scene + default + waves + bosses)',
+      subs > 700);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');
