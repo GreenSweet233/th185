@@ -75,6 +75,30 @@ namespace {
 // Boss01 itself is the BODY that the controller calls: it opens with op40 /
 // op502 / op30 / op1006 / op1024 / op307 then op300 Call Boss01Boss. Running
 // both as top-level coroutines would run the body twice.
+namespace {
+
+// Which boss script belongs to the loaded stage.
+//
+// boss01.ecl pairs with world01, boss02 with world02, and so on; world01t
+// (the tutorial) pairs with boss01t. Every other boss file must stay idle:
+// each BossNNtest carries nine op1013 wave schedules of its own, so running
+// them all keeps the field populated forever.
+bool boss_script_matches(const std::string& name, u32 stage_index) {
+    // BossNNtest  -> "BossNN" + "test"
+    // BossNNttest -> "BossNNt" + "test"
+    const std::string stem = name.substr(0, name.size() - 4);
+
+    char wanted[16];
+    if (stage_index == 0) {
+        // world01t is the tutorial scene; its boss is boss01t.
+        std::snprintf(wanted, sizeof(wanted), "Boss01t");
+    } else {
+        std::snprintf(wanted, sizeof(wanted), "Boss%02u", unsigned(stage_index));
+    }
+    return stem == wanted;
+}
+
+}  // namespace
 bool is_boss_entry(const std::string& name) {
     // BossNNtest (10 chars) or BossNNttest (11 chars).
     if (name.size() != 10 && name.size() != 11) return false;
@@ -146,6 +170,10 @@ bool Application::register_stage_scripts(u32 stage_index) {
             std::snprintf(boss, sizeof(boss), "boss%02u.ecl", i);
             wanted.push_back(boss);
         }
+        // boss01t.ecl is the tutorial boss (pairs with world01t). It is NOT
+        // covered by the loop above, which is why Boss01ttest never appeared
+        // in the subroutine list and the tutorial stage had no boss.
+        wanted.push_back("boss01t.ecl");
     }
     {
         char name[32];
@@ -225,7 +253,22 @@ bool Application::register_stage_scripts(u32 stage_index) {
         // its own calls it, and it starts with op40 / op502 / op30 / op1006 /
         // op1024 / op307 then op300 Call BossNNBoss -- the same prologue main
         // uses.
-        if (sub.name == "main" || is_boss_entry(sub.name)) {
+        // main always runs. A boss controller runs ONLY when its file matches
+        // the boss this stage selected.
+        //
+        // Running all 27 was wrong: every BossNNtest carries its own nine
+        // op1013 wave schedules, so 28 controllers kept scheduling waves
+        // forever and the field never emptied (measured: schedules_fired grew
+        // 29 -> 37 -> 40 -> 46 -> 57 with no sign of stopping).
+        //
+        // The selection comes from CardManager's forced-boss rule, which is
+        // already implemented: stage 5 with card 0 forces Boss26, stage 7 with
+        // card 66 forces Boss27, otherwise the weighted draw picks one.
+        if (sub.name == "main") {
+            active_scripts_.push_back(sub.name);
+            ++runnable_;
+        } else if (is_boss_entry(sub.name) &&
+                   boss_script_matches(sub.name, stage_index)) {
             active_scripts_.push_back(sub.name);
             ++runnable_;
         }

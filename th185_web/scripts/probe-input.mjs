@@ -477,7 +477,10 @@ tick(0, 300);
 const bossSets = module._th185_boss_index_sets();
 const active = module._th185_active_script_count();
 console.log('boss        : active=' + active + ' indexSets=' + bossSets);
-check('every boss scene controller runs (main + 27 BossNNtest)', active === 28);
+// ONLY the stage's own boss runs. Every BossNNtest carries nine op1013 wave
+// schedules, so running all 27 kept the field populated forever
+// (schedules_fired grew 29 -> 37 -> 40 -> 46 -> 57 with no sign of stopping).
+check('main plus exactly one boss controller runs', active === 2);
 // BossNNtest is the controller: it schedules waves first and only then calls
 // the boss body with op300, so op1024 (inside the body) fires later than the
 // controller starts. Assert that the mechanism works, not a fixed count.
