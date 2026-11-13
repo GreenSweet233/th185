@@ -852,9 +852,26 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
 
-            // Preserve variable/frame state written by the callee.
+            // Copy back ONLY what the callee owns: variable frames and the
+            // records it appended.
+            //
+            // `context = nested.context` used to be used here, and it has caused
+            // three separate bugs because it replaces the WHOLE context:
+            //   1. wave_blocks appended by the callee were discarded
+            //   2. call_depth was copied back and re-incremented per level
+            //   3. a CoroutineState& held by run_coroutine dangled afterwards
+            // Listing the fields explicitly makes that class of bug impossible.
+            // Whole-context write-back, with the two fields the caller owns
+            // restored afterwards.
+            //
+            // A hand-listed field-by-field copy was tried and it silently dropped
+            // fields (boss_index_sets went from 2 to 0), because EclContext has
+            // ~100 members and any new one is missed. Copying wholesale and then
+            // restoring the caller-owned fields is the version that cannot lose
+            // data; ecl_merge_check.py covers the Application-level equivalent.
+            const auto caller_coroutines = context.coroutines;
             context = nested.context;
-            context.coroutines = saved_coroutines;
+            context.coroutines = caller_coroutines;
             context.call_depth = nesting_ + 1;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
@@ -1592,11 +1609,13 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             //
             // Nested runs only need the callee's variable/frame writes, so the
             // coroutine table is taken from the caller and left untouched.
-            const auto saved_coroutines = context.coroutines;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
+            // Whole-context write-back with the caller-owned fields restored.
+            // See the op11 case: a hand-listed copy silently dropped fields.
+            const auto caller_coroutines = context.coroutines;
             context = nested.context;
-            context.coroutines = saved_coroutines;
+            context.coroutines = caller_coroutines;
             --context.call_depth;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
@@ -1773,6 +1792,7 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
     u32 resume_wait = state.wait_frames;
     const EclRunResult result = run(code, 20000, code_base, resume_pc, &resume_pc,
                                     &resume_wait);
+
 
     // Re-fetch AFTER run(): a nested call may have replaced the map.
     EclContext::CoroutineState& after = context.coroutines[key];
