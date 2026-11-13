@@ -100,6 +100,8 @@ struct FrameStats {
     u32 items_collected = 0;
     u32 life_fragments = 0;
     u32 lives_gained = 0;
+    u32 game_over = 0;
+    u32 deaths = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -202,10 +204,15 @@ private:
     BulletPool bullets_;
     EnemyPool enemies_;
     ItemPool items_;
+    // Scratch buffer reused each frame; avoids a per-frame allocation.
+    std::vector<ItemPool::Pickup> item_pickups_;
     ScoreSystem scoring_;
     // Enemy killed-count seen on the previous frame, so a multi-kill frame
     // scores every enemy instead of only the last one.
     u32 last_killed_ = 0;
+    // Life count seen last frame, so a death can be detected without a
+    // "dying" flag inside Player.
+    u32 last_lives_ = PLAYER_STARTING_LIVES;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     // per-index bitmap because the interpreter re-records the same schedules
     // every tick (main is re-run from the start each frame).

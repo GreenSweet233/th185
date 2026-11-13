@@ -30,7 +30,7 @@ bool ItemPool::spawn(float x, float y, ItemKind kind) {
     return true;
 }
 
-u32 ItemPool::update(float player_x, float player_y) {
+u32 ItemPool::update(float player_x, float player_y, std::vector<Pickup>* out) {
     u32 collected = 0;
     const float r2 = ITEM_PICKUP_RADIUS * ITEM_PICKUP_RADIUS;
 
@@ -57,6 +57,17 @@ u32 ItemPool::update(float player_x, float player_y) {
                 if (stats_.life_fragments % LIFE_FRAGMENTS_PER_LIFE == 0) {
                     ++stats_.lives_gained;
                 }
+            }
+            if (out) {
+                Pickup pickup;
+                pickup.kind = item.kind;
+                switch (item.kind) {
+                    case ItemKind::LifeFragment: pickup.points = 0; break;
+                    case ItemKind::PowerStar:    pickup.points = ITEM_POINTS_POWER; break;
+                    case ItemKind::PointStar:
+                    default:                     pickup.points = ITEM_POINTS_STAR; break;
+                }
+                out->push_back(pickup);
             }
             ++collected;
             continue;

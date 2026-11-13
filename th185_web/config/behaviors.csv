@@ -301,3 +301,6 @@ BHV-ITEM-001,SYS-GAME-ITEM,"★★★★★ 道具素材定位：归档里没有
 BHV-ITEM-002,SYS-GAME-ITEM,"★★★ 敌人死亡掉落道具（掉落行为 observed；每 4 杀一碎片的比例与下落速度 1.2、拾取半径 20 为 inferred）：道具下落、出界回收、可被拾取",original,observed,verified,"th185_web/scripts/probe-input.mjs","kills=77 collected=73"
 BHV-ITEM-003,SYS-GAME-ITEM,"★★ 生命碎片按 4 个换 1 命计数（LIFE_FRAGMENTS_PER_LIFE=4，比例为 inferred，计数行为 observed）；实测 18 个碎片 = 4 命",original,observed,verified,"th185_web/scripts/probe-input.mjs","frags=18"
 BHV-ITEM-004,SYS-GAME-ITEM,"★ 道具池 256 容量固定池 + 空闲槽栈；clear() 重置统计",original,observed,verified,"th185_web/scripts/probe-input.mjs","items 16→2"
+BHV-LIFE-001,SYS-GAME-PLAYER,"★★★★ 死亡与重生：take_hit 扣命后玩家重生回 (0,180) 并获无敌帧；命尽时 game_over=1 结束本局；用「生命数变化」检测死亡而不引入 dying 状态",original,observed,verified,"th185_web/scripts/probe-input.mjs","deaths=3 lives=0 over=1"
+BHV-LIFE-002,SYS-GAME-PLAYER,"★★ 道具拾取效果（计分行为 observed；+500/+1000 与 4 换 1 的数值为 inferred）：分数星与能力星直接计入分数，生命碎片攒够换命（add_life，上限 8 条）",original,observed,verified,"th185_web/scripts/probe-input.mjs","score 0→49650"
+BHV-LIFE-003,SYS-GAME-PLAYER,"★ ItemPool::update 改为输出 Pickup 列表而非计数——池知道捡到了什么，会话决定它意味着什么（职责分离）",original,observed,verified,"th185_web/scripts/probe-input.mjs","collected=96"

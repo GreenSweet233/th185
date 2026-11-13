@@ -516,6 +516,19 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_item_y_at(unsigned i) {
                ? unsigned(int(p.items()[i].y + 4096.0f)) : 0xFFFFFFFFu;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_lives_gained() {
+    return th185::app::instance().player().lives_gained();
+}
+
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_game_over() {
+    return th185::app::instance().stats().game_over;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_deaths() {
+    return th185::app::instance().stats().deaths;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

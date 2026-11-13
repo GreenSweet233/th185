@@ -40,6 +40,22 @@ void Player::select_script(u32 script_index) {
     script_ = script_index;
 }
 
+void Player::respawn() {
+    x_ = 0.0f;
+    y_ = PLAY_START_Y;
+    invulnerable_ = PLAYER_INVULNERABLE_FRAMES;
+    shot_cooldown_ = 0;
+}
+
+void Player::add_life() {
+    // The series caps lives at 8 for display reasons; going past that would
+    // overflow the HUD rather than help the player.
+    constexpr u32 MAX_LIVES = 8;
+    if (lives_ >= MAX_LIVES) return;
+    ++lives_;
+    ++lives_gained_;
+}
+
 bool Player::take_bomb() {
     if (bombs_left_ == 0) return false;
     --bombs_left_;

@@ -341,6 +341,34 @@ check('killing enemies drops items', itemsSpawned > 0);
 check('items fall and are collected', itemsCollected > 0);
 check('life fragments are counted', frags > 0);
 
+// Death and respawn.
+//
+// take_hit() decrements the life; a respawn is a position reset plus the
+// invulnerability window. Losing the last life ends the run.
+module._th185_load_stage(1);
+module._th185_reset_scenario();
+tick(0, 1200);
+const deaths = module._th185_deaths();
+const over = module._th185_game_over();
+const finalLives = module._th185_player_lives();
+console.log('death       : deaths=' + deaths + ' lives=' + finalLives
+            + ' gameOver=' + over);
+
+check('the player can die', deaths > 0);
+check('losing every life ends the run', over === 1 && finalLives === 0);
+
+// Pickup effects: stars score, fragments count toward a life.
+module._th185_load_stage(1);
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(16);
+const scoreBeforePickups = module._th185_score();
+tick(SHOOT, 400);
+const scoreAfterPickups = module._th185_score();
+console.log('pickups     : score ' + scoreBeforePickups + ' -> ' + scoreAfterPickups
+            + ', collected=' + module._th185_items_collected());
+
+check('collecting stars adds score', scoreAfterPickups > scoreBeforePickups);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

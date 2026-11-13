@@ -76,9 +76,16 @@ public:
     // Drops one item at (x, y). `kind` selects the effect and the sprite.
     bool spawn(float x, float y, ItemKind kind);
 
+    // One collection that happened this frame. The caller applies the effect:
+    // the pool knows what was picked up, the session knows what it means.
+    struct Pickup {
+        ItemKind kind = ItemKind::PointStar;
+        u32 points = 0;
+    };
+
     // Falls, ages out, and collects against the player. `player_x/y` are the
-    // player's centre. Returns how many items were collected this frame.
-    u32 update(float player_x, float player_y);
+    // player's centre. Appends one entry per collected item to `out`.
+    u32 update(float player_x, float player_y, std::vector<Pickup>* out);
 
     void clear();
 

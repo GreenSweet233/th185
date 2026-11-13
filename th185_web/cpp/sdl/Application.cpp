@@ -498,6 +498,9 @@ void Application::reset_scenario() {
     scoring_.reset();
     items_.clear();
     last_killed_ = 0;
+    last_lives_ = player_.lives();
+    stats_.game_over = 0;
+    stats_.deaths = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
     stats_.score = 0;
@@ -506,6 +509,7 @@ void Application::reset_scenario() {
     ecl_.coroutines.clear();
     fired_schedule_keys_.clear();
     stats_.schedules_fired = 0;
+
     stats_.player_lives = player_.lives();
 }
 
@@ -931,13 +935,29 @@ bool Application::tick(u32 held) {
         last_killed_ = killed_now;
     }
 
-    // Items fall and are collected.
-    const u32 picked = items_.update(player_.x(), player_.y());
-    for (u32 i = 0; i < picked; ++i) scoring_.add_bullet_cancel(0);
+    // Items fall and are collected. Each pickup applies its own effect: a
+    // star scores, a life fragment counts toward the next life.
+    item_pickups_.clear();
+    items_.update(player_.x(), player_.y(), &item_pickups_);
+    u32 frags_before = items_.stats().life_fragments;
+    for (const ItemPool::Pickup& pickup : item_pickups_) {
+        if (pickup.kind == ItemKind::LifeFragment) {
+            // Every LIFE_FRAGMENTS_PER_LIFE-th fragment grants a life. The
+            // counter lives in ItemPool, so compare the crossing point.
+            const u32 after = items_.stats().life_fragments;
+            const u32 before = frags_before;
+            frags_before = after;
+            const bool crossed = (before / LIFE_FRAGMENTS_PER_LIFE) !=
+                                (after / LIFE_FRAGMENTS_PER_LIFE);
+            if (crossed) player_.add_life();
+        } else if (pickup.points > 0) {
+            scoring_.add(pickup.points);
+        }
+    }
     stats_.items_alive = items_.stats().alive;
     stats_.items_collected = items_.stats().collected;
     stats_.life_fragments = items_.stats().life_fragments;
-    stats_.lives_gained = items_.stats().lives_gained;
+    stats_.lives_gained = player_.lives_gained();
 
     // Graze: a hostile bullet inside the graze ring but outside the hitbox
     // counts once, then is marked so it cannot be counted again.
@@ -956,6 +976,22 @@ bool Application::tick(u32 held) {
         }
     }
 
+    // Death and respawn.
+    //
+    // take_hit() already decrements the life and starts the invulnerability
+    // window, so a respawn is just a position reset. Detecting it by comparing
+    // the life count keeps Player free of a "dying" state that the original
+    // does not model either.
+    const u32 lives_now = player_.lives();
+    if (lives_now < last_lives_) {
+        ++stats_.deaths;
+        if (lives_now == 0) {
+            stats_.game_over = 1;
+        } else {
+            player_.respawn();
+        }
+    }
+    last_lives_ = lives_now;
     stats_.player_lives = player_.lives();
     stats_.enemy_shots = enemies_.stats().enemy_shots;
     stats_.score = scoring_.score();

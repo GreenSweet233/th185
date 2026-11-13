@@ -47,6 +47,8 @@ constexpr float PLAY_LEFT = -192.0f;
 constexpr float PLAY_RIGHT = 192.0f;
 constexpr float PLAY_TOP = -224.0f;
 constexpr float PLAY_BOTTOM = 224.0f;
+// Where the player starts and respawns: near the bottom, centred.
+constexpr float PLAY_START_Y = 180.0f;
 
 // Deathbomb window and invulnerability, in frames. After a hit the player is
 // briefly invulnerable so a dense pattern cannot drain every life in one frame.
@@ -95,11 +97,19 @@ public:
     // actually lost.
     bool take_hit();
 
+    // Puts the player back at the start position with the invulnerability
+    // window active, keeping the life count. Called after a death.
+    void respawn();
+
     // Consumes one bomb. Returns false when none are left.
     bool take_bomb();
     u32 bombs_remaining() const { return bombs_left_; }
 
     u32 lives() const { return lives_; }
+
+    // Grants one life. Capped so a fragment chain cannot overflow the HUD.
+    void add_life();
+    u32 lives_gained() const { return lives_gained_; }
     u32 invulnerable_frames() const { return invulnerable_; }
     bool dead() const { return lives_ == 0; }
     float hitbox_radius() const { return PLAYER_HITBOX_RADIUS; }
@@ -124,6 +134,7 @@ private:
     u32 previous_held_ = 0;
     u32 shot_cooldown_ = 0;
     u32 lives_ = PLAYER_STARTING_LIVES;
+    u32 lives_gained_ = 0;
     u32 invulnerable_ = 0;
     u32 bombs_left_ = 3;
     PlayerStats stats_{};
