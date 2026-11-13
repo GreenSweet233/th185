@@ -4,6 +4,13 @@
 // frame happens between waves, so a clear needs a sustained gap.
 namespace th185 {
 constexpr unsigned CLEAR_CONFIRM_FRAMES = 30;
+
+// Builtin slot that holds the stage-clear flag. op42 -9896 reads it, and
+// op1017/op1019 in main and BossNNtest branch on it.
+constexpr unsigned STAGE_CLEAR_SLOT = 104;
+
+// Frames the field must stay empty (with a boss live) before a kill counts.
+constexpr unsigned BOSS_DOWN_CONFIRM_FRAMES = 30;
 }  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
@@ -113,6 +120,8 @@ struct FrameStats {
     // Consecutive frames with no live enemy. A single empty frame happens
     // between waves, so a clear needs several.
     u32 clear_frames = 0;
+    u32 boss_kill_frames = 0;
+    u32 frames_since_schedule = 0;
     u32 stage_clear = 0;
     u32 sounds_played = 0;
     u32 sounds_loaded = 0;
@@ -252,6 +261,8 @@ private:
     // Life count seen last frame, so a death can be detected without a
     // "dying" flag inside Player.
     u32 last_lives_ = PLAYER_STARTING_LIVES;
+    // Schedule count seen last frame, to detect when waves stop arriving.
+    u32 last_schedules_fired_ = 0;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     // per-index bitmap because the interpreter re-records the same schedules
     // every tick (main is re-run from the start each frame).

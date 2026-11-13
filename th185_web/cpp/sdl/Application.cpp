@@ -550,7 +550,10 @@ void Application::reset_scenario() {
     stats_.game_over = 0;
     stats_.deaths = 0;
     stats_.clear_frames = 0;
+    stats_.boss_kill_frames = 0;
+    stats_.frames_since_schedule = 0;
     stats_.stage_clear = 0;
+    last_schedules_fired_ = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
     stats_.sounds_played = 0;
@@ -1239,45 +1242,59 @@ bool Application::tick(u32 held) {
 
     // Stage progression.
     //
-    // main's tail is a `op23 1000 / push 1 / JumpIfNonzero` loop: the scene
-    // controller waits there until something raises the stage signal. The
-    // signal is op1017, and op1019 is the arm that waits on it. In the original
-    // the raiser is the boss defeat; here the closest observable equivalent is
-    // "every enemy on the field is gone".
+    // Both `main` and `BossNNtest` end in the same shape:
     //
-    // A stage is complete when every scheduled wave has fired AND the field is
-    // empty.
+    //   op42 -9896        push builtin slot 104
+    //   op13 -> skip      if zero, jump to the raiser
+    //   op1019            ...otherwise WAIT here
+    //   op1017            ...and this arm raises the signal
+    //   op23 1000 / push 1 / JumpIfNonzero    idle loop
     //
-    // "Clear for N frames" alone does not work: measured on stage 0, the gap
-    // between waves was 4 frames, so a 120-frame confirm window never closed
-    // and the stage could never finish. Waiting for the schedule list to be
-    // exhausted is what actually distinguishes "between waves" from "done".
-    const bool field_clear = enemies_.stats().alive == 0;
-    if (field_clear) {
-        ++stats_.clear_frames;
-    } else {
-        stats_.clear_frames = 0;
-    }
-    // "All waves fired" was tried and does not work: schedules_total counts
-    // the schedules RECORDED THIS FRAME, not the stage's total, so
-    // fired>=total became true immediately and the stage reported clear with
-    // enemies still alive (measured: sched=12/5).
+    // So slot 104 is the stage-clear flag, and the ONLY thing that can end a
+    // stage is something outside the script raising it. In the original that
+    // is the boss being defeated.
     //
-    // So the condition is the observable one: the field has been empty for a
-    // sustained window.
+    // Earlier attempts raised it from "the field has been empty for N frames".
+    // Measured why that is wrong: on stage 0 the gap between waves is 4 frames,
+    // so a 120-frame window never closed, and a 30-frame window reported clear
+    // while two enemies were still alive. The field being empty is not the rule.
     //
-    // KNOWN LIMITATION: this is an approximation, not the original rule. It
-    // measured clear=1 while two enemies were still alive (they respawned from
-    // the next wave after the window closed). The real condition is whatever
-    // main's tail waits for -- `op42 -9896 / op13 / op1019 / op12 / op1017` --
-    // and op1017's raiser has not been identified. The flag is recorded for
-    // inspection but drives nothing yet.
-    if (field_clear && stats_.clear_frames >= CLEAR_CONFIRM_FRAMES &&
-        !stats_.stage_clear) {
-        stats_.stage_clear = 1;
-        ecl_.stage_signal = 1;
-    }
+    // The boss kill is. `boss_index` is set by op1024 (one per bossNN.ecl), so a
+    // non-zero boss_index means a boss script is live; when the enemy count
+    // reaches zero with a boss live, the boss is down.
+    const bool boss_live = ecl_.boss_index != 0;
+    const bool field_empty = enemies_.stats().alive == 0;
 
+    // Waves must have stopped arriving. `schedules_fired` only grows, so a
+    // frame without growth means the scene controller is not scheduling.
+    if (stats_.schedules_fired != last_schedules_fired_) {
+        last_schedules_fired_ = stats_.schedules_fired;
+        stats_.frames_since_schedule = 0;
+    } else {
+        ++stats_.frames_since_schedule;
+    }
+    const bool waves_quiet =
+        stats_.schedules_fired > 0 &&
+        stats_.frames_since_schedule >= BOSS_DOWN_CONFIRM_FRAMES;
+
+    // All three must hold at once: a boss is live, the field has been empty
+    // for the confirmation window, and no new wave has been scheduled.
+    //
+    // Measured why each is needed: boss_index alone fired during the gap
+    // between ordinary waves (clear=1 with 22 enemies still due); field-empty
+    // alone fires between every wave; waves-quiet alone never becomes true
+    // while the controller is looping.
+    if (boss_live && field_empty && waves_quiet) {
+        ++stats_.boss_kill_frames;
+    } else {
+        stats_.boss_kill_frames = 0;
+    }
+    if (stats_.boss_kill_frames >= BOSS_DOWN_CONFIRM_FRAMES &&
+        !stats_.stage_clear) {
+        // Raise builtin slot 104 -- the value op1017 reads.
+        ecl_.builtins[STAGE_CLEAR_SLOT] = 1;
+        stats_.stage_clear = 1;
+    }
     // Death and respawn.
     //
     // take_hit() already decrements the life and starts the invulnerability
