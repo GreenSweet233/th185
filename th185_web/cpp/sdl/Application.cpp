@@ -4,6 +4,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <string>
+#include <vector>
 #include <cstring>
 
 namespace th185::app {
@@ -96,32 +98,68 @@ bool Application::register_stage_scripts(u32 stage_index) {
         }
     }
 
-    // Register the scene script plus default.ecl. default.ecl holds the shared
-    // subroutines that the scene scripts call, so without it Call resolution
-    // fails for most of the stage logic.
-    const char* wanted[2] = { kSceneScripts[stage_index], "default.ecl" };
+    // Register the scene script, default.ecl, and every waveNN.ecl.
+    //
+    // waveNN.ecl are the WAVE TEMPLATE libraries: op1011 selects a template
+    // index and the engine runs that file's subroutines. worldNN.ecl only
+    // calls its own WorldWaveNN helpers, so without the wave libraries the
+    // bullet-emitting subroutines (Wave01_GirlA_at and friends) are never
+    // reachable -- which is why bullet_requests stayed at 0.
+    std::vector<std::string> wanted;
+    wanted.push_back(kSceneScripts[stage_index]);
+    wanted.push_back("default.ecl");
+    {
+        char name[32];
+        for (u32 i = 1; i <= 74; ++i) {
+            std::snprintf(name, sizeof(name), "wave%02u.ecl", i);
+            wanted.push_back(name);
+        }
+    }
+    // Reset the context BEFORE registering: add_subroutine writes into it, so
+    // clearing afterwards would discard every subroutine just loaded.
+    ecl_ = EclContext{};
+    active_scripts_.clear();
+    runnable_ = 0;
+
     EclResource resource;
     bool any = false;
-    for (const char* name : wanted) {
+    for (const std::string& name : wanted) {
         std::size_t entry = archive_.entries.size();
         for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
             if (archive_.entries[i].name == name) { entry = i; break; }
         }
-        std::printf("ECL_FIND name=%s entry=%zu total=%zu\n",
-                    name, entry, archive_.entries.size());
+
         if (entry == archive_.entries.size()) continue;
         std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &error_);
         if (blob.empty()) continue;
         EclResource part;
         const bool parsed = part.parse(std::move(blob), &error_);
-        std::printf("ECL_LOAD %s parsed=%d subs=%zu err=%s\n",
-                    name, parsed ? 1 : 0, part.subs.size(), error_.c_str());
+
         if (!parsed) continue;
         any = true;
-        // Merge into `resource` by moving its subroutines and data.
-        if (resource.data.empty()) resource = std::move(part);
-        else {
-            for (EclSubroutine& sub : part.subs) resource.subs.push_back(std::move(sub));
+        // Each file's subroutines carry offsets into THAT file's data, so the
+        // code slice has to be taken here, while `part.data` is still the
+        // right buffer. Merging first and slicing later would use the first
+        // file's data for every file -- which is why loading the 74 wave
+        // libraries broke the scene controller's own code.
+        for (const EclSubroutine& sub : part.subs) {
+            std::vector<u8> code;
+            u32 code_base = 0;
+            if (!sub.instructions.empty()) {
+                code_base = sub.instructions.front().offset;
+                const u32 end = sub.instructions.back().offset +
+                                sub.instructions.back().size;
+                if (code_base < part.data.size() && end <= part.data.size()) {
+                    code.assign(part.data.begin() + code_base,
+                                part.data.begin() + end);
+                }
+            }
+            if (code.empty()) continue;
+            EclSubroutine sliced = sub;
+            sliced.instructions.clear();
+            ecl_.add_subroutine(sub.name, std::move(code));
+            ecl_.subroutines[sub.name].code_base = code_base;
+            resource.subs.push_back(std::move(sliced));
         }
     }
     if (!any) {
@@ -130,49 +168,19 @@ bool Application::register_stage_scripts(u32 stage_index) {
         return true;
     }
 
-    // Reset the context and register every subroutine, remembering which ones
-    // are fully implemented so tick() only runs those.
-    ecl_ = EclContext{};
-    active_scripts_.clear();
-    runnable_ = 0;
+    // Registration already happened while slicing (each file's offsets are
+    // relative to its own data). All that remains is deciding which
+    // subroutines run as top-level coroutines.
     for (const EclSubroutine& sub : resource.subs) {
-        std::vector<u8> code;
-        u32 code_base = 0;
-        if (!sub.instructions.empty()) {
-            code_base = sub.instructions.front().offset;
-            const u32 end = sub.instructions.back().offset +
-                            sub.instructions.back().size;
-            if (code_base < resource.data.size() && end <= resource.data.size()) {
-                code.assign(resource.data.begin() + code_base,
-                            resource.data.begin() + end);
-            }
-        }
-        bool all_implemented = !sub.instructions.empty();
-        for (const EclInstruction& ins : sub.instructions) {
-            if (!EclInterpreter::is_supported(ins.id)) {
-                all_implemented = false;
-                break;
-            }
-        }
-        // `main` is the scene controller: it is where op1013 schedules live, so
-        // it has to run even when some of its opcodes are still unimplemented.
-        // The interpreter stops cleanly on an unsupported opcode, so a partial
-        // run still executes everything before that point -- which is where the
-        // schedules are emitted.
-        // ONLY the controller runs as a top-level coroutine. Every other
-        // subroutine in the file is a helper that `main` reaches through Call,
-        // and running them standalone is actively harmful: world04's helpers
-        // burn ~80000 instructions per frame on their own wait loops, which
-        // starves the controller and it never reaches its op1013 block.
-        //
-        // The subroutines are still REGISTERED (add_subroutine below), so Call
-        // resolution keeps working.
+        // ONLY `main` runs as a top-level coroutine. Every other subroutine in
+        // the file is a helper the controller reaches through Call, and running
+        // them standalone burns the per-frame budget on their own wait loops --
+        // world04's helpers alone spent ~80000 instructions per frame, which
+        // starved the controller before it reached its op1013 block.
         if (sub.name == "main") {
             active_scripts_.push_back(sub.name);
             ++runnable_;
         }
-        ecl_.add_subroutine(sub.name, std::move(code));
-        ecl_.subroutines[sub.name].code_base = code_base;
     }
     return true;
 }
@@ -370,6 +378,64 @@ void Application::consume_schedules() {
     }
     stats_.enemies_alive = enemies_.stats().alive;
 
+    // Run the wave templates the scene just declared.
+    //
+    // op1011 appends a template index and op1012 closes the block, so
+    // wave_blocks holds one list per WorldWaveNN invocation. Template N lives
+    // in waveNN.ecl; loading it and running its subroutines is what finally
+    // reaches the bullet-emitting code (WaveNN_GirlA_at and friends).
+    for (const std::vector<i32>& block : ecl_.wave_blocks) {
+        for (i32 template_index : block) {
+            if (template_index <= 0) continue;
+            const u64 key = u64(0x80000000u) | u64(u32(template_index));
+            if (fired_schedule_keys_.count(key)) continue;
+            fired_schedule_keys_.insert(key);
+
+            char bank[32];
+            std::snprintf(bank, sizeof(bank), "wave%02d.ecl", int(template_index));
+            std::size_t entry = archive_.entries.size();
+            for (std::size_t k = 0; k < archive_.entries.size(); ++k) {
+                if (archive_.entries[k].name == bank) { entry = k; break; }
+            }
+            if (entry >= archive_.entries.size()) continue;
+
+            std::string wave_error;
+            std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &wave_error);
+            if (blob.empty()) continue;
+            EclResource wave_resource;
+            if (!wave_resource.parse(std::move(blob), &wave_error)) continue;
+
+            // Run every subprogram in the template once. The pattern
+            // recorders (op600..op611, op535) then fill bullet_requests,
+            // which the loop below turns into real bullets.
+            for (const EclSubroutine& sub : wave_resource.subs) {
+                std::vector<u8> code;
+                u32 code_base = 0;
+                if (!sub.instructions.empty()) {
+                    code_base = sub.instructions.front().offset;
+                    const u32 end = sub.instructions.back().offset +
+                                    sub.instructions.back().size;
+                    if (code_base < wave_resource.data.size() &&
+                        end <= wave_resource.data.size()) {
+                        code.assign(wave_resource.data.begin() + code_base,
+                                    wave_resource.data.begin() + end);
+                    }
+                }
+                if (code.empty()) continue;
+                ecl_.add_subroutine(sub.name, code);
+                ecl_.subroutines[sub.name].code_base = code_base;
+
+                EclInterpreter runner;
+                runner.context = ecl_;
+                runner.run(code, 4000, code_base);
+                ecl_.bullet_requests = std::move(runner.context.bullet_requests);
+                ecl_.delays_seen = std::move(runner.context.delays_seen);
+                ecl_.requests_total = runner.context.requests_total;
+            }
+        }
+    }
+    ecl_.wave_blocks.clear();
+
     // Turn recorded bullet patterns into real bullets. Each request is one
     // emission: N bullets spread over [angle_lo, angle_hi] at the recorded
     // speed, aimed along the enemy's facing. Delays are per-bullet frame
@@ -401,7 +467,10 @@ void Application::consume_schedules() {
                 sy = enemy.y;
                 break;
             }
-            if (bullets_.spawn(sx, sy, vx, vy, 0, 0xFFFF8080u, true)) {
+            // op535 gives a per-bullet delay in frames: the fan fires in
+            // sequence instead of all at once. A zero entry means "now".
+            const u16 delay = u16(request.delays[i % 8]);
+            if (bullets_.spawn(sx, sy, vx, vy, 0, 0xFFFF8080u, true, delay)) {
                 ++stats_.enemy_shots;
             }
         }
@@ -540,6 +609,7 @@ void Application::render() {
     }
     for (const Bullet& bullet : bullets_.bullets()) {
         if (!bullet.alive) continue;
+        if (bullet.delay > 0) continue;   // queued by op535, not visible yet
 
         AnmQuad quad;
         const float half = 8.0f;
@@ -654,6 +724,11 @@ bool Application::tick(u32 held) {
         ecl_.calls_made = std::move(runner.context.calls_made);
         ecl_.missing_calls = std::move(runner.context.missing_calls);
         ecl_.wave_templates = std::move(runner.context.wave_templates);
+        ecl_.pending_templates = std::move(runner.context.pending_templates);
+        ecl_.wave_blocks = std::move(runner.context.wave_blocks);
+        ecl_.bullet_requests = std::move(runner.context.bullet_requests);
+        ecl_.delays_seen = std::move(runner.context.delays_seen);
+        ecl_.requests_total = runner.context.requests_total;
         ecl_.last_wave_template = runner.context.last_wave_template;
         ecl_.schedules = std::move(runner.context.schedules);
         ecl_.recorded = std::move(runner.context.recorded);
@@ -713,6 +788,7 @@ bool Application::tick(u32 held) {
     for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
         Bullet& bullet = bullets_.mutable_bullet(i);
         if (!bullet.alive || !bullet.hostile) continue;
+        if (bullet.delay > 0) continue;   // still queued, not in the air yet
         const float dx = bullet.x - player_.x();
         const float dy = bullet.y - player_.y();
         if (dx * dx + dy * dy > hitbox * hitbox) continue;

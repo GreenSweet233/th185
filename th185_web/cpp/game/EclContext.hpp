@@ -167,6 +167,10 @@ struct EclContext {
     std::vector<BulletRequest> bullet_requests;
     // Working values accumulated between op600 and op611.
     BulletRequest pending_bullet;
+    // Cumulative record of delays attached to an emitted request, for tests:
+    // bullet_requests is drained by Application each frame.
+    std::vector<std::array<u32, 8>> delays_seen;
+    u32 requests_total = 0;
 
     // --- coroutine state ------------------------------------------------
     //
@@ -192,6 +196,13 @@ struct EclContext {
     std::unordered_map<std::string, CoroutineState> coroutines;
     std::vector<std::string> missing_calls;
     std::vector<i32> wave_templates;
+    // Templates declared by the CURRENT WorldWaveNN block. WorldWave01 in
+    // world01.ecl pushes 11 consecutive op1011 values before op1012 closes
+    // the block, so op1011 is a LIST of templates to spawn, not a single
+    // "current" template.
+    std::vector<i32> pending_templates;
+    // Completed template lists, one per WorldWaveNN invocation.
+    std::vector<std::vector<i32>> wave_blocks;
     i32 last_wave_template = -1;
 
     // --- op 23: timer / wait value -------------------------------------
@@ -201,6 +212,11 @@ struct EclContext {
     // -9985). Does not touch the stack. Semantics inferred as a timer/wait.
     u32 last_timer_value = 0;
     u32 timer_writes = 0;
+    // Times op601 found fewer stack values than it expected. A non-zero value
+    // means some call site enters the pattern loop with a short stack, which
+    // is a stack-balance signal rather than a hard error.
+    u32 short_pops = 0;
+    // Times op601 found fewer values than it expected; a signal that the
 
     // --- op 1015: field query ------------------------------------------
     //

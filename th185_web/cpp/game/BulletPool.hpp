@@ -48,6 +48,10 @@ struct Bullet {
     u32 color = 0xFFFFFFFFu;
     // Frames this bullet has lived. Useful for animation and for debugging.
     u16 age = 0;
+    // Frames still to wait before this bullet appears and starts moving.
+    // ECL's op535 gives a per-bullet delay so a fan fires in sequence rather
+    // than all at once; a delayed bullet must not move, collide or render.
+    u16 delay = 0;
     // True for enemy fire. The two kinds share the pool because they share the
     // motion and lifetime rules, but they collide with different things.
     bool hostile = false;
@@ -68,7 +72,8 @@ public:
 
     // Spawns one bullet. Returns false when the pool is exhausted.
     bool spawn(float x, float y, float vx, float vy, u16 sprite,
-               u32 color = 0xFFFFFFFFu, bool hostile = false);
+               u32 color = 0xFFFFFFFFu, bool hostile = false,
+               u16 delay = 0);
 
     // Advances every live bullet one frame and retires the ones that left.
     void update();

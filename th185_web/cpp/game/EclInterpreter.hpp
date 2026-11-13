@@ -65,6 +65,7 @@ enum class EclOp : u16 {
     // instead of acting on them; Application turns a finished BulletRequest
     // into real bullets.
     Op600BulletPattern = 600,
+    Op601BulletConsume = 601,
     Op602BulletPair = 602,
     Op604BulletSpeed = 604,
     Op605BulletFan = 605,
@@ -72,6 +73,7 @@ enum class EclOp : u16 {
     Op607BulletVariant = 607,
     Op611BulletEmit = 611,
     Op535BulletDelays = 535,
+    Op1012WaveBlockEnd = 1012,
     Op1011WaveTemplate = 1011, // one argument: wave template index (-1..104)
     Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
     Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved

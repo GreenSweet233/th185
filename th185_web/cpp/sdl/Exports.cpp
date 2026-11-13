@@ -382,6 +382,71 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_schedule_slot(unsigned index) {
     return index < s.size() ? s[index].slot : 0xFFFFFFFFu;
 }
 
+// Hostile bullets still waiting on their op535 delay. They exist in the pool
+// but must not render, move or collide yet.
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullets_delayed() {
+    unsigned count = 0;
+    for (const th185::Bullet& b : th185::app::instance().bullets().bullets()) {
+        if (b.alive && b.delay > 0) ++count;
+    }
+    return count;
+}
+
+// Delay of entry i of the most recently recorded bullet request.
+EMSCRIPTEN_KEEPALIVE unsigned th185_last_request_delay(unsigned index) {
+    const auto& r = th185::app::instance().ecl().bullet_requests;
+    if (r.empty() || index >= 8) return 0xFFFFFFFFu;
+    return r.back().delays[index];
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_request_count() {
+    return unsigned(th185::app::instance().ecl().bullet_requests.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_requests_total() {
+    return th185::app::instance().ecl().requests_total;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_delays_seen_count() {
+    return unsigned(th185::app::instance().ecl().delays_seen.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_delays_seen_at(unsigned rec, unsigned idx) {
+    const auto& v = th185::app::instance().ecl().delays_seen;
+    if (rec >= v.size() || idx >= 8) return 0xFFFFFFFFu;
+    return v[rec][idx];
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_wave_block_count() {
+    return unsigned(th185::app::instance().ecl().wave_blocks.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_wave_block_at(unsigned b, unsigned i) {
+    const auto& v = th185::app::instance().ecl().wave_blocks;
+    if (b >= v.size() || i >= v[b].size()) return 0xFFFFFFFFu;
+    return unsigned(v[b][i]);
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_pending_templates() {
+    return unsigned(th185::app::instance().ecl().pending_templates.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sub_count() {
+    return unsigned(th185::app::instance().ecl().subroutines.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sub_code_size(const char* name) {
+    const auto& s = th185::app::instance().ecl().subroutines;
+    const auto it = s.find(name);
+    return it == s.end() ? 0xFFFFFFFFu : unsigned(it->second.code.size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sub_code_base(const char* name) {
+    const auto& s = th185::app::instance().ecl().subroutines;
+    const auto it = s.find(name);
+    return it == s.end() ? 0xFFFFFFFFu : it->second.code_base;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

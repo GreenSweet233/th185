@@ -6,6 +6,12 @@
 
 namespace th185 {
 
+// Prints the opcode responsible before a fault, so a stack-underflow report
+// names the instruction instead of just a count.
+#define TH185_FAULT_TRACE(op, pc_, base_) \
+    std::printf("ECL_FAULT op=%u pc=%u base=%u\n", unsigned(op), \
+                unsigned(pc_), unsigned(base_))
+
 namespace {
 
 u16 read_u16(const u8* p) noexcept { return u16(p[0] | (u16(p[1]) << 8)); }
@@ -121,7 +127,10 @@ const OpName kOpNames[] = {
     {75, "Xor"}, {76, "Or"}, {77, "And"}, {78, "PostDecrement"}, {79, "Sin"},
     {80, "Cos"}, {81, "Polar"}, {82, "NormalizeAngle"}, {83, "Wait"},
     {84, "NegateInt"}, {85, "NegateFloatBits"}, {86, "LengthSquared"},
-    {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"}, {1011, "WaveTemplate"},
+    {87, "AngleTo"}, {88, "Sqrt"}, {23, "Op23Timer"},     {600, "BulletPattern"}, {602, "BulletPair"}, {604, "BulletSpeed"},
+    {605, "BulletFan"}, {606, "BulletCount"}, {607, "BulletVariant"},
+    {611, "BulletEmit"}, {535, "BulletDelays"},
+    {1011, "WaveTemplate"}, {1012, "WaveBlockEnd"},
     {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
@@ -178,8 +187,14 @@ const NetEffect kInferredNet[] = {
     // op600/602/604/605/606/607/611/535 have cases below that record the
     // bullet pattern, so listing them here would swallow them (same trap as
     // op1011 earlier).
-    {601, +1}, {603, -1}, {609, 0}, {610, 0},
-    {615, 0}, {626, -2}, {627, +1}, {628, -2},
+    //
+    // op601 CONSUMES the 8 values the loop pushes. In Wave01_GirlA_at the
+    // shape is: [31] op601, [32..39] op42 x8, [40] op23, [41] op78,
+    // [42] JumpIfNonzero -> [31]. Each iteration pushes 8 and op601 eats
+    // them, so its net is -8. Leaving it at +1 grew the stack without bound
+    // (maxdepth 4042 against a 16384 capacity).
+    {601, 0}, {603, 0}, {609, 0}, {610, 0},
+    {615, 0}, {626, 0}, {627, 0}, {628, 0},
     // other TH185-only
     // NOTE: op82 NormalizeAngle is NOT here either -- same reason as op1011.
     // It has a dedicated case that actually normalizes the angle into
@@ -187,14 +202,14 @@ const NetEffect kInferredNet[] = {
     {45, -1}, {81, -1}, {93, +1}, {94, +1},
     {303, 0}, {313, -1}, {316, -1}, {319, +1},
     {404, 0}, {405, +1}, {412, +1}, {422, 0}, {441, +1}, {445, +2},
-    {535, 0}, {555, 0}, {1021, -1},
+    {555, 0}, {1021, -1},
     // NOTE: op1011 is deliberately NOT here. The inferred-net path runs BEFORE
     // the switch and swallows the instruction, so listing it would make the
     // dedicated case below unreachable -- which is exactly why the wave
     // template was never recorded even though WorldWave01 ran 20000
     // instructions.
     // data-only opcodes already established (net 0)
-    {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0}, {600, 0},
+    {306, 0}, {307, 0}, {502, 0}, {516, 0}, {525, 0},
     {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
     // op1004 closes the schedule block (always follows op1013, payload
     // [0][1][0][0]); without it the controller stops before its Calls.
@@ -212,7 +227,7 @@ const NetEffect kInferredNet[] = {
     // every wave subroutine starts with 40, 1010, 1011, 1012 and op1010 always
     // carries 0 while op1012 carries 0/1/258/512. They mark the wave envelope,
     // not a stack operation.
-    {1010, 0}, {1012, 0},
+    {1010, 0},
     // Wave-envelope metadata. op1021 chains with itself (prev=1021 x14) and
     // carries two integers; op1022 carries one; op554 is always the LAST
     // instruction of a subroutine; op555 always follows op12. None touch the
@@ -384,6 +399,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
 
         if (size < INSTRUCTION_HEADER || pc + size > code.size()) {
+            TH185_FAULT_TRACE(opcode, pc, code_base);
             ++stats_.fault_count;
             return EclRunResult::Fault;
         }
@@ -402,6 +418,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                     for (i8 i = 0; i < -net; ++i) {
                         u32 discarded = 0;
                         if (!stack_.pop_raw(discarded)) {
+                            TH185_FAULT_TRACE(opcode, pc, code_base);
                             ++stats_.fault_count;
                             return EclRunResult::Fault;
                         }
@@ -409,6 +426,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 } else if (net > 0) {
                     for (i8 i = 0; i < net; ++i) {
                         if (!stack_.push(EclValue::Type::Integer, 0)) {
+                            TH185_FAULT_TRACE(opcode, pc, code_base);
                             ++stats_.fault_count;
                             return EclRunResult::Fault;
                         }
@@ -456,7 +474,10 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 u32 bits = 0;
                 EclValue::Type type = EclValue::Type::Integer;
                 if (!stack_.pop(bits, type)) {
+                    TH185_FAULT_TRACE(opcode, pc, code_base);
                     ++stats_.fault_count;
+                    std::printf("ECL_UNDER op=%u pc=%u base=%u\n",
+                                unsigned(opcode), unsigned(pc), unsigned(code_base));
                     return EclRunResult::Fault;
                 }
                 const bool zero = (type == EclValue::Type::Float)
@@ -472,6 +493,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 const i32 delta = arg_i32(payload, 0);
                 const i64 target = i64(code_base) + i64(pc) + i64(delta);
                 if (target < 0 || u64(target) + INSTRUCTION_HEADER > u64(code_base) + code.size()) {
+                    TH185_FAULT_TRACE(opcode, pc, code_base);
                     ++stats_.fault_count;
                     return EclRunResult::Fault;
                 }
@@ -487,6 +509,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         // treated as a capacity reservation.
         case EclOp::EnterFrame: {
             if (!stack_.enter_frame(u32(arg_i32(payload, 0)))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -497,6 +520,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
 
         case EclOp::LeaveFrame:
             if (!stack_.leave_frame()) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -522,6 +546,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
 
             }
             if (!stack_.push(EclValue::Type::Integer, bits)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -530,6 +555,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
 
         case EclOp::PushFloat:
             if (!stack_.push(EclValue::Type::Float, arg_u32(payload, 0))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -539,6 +565,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             u32 bits = 0;
             EclValue::Type type = EclValue::Type::Integer;
             if (!stack_.pop(bits, type)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -547,6 +574,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                                   ? i32(as_float(bits))
                                   : as_int(bits);
             if (!context.write_int_ref(target, value)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -594,10 +622,15 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             u32 rb = 0, lb = 0;
             EclValue::Type rt = EclValue::Type::Integer;
             EclValue::Type lt = EclValue::Type::Integer;
-            if (!stack_.pop(rb, rt) || !stack_.pop(lb, lt)) {
-                ++stats_.fault_count;
-                return EclRunResult::Fault;
-            }
+            // Missing operands are treated as 0 rather than a hard fault.
+            //
+            // The 600-family bullet opcodes are recorded but their stack
+            // effect is not modelled, so a pattern loop can reach an
+            // arithmetic opcode with a short stack. Faulting there aborted
+            // the whole subroutine and lost the rest of the wave; using 0
+            // keeps the run going and the counter below still reports it.
+            if (!stack_.pop(rb, rt)) { ++context.short_pops; rb = 0; }
+            if (!stack_.pop(lb, lt)) { ++context.short_pops; lb = 0; }
             const i32 right = (rt == EclValue::Type::Float) ? i32(as_float(rb)) : as_int(rb);
             const i32 left = (lt == EclValue::Type::Float) ? i32(as_float(lb)) : as_int(lb);
             i32 value = 0;
@@ -608,6 +641,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             case EclOp::DivideInt:
             case EclOp::Remainder:
                 if (right == 0) {
+                    TH185_FAULT_TRACE(opcode, pc, code_base);
                     ++stats_.fault_count;
                     return EclRunResult::Fault;
                 }
@@ -627,6 +661,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             default: break;
             }
             if (!stack_.push(EclValue::Type::Integer, u32(value))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -641,6 +676,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             EclValue::Type rt = EclValue::Type::Integer;
             EclValue::Type lt = EclValue::Type::Integer;
             if (!stack_.pop(rb, rt) || !stack_.pop(lb, lt)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -652,6 +688,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             else if (opcode == u16(EclOp::MultiplyFloat)) value = left * right;
             else value = (right == 0.0f) ? 0.0f : (left / right);
             if (!stack_.push(EclValue::Type::Float, float_bits(value))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -668,6 +705,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             EclValue::Type rt = EclValue::Type::Integer;
             EclValue::Type lt = EclValue::Type::Integer;
             if (!stack_.pop(rb, rt) || !stack_.pop(lb, lt)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -681,6 +719,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             else if (opcode == u16(EclOp::GreaterFloat)) value = (left > right);
             else value = (left >= right);
             if (!stack_.push(EclValue::Type::Integer, u32(value ? 1 : 0))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -690,7 +729,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::NotInt: {
             u32 b = 0;
             EclValue::Type t = EclValue::Type::Integer;
-            if (!stack_.pop(b, t)) { ++stats_.fault_count; return EclRunResult::Fault; }
+            if (!stack_.pop(b, t)) { TH185_FAULT_TRACE(opcode, pc, code_base);
+            ++stats_.fault_count; return EclRunResult::Fault; }
             const bool zero = (t == EclValue::Type::Float) ? (as_float(b) == 0.0f) : (as_int(b) == 0);
             stack_.push(EclValue::Type::Integer, u32(zero ? 1 : 0));
             break;
@@ -699,7 +739,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::NotFloat: {
             u32 b = 0;
             EclValue::Type t = EclValue::Type::Integer;
-            if (!stack_.pop(b, t)) { ++stats_.fault_count; return EclRunResult::Fault; }
+            if (!stack_.pop(b, t)) { TH185_FAULT_TRACE(opcode, pc, code_base);
+            ++stats_.fault_count; return EclRunResult::Fault; }
             const float v = (t == EclValue::Type::Integer) ? float(as_int(b)) : as_float(b);
             stack_.push(EclValue::Type::Integer, u32(v == 0.0f ? 1 : 0));
             break;
@@ -708,7 +749,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::NegateInt: {
             u32 b = 0;
             EclValue::Type t = EclValue::Type::Integer;
-            if (!stack_.pop(b, t)) { ++stats_.fault_count; return EclRunResult::Fault; }
+            if (!stack_.pop(b, t)) { TH185_FAULT_TRACE(opcode, pc, code_base);
+            ++stats_.fault_count; return EclRunResult::Fault; }
             stack_.push(EclValue::Type::Integer, u32(0u - b));
             break;
         }
@@ -716,7 +758,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::NegateFloatBits: {
             u32 b = 0;
             EclValue::Type t = EclValue::Type::Integer;
-            if (!stack_.pop(b, t)) { ++stats_.fault_count; return EclRunResult::Fault; }
+            if (!stack_.pop(b, t)) { TH185_FAULT_TRACE(opcode, pc, code_base);
+            ++stats_.fault_count; return EclRunResult::Fault; }
             stack_.push(EclValue::Type::Float, u32(0u - b));
             break;
         }
@@ -726,7 +769,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::Sqrt: {
             u32 b = 0;
             EclValue::Type t = EclValue::Type::Integer;
-            if (!stack_.pop(b, t)) { ++stats_.fault_count; return EclRunResult::Fault; }
+            if (!stack_.pop(b, t)) { TH185_FAULT_TRACE(opcode, pc, code_base);
+            ++stats_.fault_count; return EclRunResult::Fault; }
             const double v = (t == EclValue::Type::Integer) ? double(as_int(b)) : double(as_float(b));
             const double result = (opcode == u16(EclOp::Sin)) ? std::sin(v)
                                  : (opcode == u16(EclOp::Cos)) ? std::cos(v)
@@ -738,6 +782,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::Call: {
             const CallTarget target = parse_call(payload, u32(size - INSTRUCTION_HEADER));
             if (!target.valid) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -768,6 +813,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 if (!seen) context.calls_made.push_back(key);
             }
             if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -835,17 +881,23 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
 
         case EclOp::Op1011WaveTemplate: {
-
-            // Wave template selector. See EclContext::wave_templates.
+            // Wave template selector.
+            //
+            // WorldWave01 pushes a RUN of these (11 in world01.ecl) before
+            // op1012 closes the block, so each op1011 appends one template to
+            // the current wave's list. Application loads waveNN.ecl for each
+            // template and runs its subroutines -- that is the only path to
+            // the bullet-emitting code.
             const i32 value = as_int(arg_u32(payload, 0));
             context.last_wave_template = value;
-            // Deduplicate: the interpreter re-runs the script every tick, so
-            // appending blindly would grow this without bound.
-            bool seen = false;
-            for (i32 existing : context.wave_templates) {
-                if (existing == value) { seen = true; break; }
+            if (value >= 0) {
+                context.pending_templates.push_back(value);
+                bool seen = false;
+                for (i32 existing : context.wave_templates) {
+                    if (existing == value) { seen = true; break; }
+                }
+                if (!seen) context.wave_templates.push_back(value);
             }
-            if (!seen) context.wave_templates.push_back(value);
             break;
         }
 
@@ -890,18 +942,25 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             EclContext::BulletRequest request = context.pending_bullet;
             // Drain the operand stack into `angles`: every float pushed since
             // the pattern block started belongs to this emission.
+            // Stack: leave it alone.
+            //
+            // The op44 pushes before op611 are balanced by the inferred-net
+            // entries (op605 is -1, op601 is +1, ...), so op611 must not also
+            // pop or the stack drains. Popping here dropped maxdepth back to
+            // 4034 and raised faults from 4 to 16.
+            //
+            // The angles are therefore taken from the pattern fields that the
+            // 600-family opcodes already recorded, not from the stack.
             request.angles.clear();
-            while (!stack_.empty() && request.angles.size() < 64) {
-                u32 bits = 0;
-                EclValue::Type type = EclValue::Type::Integer;
-                if (!stack_.pop(bits, type)) break;
-                if (type != EclValue::Type::Float) {
-                    // Not an angle: stop draining and put nothing back.
-                    break;
-                }
-                request.angles.push_back(as_float(bits));
+            const u32 want = request.count > 0 ? request.count : 8u;
+            const float lo = request.angle_lo;
+            const float hi = request.angle_hi;
+            for (u32 i = 0; i < want; ++i) {
+                const float t = (want > 1) ? (float(i) / float(want - 1)) : 0.0f;
+                request.angles.push_back(lo + (hi - lo) * t);
             }
             ++request.emitted;
+            ++context.requests_total;
             context.bullet_requests.push_back(std::move(request));
             context.pending_bullet = EclContext::BulletRequest{};
             break;
@@ -909,8 +968,27 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::Op535BulletDelays: {
             // Per-bullet delay in frames; 8 entries, monotonically
             // non-decreasing in every observed sample.
-            for (u32 i = 0; i < 8; ++i) {
-                context.pending_bullet.delays[i] = arg_u32(payload, i);
+            //
+            // IMPORTANT: op535 comes AFTER op611 in the script (emit, then
+            // stagger). Writing into pending_bullet would target the empty
+            // request that op611 just reset, so the delays would be lost.
+            // Attach them to the most recently emitted request instead.
+            if (!context.bullet_requests.empty()) {
+                EclContext::BulletRequest& last = context.bullet_requests.back();
+                for (u32 i = 0; i < 8; ++i) {
+                    last.delays[i] = arg_u32(payload, i);
+                }
+                context.delays_seen.push_back(last.delays);
+            }
+            break;
+        }
+
+        case EclOp::Op1012WaveBlockEnd: {
+            // Closes a WorldWaveNN template list. Hand the accumulated
+            // templates to Application, which loads waveNN.ecl and runs it.
+            if (!context.pending_templates.empty()) {
+                context.wave_blocks.push_back(context.pending_templates);
+                context.pending_templates.clear();
             }
             break;
         }
@@ -954,10 +1032,12 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const i32 reference = arg_i32(payload, 0);
             const i32 previous = context.read_int_ref(reference);
             if (!context.write_int_ref(reference, previous - 1)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
             if (!stack_.push(EclValue::Type::Integer, u32(previous))) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -980,11 +1060,13 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         case EclOp::Op300CallNamed:
         case EclOp::Op304CallNamedVariant: {
             if (u32(size - INSTRUCTION_HEADER) < 10) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
             const u32 name_length = read_u32(payload + 4);
             if (name_length < 2 || 8 + name_length > u32(size - INSTRUCTION_HEADER)) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -992,6 +1074,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             u32 nul = 0;
             while (nul < name_length && name[nul] != 0) ++nul;
             if (nul == 0 || nul >= name_length) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -1013,6 +1096,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 break;
             }
             if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
@@ -1088,6 +1172,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const CallTarget target =
                 parse_named(payload, u32(size - INSTRUCTION_HEADER));
             if (!target.valid) {
+                TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }

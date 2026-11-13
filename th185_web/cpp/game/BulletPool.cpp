@@ -12,7 +12,7 @@ BulletPool::BulletPool() {
 }
 
 bool BulletPool::spawn(float x, float y, float vx, float vy, u16 sprite,
-                       u32 color, bool hostile) {
+                       u32 color, bool hostile, u16 delay) {
     if (free_slots_.empty()) {
         ++stats_.pool_full;
         return false;
@@ -28,6 +28,7 @@ bool BulletPool::spawn(float x, float y, float vx, float vy, u16 sprite,
     bullet.sprite = sprite;
     bullet.color = color;
     bullet.hostile = hostile;
+    bullet.delay = delay;
     bullet.age = 0;
     bullet.alive = true;
 
@@ -45,6 +46,15 @@ void BulletPool::update() {
     for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
         Bullet& bullet = bullets_[i];
         if (!bullet.alive) continue;
+
+        // A delayed bullet is invisible and immobile until its countdown runs
+        // out. It must also not be tested for collisions: ECL fans stagger
+        // their shots, and a waiting bullet sitting at the muzzle would
+        // otherwise hit whatever is there.
+        if (bullet.delay > 0) {
+            --bullet.delay;
+            continue;
+        }
 
         bullet.x += bullet.vx;
         bullet.y += bullet.vy;
