@@ -165,15 +165,21 @@ def main() -> int:
     if not ok:
         failures += 1
 
-    # 5. Score caps must follow the documented table scaled by stage.
+    # 5. Score caps must follow the documented table scaled by the scene's
+    #    1-based ordinal.
+    #
+    # The multiplier at [0x4D1004] is a RUNTIME variable, not a constant: in
+    # the shipped image that address is zero (uninitialised .data). Scaling by
+    # the raw 0-based stage made stage 0's cap zero and overflowed stage 1,
+    # so the ordinal is stage + 1.
     caps = [500000, 1000000, 1500000, 2000000, 1000000]
     bad_caps = []
     for stage, record in sorted(sessions.items()):
-        expected = caps[2] * stage   # difficulty 2 = Normal
+        expected = caps[2] * (stage + 1)   # difficulty 2 = Normal
         if int(record.get("scorecap", "-1")) != expected:
             bad_caps.append((stage, record.get("scorecap"), expected))
     ok = not bad_caps
-    print("[%s] score caps are cap[Normal] * stage for every loaded scene"
+    print("[%s] score caps are cap[Normal] * (stage+1) for every loaded scene"
           % ("PASS" if ok else "FAIL"))
     if not ok:
         for item in bad_caps[:4]:

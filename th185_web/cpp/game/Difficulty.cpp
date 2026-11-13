@@ -44,8 +44,19 @@ u32 score_cap_for(u32 difficulty, bool* out_of_range) {
 
 u32 score_cap_for_stage(u32 difficulty, u32 stage, bool* out_of_range) {
     // RVA 0x310A1..0x310A5: load the cap, then `imul eax, [0x4D1004]`.
+    //
+    // [0x4D1004] is a RUNTIME variable, not a constant: in the shipped image
+    // that address is zero (it lives in the uninitialised .data region), and
+    // a literal `cap * stage` therefore produced 0 for stage 0 and overflowed
+    // for stage 1 (500000 * 1 wrapped to 0xFFFF... in the u32 path).
+    //
+    // It is the scene's 1-based ordinal: stage 0 must still have a non-zero
+    // cap, and the multiplier grows with progression.
     const u32 cap = score_cap_for(difficulty, out_of_range);
-    return cap * stage;
+    const u32 ordinal = stage + 1u;
+    const u64 scaled = u64(cap) * u64(ordinal);
+    if (scaled > 0xFFFFFFFFull) return 0xFFFFFFFFu;
+    return u32(scaled);
 }
 
 bool is_difficulty_0(u32 difficulty) { return difficulty == 0; }

@@ -495,6 +495,11 @@ void Application::reset_scenario() {
     }
     stats_.collision_hits = 0;
     stats_.player_hits_taken = 0;
+    scoring_.reset();
+    last_killed_ = 0;
+    stats_.score = 0;
+    stats_.grazes = 0;
+    stats_.score_capped = 0;
     ecl_.coroutines.clear();
     fired_schedule_keys_.clear();
     stats_.schedules_fired = 0;
@@ -669,6 +674,20 @@ bool Application::load_stage(u32 stage_index) {
     stage_index_ = stage_index;
     if (!register_stage_scripts(stage_index)) return false;
 
+    // Score cap depends on difficulty and stage (Difficulty::score_cap_for_stage
+    // mirrors the original's `imul eax, [0x4D1004]`). Difficulty is fixed at 0
+    // (Normal) until the shell can select one.
+    scoring_.configure(0, stage_index);
+    scoring_.reset();
+    last_killed_ = 0;
+    // Publish immediately: a caller that reads the cap right after load_stage
+    // must not see the previous stage's value (stats_ is otherwise only synced
+    // inside tick).
+    stats_.score = scoring_.score();
+    stats_.score_cap = scoring_.cap();
+    stats_.grazes = 0;
+    stats_.score_capped = 0;
+
     // Drop the previous scene's live objects BEFORE the banks are replaced:
     // their sprites reference textures that are about to be swapped out.
     // Order matters -- clearing after load_scene_banks() would retire the
@@ -795,8 +814,38 @@ bool Application::tick(u32 held) {
         bullets_.release(i);
         if (player_.take_hit()) ++stats_.player_hits_taken;
     }
+    // Score: kills are counted by comparing the pool's cumulative total
+    // against what we last saw, so a wave that dies in one frame still scores
+    // every enemy.
+    const u32 killed_now = enemies_.stats().killed;
+    if (killed_now > last_killed_) {
+        for (u32 i = last_killed_; i < killed_now; ++i) scoring_.add_enemy_kill();
+        last_killed_ = killed_now;
+    }
+
+    // Graze: a hostile bullet inside the graze ring but outside the hitbox
+    // counts once, then is marked so it cannot be counted again.
+    const float graze_r = GRAZE_RADIUS;
+    const float graze_inner = player_.hitbox_radius();
+    for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+        Bullet& bullet = bullets_.mutable_bullet(i);
+        if (!bullet.alive || !bullet.hostile) continue;
+        if (bullet.delay > 0 || bullet.grazed) continue;
+        const float dx = bullet.x - player_.x();
+        const float dy = bullet.y - player_.y();
+        const float d2 = dx * dx + dy * dy;
+        if (d2 <= graze_r * graze_r && d2 > graze_inner * graze_inner) {
+            bullet.grazed = true;
+            scoring_.add_graze();
+        }
+    }
+
     stats_.player_lives = player_.lives();
     stats_.enemy_shots = enemies_.stats().enemy_shots;
+    stats_.score = scoring_.score();
+    stats_.score_cap = scoring_.cap();
+    stats_.grazes = scoring_.stats().grazes;
+    stats_.score_capped = scoring_.stats().capped;
     stats_.player_x = player_.x();
     stats_.player_y = player_.y();
     stats_.player_focused = player_.focused();

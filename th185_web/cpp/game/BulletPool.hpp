@@ -55,6 +55,9 @@ struct Bullet {
     // True for enemy fire. The two kinds share the pool because they share the
     // motion and lifetime rules, but they collide with different things.
     bool hostile = false;
+    // Set once a graze has been scored for this bullet, so a slow bullet
+    // passing the player cannot be counted twice.
+    bool grazed = false;
     bool alive = false;
 };
 

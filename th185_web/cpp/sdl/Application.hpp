@@ -43,6 +43,7 @@
 #include "../game/GameSession.hpp"
 #include "../game/Rng.hpp"
 #include "../game/SoftwareRaster.hpp"
+#include "../game/ScoreSystem.hpp"
 #include "../game/StageScript.hpp"
 #include "Types.hpp"
 
@@ -87,6 +88,10 @@ struct FrameStats {
     u32 player_hits_taken = 0;
     u32 player_lives = 0;
     u32 enemy_shots = 0;
+    u32 score = 0;
+    u32 score_cap = 0;
+    u32 grazes = 0;
+    u32 score_capped = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -124,6 +129,7 @@ public:
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
     const StageScript& stage() const { return stage_; }
+    const ScoreSystem& scoring() const { return scoring_; }
     const Archive& archive() const { return archive_; }
     const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
@@ -181,6 +187,10 @@ private:
     Player player_;
     BulletPool bullets_;
     EnemyPool enemies_;
+    ScoreSystem scoring_;
+    // Enemy killed-count seen on the previous frame, so a multi-kill frame
+    // scores every enemy instead of only the last one.
+    u32 last_killed_ = 0;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     // per-index bitmap because the interpreter re-records the same schedules
     // every tick (main is re-run from the start each frame).

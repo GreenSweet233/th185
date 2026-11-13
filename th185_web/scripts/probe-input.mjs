@@ -244,6 +244,34 @@ check('the scene controller declared schedules', schedTotal > 0);
 check('schedules fired over time', schedFired > 0);
 check('scheduled enemies exist', neSched > 0);
 
+// Scoring.
+//
+// The score cap is read from the executable (Difficulty::score_cap_for_stage
+// mirrors `imul eax, [0x4D1004]`), so it is a real rule rather than a guess:
+// it must be non-zero on every stage and grow with progression. The point
+// values themselves are inferred -- TH185 has no Replay to diff against.
+module._th185_load_stage(0);
+const cap0 = module._th185_score_cap();
+module._th185_load_stage(1);
+const cap1 = module._th185_score_cap();
+console.log('score caps  : stage0=' + cap0 + ' stage1=' + cap1);
+
+check('the score cap is non-zero on stage 0', cap0 > 0);
+check('the score cap grows with the stage', cap1 > cap0);
+
+module._th185_reset_scenario();
+tick(SHOOT, 600);
+const score = module._th185_score();
+const kills = module._th185_score_kills();
+const grazes = module._th185_grazes();
+const capped = module._th185_score_capped();
+console.log('scoring     : score=' + score + ' kills=' + kills
+            + ' grazes=' + grazes + ' capped=' + capped);
+
+check('killing enemies scores', score > 0);
+check('kills are counted', kills > 0);
+check('the score stays under the cap', capped === 0 || score <= cap1);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

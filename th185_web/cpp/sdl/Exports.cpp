@@ -447,6 +447,27 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_sub_code_base(const char* name) {
     return it == s.end() ? 0xFFFFFFFFu : it->second.code_base;
 }
 
+// --- scoring ---
+EMSCRIPTEN_KEEPALIVE unsigned th185_score() {
+    return th185::app::instance().stats().score;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_score_cap() {
+    return th185::app::instance().stats().score_cap;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_grazes() {
+    return th185::app::instance().stats().grazes;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_score_capped() {
+    return th185::app::instance().stats().score_capped;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_score_kills() {
+    return th185::app::instance().scoring().stats().kills;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
