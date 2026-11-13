@@ -529,6 +529,38 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_deaths() {
     return th185::app::instance().stats().deaths;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_sounds_loaded() {
+    return th185::app::instance().stats().sounds_loaded;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sounds_played() {
+    return th185::app::instance().stats().sounds_played;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sounds_dropped() {
+    return th185::app::instance().stats().sounds_dropped;
+}
+
+// Frames in the i-th loaded sample; 0xFFFFFFFF when the index is out of range.
+EMSCRIPTEN_KEEPALIVE unsigned th185_sound_frames(unsigned i) {
+    const auto& s = th185::app::instance().sounds().samples();
+    return i < s.size() ? s[i].frame_count : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sound_rate(unsigned i) {
+    const auto& s = th185::app::instance().sounds().samples();
+    return i < s.size() ? s[i].sample_rate : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sound_channels(unsigned i) {
+    const auto& s = th185::app::instance().sounds().samples();
+    return i < s.size() ? s[i].channels : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_sounds_throttled() {
+    return th185::app::instance().stats().sounds_throttled;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

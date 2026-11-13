@@ -45,6 +45,7 @@
 #include "../game/Rng.hpp"
 #include "../game/SoftwareRaster.hpp"
 #include "../game/ScoreSystem.hpp"
+#include "../game/SoundBank.hpp"
 #include "../game/StageScript.hpp"
 #include "Types.hpp"
 
@@ -102,6 +103,10 @@ struct FrameStats {
     u32 lives_gained = 0;
     u32 game_over = 0;
     u32 deaths = 0;
+    u32 sounds_played = 0;
+    u32 sounds_loaded = 0;
+    u32 sounds_dropped = 0;
+    u32 sounds_throttled = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -146,6 +151,7 @@ public:
     const StageScript& stage() const { return stage_; }
     const ScoreSystem& scoring() const { return scoring_; }
     const ItemPool& items() const { return items_; }
+    const SoundBank& sounds() const { return sounds_; }
     const Archive& archive() const { return archive_; }
     const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
@@ -177,6 +183,7 @@ public:
 
 private:
     bool register_stage_scripts(u32 stage_index);
+    void load_sound_effects();
     bool load_animation_bank(const char* name, u32 script_limit);
     // Loads the background bank named by the scene, then the enemy bank.
     void load_scene_banks();
@@ -204,6 +211,9 @@ private:
     BulletPool bullets_;
     EnemyPool enemies_;
     ItemPool items_;
+    SoundBank sounds_;
+    // Scratch buffer for one frame of mixed stereo audio.
+    std::vector<float> mix_buffer_;
     // Scratch buffer reused each frame; avoids a per-frame allocation.
     std::vector<ItemPool::Pickup> item_pickups_;
     ScoreSystem scoring_;

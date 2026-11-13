@@ -369,6 +369,39 @@ console.log('pickups     : score ' + scoreBeforePickups + ' -> ' + scoreAfterPic
 
 check('collecting stars adds score', scoreAfterPickups > scoreBeforePickups);
 
+// Sound effects.
+//
+// The se_*.wav files inside th185.dat are ordinary RIFF/WAVE containers
+// (unlike the BGM, which sits in thbgm.dat behind a ZWAV header). Both mono
+// and stereo, 8 and 16 bit appear in the shipped data.
+module._th185_load_stage(1);
+const soundCount = module._th185_sounds_loaded();
+const rates = [];
+const channels = [];
+for (let i = 0; i < soundCount; ++i) {
+  rates.push(module._th185_sound_rate(i));
+  channels.push(module._th185_sound_channels(i));
+}
+console.log('sounds      : loaded=' + soundCount + ' rates=' + JSON.stringify(rates)
+            + ' channels=' + JSON.stringify(channels));
+
+check('sound effects load from the archive', soundCount === 8);
+check('every sample has a sane rate', rates.every((r) => r === 22050 || r === 44100));
+check('mono and stereo samples both decode',
+      channels.includes(1) && channels.includes(2));
+
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(16);
+tick(SHOOT, 400);
+const played = module._th185_sounds_played();
+const dropped = module._th185_sounds_dropped();
+const throttled = module._th185_sounds_throttled();
+console.log('sound mix   : played=' + played + ' dropped=' + dropped
+            + ' throttled=' + throttled);
+
+check('game events start sounds', played > 0);
+check('throttling prevents voice starvation', dropped === 0);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

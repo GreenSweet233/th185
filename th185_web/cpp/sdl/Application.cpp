@@ -503,6 +503,8 @@ void Application::reset_scenario() {
     stats_.deaths = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
+    stats_.sounds_played = 0;
+    stats_.sounds_dropped = 0;
     stats_.score = 0;
     stats_.grazes = 0;
     stats_.score_capped = 0;
@@ -732,6 +734,36 @@ void Application::render() {
     stats_.live_animations = animations_.live_count();
 }
 
+void Application::load_sound_effects() {
+    if (!sounds_.samples().empty()) return;   // already loaded
+
+    // The names the game actually needs. Loading all 38 would waste memory on
+    // menu sounds this build never triggers.
+    static const char* kNames[] = {
+        "se_tan00.wav",     // player shot
+        "se_graze.wav",     // graze
+        "se_item00.wav",    // item pickup
+        "se_pldead00.wav",  // player death
+        "se_enep00.wav",    // enemy death
+        "se_damage00.wav",  // enemy hit
+        "se_powerup.wav",   // power up
+        "se_extend.wav",    // extra life
+    };
+
+    for (const char* name : kNames) {
+        std::size_t entry = archive_.entries.size();
+        for (std::size_t i = 0; i < archive_.entries.size(); ++i) {
+            if (archive_.entries[i].name == name) { entry = i; break; }
+        }
+        if (entry >= archive_.entries.size()) continue;
+
+        std::string sound_error;
+        std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &sound_error);
+        if (blob.empty()) continue;
+        sounds_.load(name, std::move(blob));
+    }
+    stats_.sounds_loaded = sounds_.stats().loaded;
+}
 void Application::set_difficulty(u32 difficulty) {
     // Out-of-range tiers fall back to 0 rather than propagating an invalid
     // value into the score-cap table, which only has 5 real entries.
@@ -753,6 +785,12 @@ bool Application::load_stage(u32 stage_index) {
     ecl_.set_difficulty(difficulty_);
     scoring_.configure(difficulty_, stage_index);
     scoring_.reset();
+
+    // Sound effects are ordinary RIFF/WAVE files inside the archive, so they
+    // load with the same extractor as everything else. Loading is idempotent
+    // per name: a stage reload does not duplicate samples.
+    load_sound_effects();
+    stats_.sounds_loaded = sounds_.stats().loaded;
     last_killed_ = 0;
     // Publish immediately: a caller that reads the cap right after load_stage
     // must not see the previous stage's value (stats_ is otherwise only synced
@@ -914,6 +952,7 @@ bool Application::tick(u32 held) {
     if (killed_now > last_killed_) {
         for (u32 i = last_killed_; i < killed_now; ++i) {
             scoring_.add_enemy_kill();
+            sounds_.play("se_enep00.wav", 0.7f, 3);
             // Drop at the dying enemy's last position. The pool does not keep
             // dead enemies, so use the most recent live one as an anchor; a
             // frame with several kills drops several items near that point.
@@ -941,6 +980,7 @@ bool Application::tick(u32 held) {
     items_.update(player_.x(), player_.y(), &item_pickups_);
     u32 frags_before = items_.stats().life_fragments;
     for (const ItemPool::Pickup& pickup : item_pickups_) {
+        sounds_.play("se_item00.wav", 0.6f, 3);
         if (pickup.kind == ItemKind::LifeFragment) {
             // Every LIFE_FRAGMENTS_PER_LIFE-th fragment grants a life. The
             // counter lives in ItemPool, so compare the crossing point.
@@ -973,6 +1013,7 @@ bool Application::tick(u32 held) {
         if (d2 <= graze_r * graze_r && d2 > graze_inner * graze_inner) {
             bullet.grazed = true;
             scoring_.add_graze();
+            sounds_.play("se_graze.wav", 0.4f, 6);
         }
     }
 
@@ -985,6 +1026,7 @@ bool Application::tick(u32 held) {
     const u32 lives_now = player_.lives();
     if (lives_now < last_lives_) {
         ++stats_.deaths;
+        sounds_.play("se_pldead00.wav", 0.8f, 30);
         if (lives_now == 0) {
             stats_.game_over = 1;
         } else {
@@ -1006,6 +1048,24 @@ bool Application::tick(u32 held) {
     stats_.player_bombs = player_.stats().bombs;
     stats_.bullets_alive = bullets_.stats().alive;
     stats_.bullets_fired = player_.stats().bullets_fired;
+    stats_.sounds_played = sounds_.stats().played;
+    stats_.sounds_dropped = sounds_.stats().dropped;
+    stats_.sounds_throttled = sounds_.stats().throttled;
+
+    // Advance the mixer by one frame's worth of samples.
+    //
+    // Without this the voices never progress and the pool fills up: a test
+    // measured played=64 (the cap) with 88 drops because nothing consumed the
+    // samples. There is no audio device in the WASM build yet, so the buffer is
+    // mixed and discarded -- but the voice lifecycle has to run for the counts
+    // to mean anything.
+    {
+        constexpr u32 MIX_RATE = 22050;
+        constexpr u32 FRAMES_PER_TICK = MIX_RATE / 60;   // 367
+        mix_buffer_.resize(std::size_t(FRAMES_PER_TICK) * 2);
+        sounds_.mix(mix_buffer_.data(), FRAMES_PER_TICK);
+        sounds_.advance_frame();
+    }
 
     // Advance the animation tree, then draw it.
     animations_.update(rng_, 1.0f);

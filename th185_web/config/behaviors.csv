@@ -304,3 +304,7 @@ BHV-ITEM-004,SYS-GAME-ITEM,"★ 道具池 256 容量固定池 + 空闲槽栈；c
 BHV-LIFE-001,SYS-GAME-PLAYER,"★★★★ 死亡与重生：take_hit 扣命后玩家重生回 (0,180) 并获无敌帧；命尽时 game_over=1 结束本局；用「生命数变化」检测死亡而不引入 dying 状态",original,observed,verified,"th185_web/scripts/probe-input.mjs","deaths=3 lives=0 over=1"
 BHV-LIFE-002,SYS-GAME-PLAYER,"★★ 道具拾取效果（计分行为 observed；+500/+1000 与 4 换 1 的数值为 inferred）：分数星与能力星直接计入分数，生命碎片攒够换命（add_life，上限 8 条）",original,observed,verified,"th185_web/scripts/probe-input.mjs","score 0→49650"
 BHV-LIFE-003,SYS-GAME-PLAYER,"★ ItemPool::update 改为输出 Pickup 列表而非计数——池知道捡到了什么，会话决定它意味着什么（职责分离）",original,observed,verified,"th185_web/scripts/probe-input.mjs","collected=96"
+BHV-AUDIO-001,SYS-AUDIO-WAVE,"★★★★ th185.dat 里 38 个 se_*.wav 都是标准 RIFF/WAVE 容器；实测 mono/stereo × 22050/44100Hz × 8/16bit 全部正确解析为 -1..1 浮点采样",original,observed,verified,"th185_web/scripts/probe-input.mjs","loaded=8 rates/channels 各异"
+BHV-AUDIO-002,SYS-AUDIO-WAVE,"★★★ Voice 池 + 混音 + 节流：64 个 voice；每 tick 混 367 帧（22050/60）并推进 frame 计数；同一音效在间隔内重复播放被节流",original,observed,verified,"th185_web/scripts/probe-input.mjs","played=265 dropped=0 throttled=1023"
+BHV-AUDIO-003,SYS-AUDIO-WAVE,"★ 关键修正：mix() 从未被调用导致 voice 永不释放——played 卡在 64 上限且 dropped=120；加混音推进后 played=119 dropped=33；再加节流（graze 6 帧、击杀/拾取 3 帧、死亡 30 帧）后 dropped=0",original,observed,verified,"th185_web/scripts/probe-input.mjs","120→33→0"
+BHV-AUDIO-004,SYS-AUDIO-WAVE,"★ thbgm.dat 格式探查：magic=ZWAV(0x5641575A) ver=1 v1=0x1850；头部只有 7 个非零字节（0x00-0x09），数据从 0x11b80 开始是 16 位 PCM；没有索引表，BGM 索引未定位",original,observed,implemented,"","未完成"
