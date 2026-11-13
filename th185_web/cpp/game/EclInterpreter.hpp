@@ -87,6 +87,8 @@ enum class EclOp : u16 {
     Op524SceneSync = 524,
     Op316BossExtra = 316,
     Op440EffectSpawn = 440,
+    Op640CallNamedTail = 640,
+    Op91FloatBlock = 91,
     Op612PatternExtended = 612,
     Op613FrameValue = 613,
     Op614PatternCount = 614,

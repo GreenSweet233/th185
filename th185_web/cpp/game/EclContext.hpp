@@ -245,6 +245,11 @@ struct EclContext {
     u32 wait_values = 0;
     i32 angle_normalize_ref = 0;
     u32 angle_normalizes = 0;
+    u32 named_tail_length = 0;
+    std::string named_tail_target;
+    u32 named_tail_calls = 0;
+    std::array<float, 10> float_block{};
+    u32 float_blocks = 0;
     u32 effect_spawn_mode = 0;
     float effect_spawn_scale = 0.0f;
     u32 effect_spawns = 0;

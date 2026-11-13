@@ -964,6 +964,11 @@ bool Application::tick(u32 held) {
         ecl_.wait_values = runner.context.wait_values;
         ecl_.angle_normalize_ref = runner.context.angle_normalize_ref;
         ecl_.angle_normalizes = runner.context.angle_normalizes;
+        ecl_.named_tail_length = runner.context.named_tail_length;
+        ecl_.named_tail_target = std::move(runner.context.named_tail_target);
+        ecl_.named_tail_calls = runner.context.named_tail_calls;
+        ecl_.float_block = runner.context.float_block;
+        ecl_.float_blocks = runner.context.float_blocks;
         ecl_.effect_spawn_mode = runner.context.effect_spawn_mode;
         ecl_.effect_spawn_scale = runner.context.effect_spawn_scale;
         ecl_.effect_spawns = runner.context.effect_spawns;

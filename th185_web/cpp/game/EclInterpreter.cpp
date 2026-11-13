@@ -138,7 +138,7 @@ const OpName kOpNames[] = {
     {412, "PatternExtra"}, {401, "PatternAux"}, {504, "BossSpawnBox"},
     {629, "BossConfig"}, {632, "AttackSlot"}, {573, "SpawnCount"}, {316, "BossExtra"},
     {612, "PatternExtended"}, {613, "FrameValue"}, {614, "PatternCount"},
-    {440, "EffectSpawn"},
+    {440, "EffectSpawn"}, {640, "CallNamedTail"}, {91, "FloatBlock"},
     {524, "SceneSync"},
     {601, "BulletConsume"},
     {527, "SpawnRect"}, {523, "BossWaitMark"}, {536, "AngleTable"}, {540, "SpawnCommit"},
@@ -1178,6 +1178,38 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.boss_extra_b = arg_u32(payload, 2);
             context.boss_extra_c = arg_u32(payload, 3);
             ++context.boss_extras;
+            break;
+        }
+        case EclOp::Op640CallNamedTail: {
+            // Named call whose name sits at payload + 16.
+            //
+            // Evidence: 1 occurrence (boss19.ecl), size 48. The payload carries
+            // the plain text "Boss19BossCard2_et" after two u32s:
+            //   [0][0][4][20]"Boss19BossCard2_et"...
+            // Context is prev=op609 next=op609.
+            //
+            // Same calling convention as op514 (name after a small header), so
+            // the name is extracted rather than the whole block recorded.
+            context.named_tail_length = arg_u32(payload, 2);
+            context.named_tail_target.assign(
+                reinterpret_cast<const char*>(payload) + 12, 32);
+            ++context.named_tail_calls;
+            break;
+        }
+
+        case EclOp::Op91FloatBlock: {
+            // A block of floats describing a motion.
+            //
+            // Evidence: 18 occurrences across 10 files, size ALWAYS 40 so the
+            // payload is 10 words. Context is prev=op609 (a float compare) or
+            // prev=op611 (EMIT) next=op12 (Jump) / op42.
+            //
+            // Reading as floats: sample 2 gives [0][0][8.0][0][4.0][600.0][10.0]
+            // -- position, speed and frame counts, the shape a motion takes.
+            for (u32 k = 0; k < 10; ++k) {
+                context.float_block[k] = arg_float(payload, k);
+            }
+            ++context.float_blocks;
             break;
         }
         case EclOp::Op440EffectSpawn: {
