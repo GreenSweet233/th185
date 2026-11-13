@@ -137,6 +137,8 @@ const OpName kOpNames[] = {
     {501, "SetPositionPair"}, {503, "BossPhase"}, {505, "BranchAction"},
     {412, "PatternExtra"}, {401, "PatternAux"}, {504, "BossSpawnBox"},
     {629, "BossConfig"}, {632, "AttackSlot"}, {573, "SpawnCount"}, {316, "BossExtra"},
+    {612, "PatternExtended"}, {613, "FrameValue"}, {614, "PatternCount"},
+    {440, "EffectSpawn"},
     {524, "SceneSync"},
     {601, "BulletConsume"},
     {527, "SpawnRect"}, {523, "BossWaitMark"}, {536, "AngleTable"}, {540, "SpawnCommit"},
@@ -1178,6 +1180,62 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             ++context.boss_extras;
             break;
         }
+        case EclOp::Op440EffectSpawn: {
+            // Spawns an effect object with one float parameter.
+            //
+            // Evidence: 14 occurrences across 11 files, size ALWAYS 20 so the
+            // payload is [u32][f32][u32], and the payload is IDENTICAL in all
+            // 14: [8][-1.0f][0]. Context is prev=op51 (a float add) next=op445
+            // or op16 (SpawnNamed) in 14/14 -- so it sits right before an
+            // object is spawned.
+            context.effect_spawn_mode = arg_u32(payload, 0);
+            context.effect_spawn_scale = arg_float(payload, 1);
+            ++context.effect_spawns;
+            break;
+        }
+
+        case EclOp::Op612PatternExtended: {
+            // Extended bullet-pattern parameters.
+            //
+            // Evidence: 13 occurrences across 8 files, size ALWAYS 60 so the
+            // payload is exactly 14 u32s. Context is prev=op611 (the EMIT
+            // instruction) in 7/13, so it refines the pattern just emitted.
+            //
+            // Reading the words as mixed types gives sensible values:
+            //   [3]  = 16            (a count)
+            //   [4]  = 30 / 1 / 60   (frames)
+            //   [5]  = 1             (a flag)
+            //   [8]  = 3.0f          (0x40408000)
+            //   [10] = 1.5708f       (0x3FC90FDB = pi/2, an angle)
+            //   [11] = 622847.6f     (0x49180F7A -- a packed sentinel)
+            for (u32 k = 0; k < 14; ++k) {
+                context.pattern_ext[k] = arg_u32(payload, k);
+            }
+            ++context.pattern_exts;
+            break;
+        }
+
+        case EclOp::Op614PatternCount: {
+            // A single small integer refining the emitted pattern.
+            //
+            // Evidence: 13 occurrences across 8 files, size ALWAYS 24 so the
+            // payload is [u32][u32][u32][u32]. payload[1] is 1 (7x), 2 (1x),
+            // 3 (1x). Context is prev=op611 in 6/13 and prev=op628 in 1/13.
+            context.pattern_count = arg_u32(payload, 1);
+            ++context.pattern_counts;
+            break;
+        }
+
+        case EclOp::Op613FrameValue: {
+            // One frame-count value.
+            //
+            // Evidence: only 1 occurrence (boss27.ecl), size 16, payload
+            // [0][0x3C=60]. Context is prev=op525 next=op523. Recorded rather
+            // than interpreted -- one sample is not enough to claim semantics.
+            context.frame_value = arg_u32(payload, 0);
+            ++context.frame_values;
+            break;
+        }
         case EclOp::Op629BossConfig: {
             // Boss configuration: one float and a flag word.
             //
@@ -1717,10 +1775,40 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.owner.cancel_secondary();
             break;
 
+        case EclOp::AngleTo: {
+            // Angle-to-target with a trailing parameter block.
+            //
+            // Evidence: 4 occurrences across 4 files, size ALWAYS 36 so the
+            // payload is 8 words. Context is prev=op51 (float add) in 2/4.
+            // Reading them as floats gives coordinates and angles; -9994 and
+            // -9963 are builtin references, not positions.
+            context.angle_to_a = arg_float(payload, 0);
+            context.angle_to_b = arg_float(payload, 1);
+            context.angle_to_c = arg_float(payload, 2);
+            context.angle_to_d = arg_float(payload, 3);
+            context.angle_to_e = arg_float(payload, 4);
+            ++context.angle_to_calls;
+            break;
+        }
+
+        case EclOp::NormalizeAngle: {
+            // Normalizes an angle in place.
+            //
+            // It must NOT pop: 5 of the 9 occurrences enter with an empty
+            // operand stack and faulted when this case popped. The value it
+            // normalizes therefore lives in a frame slot named by the payload,
+            // not on the stack -- the same shape as op45 (which I originally
+            // assumed was StoreFloat and is not).
+            //
+            // Until that slot is identified this records the request and leaves
+            // the stack alone; a stack change here is what broke boss13.
+            context.angle_normalize_ref = arg_i32(payload, 0);
+            ++context.angle_normalizes;
+            break;
+        }
+
         case EclOp::Polar:
-        case EclOp::NormalizeAngle:
         case EclOp::LengthSquared:
-        case EclOp::AngleTo:
         default:
             ++stats_.unsupported_count;
             if (stats_.first_unsupported_opcode == 0) {
