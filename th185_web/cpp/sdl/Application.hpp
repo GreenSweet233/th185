@@ -162,6 +162,12 @@ public:
     const ItemPool& items() const { return items_; }
     const SoundBank& sounds() const { return sounds_; }
     const BgmPlayer& bgm() const { return bgm_; }
+
+    // One tick's worth of mixed stereo audio (22050/60 frames). The buffer is
+    // owned by Application and rewritten every tick, so the pointer is valid
+    // until the next tick.
+    float* audio_frame() { return mix_buffer_.data(); }
+    u32 audio_frame_samples() const { return u32(mix_buffer_.size()); }
     const Archive& archive() const { return archive_; }
     const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }

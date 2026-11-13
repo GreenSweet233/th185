@@ -98,7 +98,7 @@ void BgmPlayer::stop() {
 
 void BgmPlayer::mix(float* out, u32 frames) {
     if (!out || frames == 0) return;
-    for (u32 i = 0; i < frames * 2; ++i) out[i] = 0.0f;
+    // No clearing here: see the header comment.
     if (!playing_ || !stream_ || track_ >= tracks_.size()) return;
 
     const BgmTrack& track = tracks_[track_];

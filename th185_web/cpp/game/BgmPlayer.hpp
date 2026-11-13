@@ -71,7 +71,9 @@ public:
     bool is_playing() const { return playing_; }
     u32 current_track() const { return playing_ ? track_ : 0xFFFFFFFFu; }
 
-    // Mixes `frames` stereo float samples into `out`. Loops at loop_start.
+    // ADDS `frames` stereo float samples into `out`. It does not clear the
+    // buffer: the sound bank and the BGM both mix into the same frame, and a
+    // clearing mixer would erase whatever ran before it.
     void mix(float* out, u32 frames);
 
     const std::vector<BgmTrack>& tracks() const { return tracks_; }

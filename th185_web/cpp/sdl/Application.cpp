@@ -1103,9 +1103,9 @@ bool Application::tick(u32 held) {
         constexpr u32 MIX_RATE = 22050;
         constexpr u32 FRAMES_PER_TICK = MIX_RATE / 60;   // 367
         mix_buffer_.resize(std::size_t(FRAMES_PER_TICK) * 2);
-        sounds_.mix(mix_buffer_.data(), FRAMES_PER_TICK);
+        sounds_.mix(mix_buffer_.data(), FRAMES_PER_TICK);   // clears, then adds
         sounds_.advance_frame();
-        bgm_.mix(mix_buffer_.data(), FRAMES_PER_TICK);
+        bgm_.mix(mix_buffer_.data(), FRAMES_PER_TICK);      // adds only
         stats_.bgm_track = bgm_.current_track();
         stats_.bgm_playing = bgm_.is_playing() ? 1u : 0u;
     }

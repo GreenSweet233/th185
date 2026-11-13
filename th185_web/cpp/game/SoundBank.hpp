@@ -79,8 +79,9 @@ public:
     void advance_frame() { ++frame_; }
     u32 frame() const { return frame_; }
 
-    // Advances every voice by `frames` and sums into `out` (stereo, float).
-    // `out` must hold frames * 2 floats.
+    // Clears `out` then sums every live voice into it (stereo float).
+    // `out` must hold frames * 2 floats. This is the FIRST mixer in the chain,
+    // so it owns the clear; later mixers only add.
     void mix(float* out, u32 frames);
 
     void stop_all();

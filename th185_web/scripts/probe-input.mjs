@@ -411,6 +411,40 @@ const bgmTracks = module._th185_bgm_tracks();
 console.log('bgm index   : tracks=' + bgmTracks);
 check('the BGM index parses', bgmTracks === 10);
 
+// Audio output.
+//
+// The shell pulls one tick of mixed stereo audio after each tick. Two mixers
+// write into the same buffer (sound effects and BGM), so the first clears and
+// the second only adds -- a clearing BGM mixer erased the effects, which showed
+// up as played>0 with an all-zero buffer.
+module._th185_load_stage(1);
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(16);
+
+let audioNonZero = 0;
+let audioPeak = 0;
+for (let i = 0; i < 200; ++i) {
+  module._th185_tick(SHOOT);
+  const pointer = module._th185_audio_frame();
+  const samples = module._th185_audio_frame_samples();
+  if (!pointer || !samples) continue;
+  const base = pointer >> 2;
+  for (let k = 0; k < samples; ++k) {
+    const v = Math.abs(module.HEAPF32[base + k]);
+    if (v > 0.001) ++audioNonZero;
+    if (v > audioPeak) audioPeak = v;
+  }
+}
+console.log('audio       : samples/tick=' + module._th185_audio_frames_per_tick()
+            + ' rate=' + module._th185_audio_rate()
+            + ' nonZero=' + audioNonZero + ' peak=' + audioPeak.toFixed(2));
+
+check('the mixer produces 367 frames per tick at 22050 Hz',
+      module._th185_audio_frames_per_tick() === 367 &&
+      module._th185_audio_rate() === 22050);
+check('the audio buffer is not silent', audioNonZero > 0);
+check('the audio stays inside -1..1', audioPeak <= 1.0);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

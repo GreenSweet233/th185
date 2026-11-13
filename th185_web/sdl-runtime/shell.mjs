@@ -112,6 +112,76 @@ function present() {
   return true;
 }
 
+// --- audio ---------------------------------------------------------------
+//
+// The WASM mixer produces one tick of stereo float32 at 22050 Hz. Browsers
+// will not let a page start audio without a gesture, so the context is created
+// lazily on the first pointer/key event and the queue is drained from a
+// ScriptProcessor callback sized to exactly one tick.
+//
+// Why ScriptProcessor rather than AudioWorklet: the worklet needs a separate
+// module file and a message channel, and the mixer already runs inside the
+// same thread as the frame loop. One tick is 367 frames at 22050 Hz, which is
+// comfortably inside what ScriptProcessor can keep up with.
+const AUDIO_RATE = 22050;
+
+let audioContext = null;
+let audioNode = null;
+let audioEnabled = false;
+let audioUnderruns = 0;
+let audioTicks = 0;
+
+function ensureAudio() {
+  if (audioContext || !core) return;
+  const Ctor = window.AudioContext || window.webkitAudioContext;
+  if (!Ctor) return;
+
+  const framesPerTick = core._th185_audio_frames_per_tick();
+  const rate = core._th185_audio_rate();
+  if (!framesPerTick || !rate) return;
+
+  audioContext = new Ctor({ sampleRate: rate });
+  audioNode = audioContext.createScriptProcessor(framesPerTick, 0, 2);
+  audioNode.onaudioprocess = (event) => {
+    const left = event.outputBuffer.getChannelData(0);
+    const right = event.outputBuffer.getChannelData(1);
+    const count = left.length;
+
+    const pointer = core._th185_audio_frame();
+    const samples = core._th185_audio_frame_samples();
+    if (!pointer || samples < count * 2) {
+      left.fill(0);
+      right.fill(0);
+      ++audioUnderruns;
+      return;
+    }
+
+    // HEAPF32 can be detached by a memory growth, so re-read it each call.
+    const heap = core.HEAPF32;
+    const base = pointer >> 2;
+    for (let i = 0; i < count; ++i) {
+      left[i] = heap[base + i * 2];
+      right[i] = heap[base + i * 2 + 1];
+    }
+    ++audioTicks;
+  };
+  audioNode.connect(audioContext.destination);
+  audioEnabled = true;
+}
+
+function resumeAudio() {
+  ensureAudio();
+  if (audioContext && audioContext.state === 'suspended') {
+    audioContext.resume().catch(() => {});
+  }
+}
+
+function audioHealth() {
+  if (!audioEnabled) return '音频未启用';
+  if (!audioContext) return '音频初始化中';
+  if (audioContext.state !== 'running') return '音频已挂起';
+  return '音频 ' + audioTicks + ' 块' + (audioUnderruns ? ' · 欠载 ' + audioUnderruns : '');
+}
 function frame(now) {
   if (!running) return;
 
@@ -147,13 +217,24 @@ function frame(now) {
     const live = core._th185_live_animations();
     document.querySelector('#health').textContent =
       paused ? '已暂停'
-             : fps.toFixed(0) + ' FPS · ' + quads + ' 精灵 · ' + live + ' 动画';
+             : fps.toFixed(0) + ' FPS · ' + quads + ' 精灵 · ' + live + ' 动画'
+               + ' · ' + audioHealth();
     frames = 0;
     healthAt = now;
   }
   ++frames;
 
-  requestAnimationFrame(frame);
+  // Audio needs a user gesture. Bind once, then unhook so later clicks do
+// not re-create the context.
+const wakeAudio = () => {
+  resumeAudio();
+  window.removeEventListener('pointerdown', wakeAudio);
+  window.removeEventListener('keydown', wakeAudio);
+};
+window.addEventListener('pointerdown', wakeAudio);
+window.addEventListener('keydown', wakeAudio);
+
+requestAnimationFrame(frame);
 }
 
 async function prepare() {

@@ -601,6 +601,31 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bgm_rate(unsigned i) {
     return i < t.size() ? t[i].sample_rate : 0xFFFFFFFFu;
 }
 
+// --- audio output ---
+//
+// The mixer runs inside tick(), but a browser needs the samples to hand to
+// WebAudio. Rather than interleaving callbacks, the shell pulls one frame of
+// audio after each tick: `th185_audio_frames()` samples at 22050 Hz stereo,
+// interleaved float32, in a buffer that stays valid until the next call.
+constexpr unsigned AUDIO_MIX_RATE = 22050;
+constexpr unsigned AUDIO_FRAMES_PER_TICK = AUDIO_MIX_RATE / 60;
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_audio_frames_per_tick() {
+    return AUDIO_FRAMES_PER_TICK;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_audio_rate() {
+    return AUDIO_MIX_RATE;
+}
+
+EMSCRIPTEN_KEEPALIVE float* th185_audio_frame() {
+    return th185::app::instance().audio_frame();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_audio_frame_samples() {
+    return th185::app::instance().audio_frame_samples();
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

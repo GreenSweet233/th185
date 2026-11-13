@@ -281,7 +281,7 @@ async function main() {
         "-sSTACK_SIZE=5242880",
         "-sDEFAULT_TO_CXX=1",
         "-sFORCE_FILESYSTEM=1",
-        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8",
+        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8,HEAPF32",
         // Every th185_* function is EMSCRIPTEN_KEEPALIVE, but exporting them
         // explicitly keeps the JS surface auditable.
         "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\",\"_th185_initialize\"," +
@@ -290,6 +290,7 @@ async function main() {
           "\"_th185_ecl_instructions\",\"_th185_ecl_faults\"," +
           "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\"," +
           "\"_th185_frame_width\",\"_th185_frame_height\",\"_th185_frame_pixels\",\"_th185_frame_bytes\"," +
+      "\"_th185_audio_frames_per_tick\",\"_th185_audio_rate\",\"_th185_audio_frame\",\"_th185_audio_frame_samples\"," +
           "\"_th185_render_quads\",\"_th185_live_animations\"," +
           "\"_th185_animation_bank\",\"_th185_stage_index\"," +
           "\"_th185_player_x\",\"_th185_player_y\",\"_th185_player_focused\"," +
