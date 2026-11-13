@@ -496,6 +496,7 @@ void Application::reset_scenario() {
     stats_.collision_hits = 0;
     stats_.player_hits_taken = 0;
     scoring_.reset();
+    items_.clear();
     last_killed_ = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
@@ -660,6 +661,62 @@ void Application::render() {
             const u32 texture_index = sprite.texture;
             if (texture_index < bullet_bank->textures.size()) {
                 quad.texture = &bullet_bank->textures[texture_index];
+            }
+        }
+
+        raster_.draw(quad);
+        ++quads;
+    }
+    // Items use front.anm's pickup icons. Without the bank loaded they fall
+    // back to tinted squares, which keeps position and lifetime visible
+    // without inventing art.
+    const AnimationBank* front_bank = nullptr;
+    for (const AnimationBank& bank : banks_) {
+        if (bank.name == "front.anm") { front_bank = &bank; break; }
+    }
+    for (u32 i = 0; i < ITEM_CAPACITY; ++i) {
+        const Item& item = items_.items()[i];
+        if (!item.alive) continue;
+
+        AnmQuad quad;
+        const float half = 11.0f;
+        quad.x[0] = float(raster_.width()) * 0.5f + item.x - half;
+        quad.y[0] = float(raster_.height()) * 0.5f + item.y - half;
+        quad.x[1] = quad.x[0] + half * 2.0f;
+        quad.y[1] = quad.y[0];
+        quad.x[2] = quad.x[1];
+        quad.y[2] = quad.y[0] + half * 2.0f;
+        quad.x[3] = quad.x[0];
+        quad.y[3] = quad.y[2];
+
+        quad.u[0] = 0.0f;
+        quad.v[0] = 0.0f;
+        quad.u[1] = 1.0f;
+        quad.v[1] = 0.0f;
+        quad.u[2] = 1.0f;
+        quad.v[2] = 1.0f;
+        quad.u[3] = 0.0f;
+        quad.v[3] = 1.0f;
+        // Life fragments read as pink hearts, stars as green.
+        quad.tint = (item.kind == ItemKind::LifeFragment)
+                        ? Rgba8{255, 96, 160, 255}
+                        : Rgba8{96, 255, 128, 255};
+        quad.blend = AnmBlendMode::Alpha;
+        quad.nearest = true;
+
+        if (front_bank && !front_bank->textures.empty() &&
+            item.sprite < front_bank->resource.sprites.size()) {
+            const AnmSprite& sprite = front_bank->resource.sprites[item.sprite];
+            quad.u[0] = sprite.u0;
+            quad.v[0] = sprite.v0;
+            quad.u[1] = sprite.u1;
+            quad.v[1] = sprite.v0;
+            quad.u[2] = sprite.u1;
+            quad.v[2] = sprite.v1;
+            quad.u[3] = sprite.u0;
+            quad.v[3] = sprite.v1;
+            if (sprite.texture < front_bank->textures.size()) {
+                quad.texture = &front_bank->textures[sprite.texture];
             }
         }
 
@@ -851,9 +908,36 @@ bool Application::tick(u32 held) {
     // every enemy.
     const u32 killed_now = enemies_.stats().killed;
     if (killed_now > last_killed_) {
-        for (u32 i = last_killed_; i < killed_now; ++i) scoring_.add_enemy_kill();
+        for (u32 i = last_killed_; i < killed_now; ++i) {
+            scoring_.add_enemy_kill();
+            // Drop at the dying enemy's last position. The pool does not keep
+            // dead enemies, so use the most recent live one as an anchor; a
+            // frame with several kills drops several items near that point.
+            float drop_x = 0.0f;
+            float drop_y = -120.0f;
+            for (u32 e = 0; e < ENEMY_CAPACITY; ++e) {
+                const Enemy& enemy = enemies_.enemies()[e];
+                if (!enemy.alive) continue;
+                drop_x = enemy.x;
+                drop_y = enemy.y;
+                break;
+            }
+            // Every fourth kill is a life fragment, the rest are stars.
+            const u32 n = i + 1;
+            const ItemKind kind = (n % LIFE_FRAGMENTS_PER_LIFE == 0)
+                                    ? ItemKind::LifeFragment : ItemKind::PointStar;
+            items_.spawn(drop_x, drop_y, kind);
+        }
         last_killed_ = killed_now;
     }
+
+    // Items fall and are collected.
+    const u32 picked = items_.update(player_.x(), player_.y());
+    for (u32 i = 0; i < picked; ++i) scoring_.add_bullet_cancel(0);
+    stats_.items_alive = items_.stats().alive;
+    stats_.items_collected = items_.stats().collected;
+    stats_.life_fragments = items_.stats().life_fragments;
+    stats_.lives_gained = items_.stats().lives_gained;
 
     // Graze: a hostile bullet inside the graze ring but outside the hitbox
     // counts once, then is marked so it cannot be counted again.

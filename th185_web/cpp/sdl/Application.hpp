@@ -30,6 +30,7 @@
 // behind the same surface.
 
 #include "../game/AnmManager.hpp"
+#include "../game/ItemPool.hpp"
 #include "../game/Player.hpp"
 #include "../game/BulletPool.hpp"
 #include "../game/EnemyPool.hpp"
@@ -95,6 +96,10 @@ struct FrameStats {
     u32 difficulty = 0;
     u32 bombs_used = 0;
     u32 bombs_left = 0;
+    u32 items_alive = 0;
+    u32 items_collected = 0;
+    u32 life_fragments = 0;
+    u32 lives_gained = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;
@@ -138,6 +143,7 @@ public:
     const EclContext& ecl() const { return ecl_; }
     const StageScript& stage() const { return stage_; }
     const ScoreSystem& scoring() const { return scoring_; }
+    const ItemPool& items() const { return items_; }
     const Archive& archive() const { return archive_; }
     const std::vector<u8>& archive_bytes() const { return archive_bytes_; }
     i32 last_wave_template() const { return ecl_.last_wave_template; }
@@ -195,6 +201,7 @@ private:
     Player player_;
     BulletPool bullets_;
     EnemyPool enemies_;
+    ItemPool items_;
     ScoreSystem scoring_;
     // Enemy killed-count seen on the previous frame, so a multi-kill frame
     // scores every enemy instead of only the last one.

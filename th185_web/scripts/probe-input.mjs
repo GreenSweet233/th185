@@ -323,6 +323,24 @@ console.log('bomb stock  : left=' + module._th185_bombs_left()
 check('the stock cannot go negative', module._th185_bombs_left() === 0);
 check('only three bombs are usable', module._th185_bombs_used() === 3);
 
+// Items.
+//
+// Enemies drop pickups on death. There is no item.anm in the archive; the
+// icons live in front.anm (sprites 7..18), confirmed by decoding the atlas.
+module._th185_load_stage(1);
+module._th185_reset_scenario();
+module._th185_spawn_test_wave(16);
+tick(SHOOT, 400);
+const itemsSpawned = module._th185_score_kills();
+const itemsCollected = module._th185_items_collected();
+const frags = module._th185_life_fragments();
+console.log('items       : kills=' + itemsSpawned + ' collected=' + itemsCollected
+            + ' lifeFragments=' + frags);
+
+check('killing enemies drops items', itemsSpawned > 0);
+check('items fall and are collected', itemsCollected > 0);
+check('life fragments are counted', frags > 0);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

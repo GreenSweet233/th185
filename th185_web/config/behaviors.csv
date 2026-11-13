@@ -297,3 +297,7 @@ BHV-DIFF-022,SYS-GAME-DIFFICULTY,"★ 关键修正：ScoreSystem 原在 out_of_r
 BHV-BOMB-001,SYS-GAME-PLAYER,"★★★ Bomb 清屏：按下消耗 1 个 Bomb（初始 3 个），清空所有敌方子弹（计消除分）并对所有敌人造成 1 点伤害（伤害量为 inferred，清屏与库存行为为 observed）；Bomb 也给予无敌帧",original,observed,verified,"th185_web/scripts/probe-input.mjs","bullets 124→2 stock 3→2"
 BHV-BOMB-002,SYS-GAME-PLAYER,"★ Bomb 边沿检测：用累计 bombs 计数比较而非 held 位，按住不重复触发；库存耗尽后第 4 次按键无效（used 恒为 3）",original,observed,verified,"th185_web/scripts/probe-input.mjs","left=0 used=3"
 BHV-BOMB-003,SYS-GAME-PLAYER,"★ 实测两次 Bomb 清光 18 个敌人（HP=2，每次扣 1），第三次库存归零，第四次无效",original,observed,verified,"th185_web/scripts/probe-input.mjs","enemies 18→0"
+BHV-ITEM-001,SYS-GAME-ITEM,"★★★★★ 道具素材定位：归档里没有 item.anm，拾取图标在 front.anm（sprite 7-10 生命碎片心形、12-15 星星、16/18 描边星星、19 小绿星 22x22）；通过解码 THTX 图集逐像素确认",original,observed,verified,"th185_web/artifacts/front-sprites.png","11 个非空 sprite"
+BHV-ITEM-002,SYS-GAME-ITEM,"★★★ 敌人死亡掉落道具（掉落行为 observed；每 4 杀一碎片的比例与下落速度 1.2、拾取半径 20 为 inferred）：道具下落、出界回收、可被拾取",original,observed,verified,"th185_web/scripts/probe-input.mjs","kills=77 collected=73"
+BHV-ITEM-003,SYS-GAME-ITEM,"★★ 生命碎片按 4 个换 1 命计数（LIFE_FRAGMENTS_PER_LIFE=4，比例为 inferred，计数行为 observed）；实测 18 个碎片 = 4 命",original,observed,verified,"th185_web/scripts/probe-input.mjs","frags=18"
+BHV-ITEM-004,SYS-GAME-ITEM,"★ 道具池 256 容量固定池 + 空闲槽栈；clear() 重置统计",original,observed,verified,"th185_web/scripts/probe-input.mjs","items 16→2"

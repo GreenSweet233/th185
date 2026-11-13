@@ -492,6 +492,30 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bombs_used() {
     return th185::app::instance().stats().bombs_used;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_items_alive() {
+    return th185::app::instance().stats().items_alive;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_items_collected() {
+    return th185::app::instance().stats().items_collected;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_life_fragments() {
+    return th185::app::instance().stats().life_fragments;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_item_x_at(unsigned i) {
+    const auto& p = th185::app::instance().items();
+    return i < th185::ITEM_CAPACITY && p.items()[i].alive
+               ? unsigned(int(p.items()[i].x + 4096.0f)) : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_item_y_at(unsigned i) {
+    const auto& p = th185::app::instance().items();
+    return i < th185::ITEM_CAPACITY && p.items()[i].alive
+               ? unsigned(int(p.items()[i].y + 4096.0f)) : 0xFFFFFFFFu;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
