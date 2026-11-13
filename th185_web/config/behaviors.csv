@@ -316,3 +316,8 @@ BHV-AUDIO-009,SYS-AUDIO-WAVE,"★★★★ WebAudio 输出打通：th185_audio_f
 BHV-AUDIO-010,SYS-AUDIO-WAVE,"★★★★ 关键 bug：两个 mixer 都写同一缓冲，BgmPlayer::mix 开头的清零把 SoundEffects 的结果擦掉——表现是 played=50 但音频缓冲全零（400 帧全静音）",original,observed,verified,"th185_web/scripts/probe-input.mjs","silentTicks 400/400"
 BHV-AUDIO-011,SYS-AUDIO-WAVE,"★★★ 修法：第一个 mixer 负责清零、后续只叠加；BgmPlayer::mix 移除清零后 nonZeroSamples 0→278079、peak 0→1.000、silentTicks 400→14",original,observed,verified,"th185_web/scripts/probe-input.mjs","nonZero=146656 peak=1.00"
 BHV-AUDIO-012,SYS-AUDIO-WAVE,"★ 每帧必须重读 HEAPF32——WASM 堆增长会替换视图，缓存一次复用会在扩容后读到失效内存（与 shell 的 HEAPU8 同一类问题）",original,observed,verified,"th185_web/scripts/probe-input.mjs","堆扩容安全"
+BHV-STAGE-020,SYS-GAME-STAGE,"★★★ op1017/op1019 语义从控制流解出：每个 worldNN.main 都有 op42(-9896→builtin槽104) / op13 / op1019 / op12 / op1017 的形状，二者是同一测试的两个分支——1019 等待信号、1017 置位信号；payload 全为 0（13/8 个样本）",original,observed,verified,"th185_web/scripts/probe-input.mjs","sets/waits 计数"
+BHV-STAGE-021,SYS-GAME-STAGE,"★ op1017/op1019 原本在 kInferredNet 表里被静默跳过（net 0），移除并实现后 stage_signal 字段生效",original,observed,verified,"th185_web/scripts/probe-input.mjs","已实现"
+BHV-STAGE-022,SYS-GAME-STAGE,"★ 字段级合并再次踩坑：新增 stage_signal/stage_signal_sets/waits 后忘了加进 Application 的合并列表，导致计数恒为 0——协程在 context 副本上运行",original,observed,verified,"th185_web/scripts/probe-input.mjs","已补合并"
+BHV-STAGE-023,SYS-GAME-STAGE,"★★ main 尾部是 op23(1000)/op42(1)/op14 构成的等待循环，pc 停在 452；4000 帧不前进说明它在等外部条件（原版由 Boss 击破触发 op1017）",original,observed,verified,"th185_web/scripts/probe-input.mjs","pc=452 恒定"
+BHV-STAGE-024,SYS-GAME-STAGE,"⚠ 关卡完成条件未解：尝试「清场 120 帧」「波次耗尽+清场」都不成立——前者因波次间隔仅 4 帧永不满足，后者因 schedules_total 只统计当前帧导致 fired>total（12/5）；当前用 30 帧清场近似但会假阳性（clear=1 时仍有 2 个敌人）",original,inferred,implemented,"","已知限制"

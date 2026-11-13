@@ -74,6 +74,8 @@ enum class EclOp : u16 {
     Op611BulletEmit = 611,
     Op535BulletDelays = 535,
     Op1012WaveBlockEnd = 1012,
+    Op1017StageSignalSet = 1017,
+    Op1019StageSignalWait = 1019,
     Op1011WaveTemplate = 1011, // one argument: wave template index (-1..104)
     Op1013Schedule = 1013,   // u32 reserved, u32 slot, u32 time[8], u32 reserved
     Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved

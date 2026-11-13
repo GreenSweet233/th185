@@ -626,6 +626,39 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_audio_frame_samples() {
     return th185::app::instance().audio_frame_samples();
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_signal() {
+    return th185::app::instance().ecl().stage_signal;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_signal_sets() {
+    return th185::app::instance().ecl().stage_signal_sets;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_signal_waits() {
+    return th185::app::instance().ecl().stage_signal_waits;
+}
+
+// Program counter of the scene controller, for verifying how far main got.
+EMSCRIPTEN_KEEPALIVE unsigned th185_main_pc() {
+    const auto& c = th185::app::instance().ecl().coroutines;
+    const auto it = c.find("main");
+    return it == c.end() ? 0xFFFFFFFFu : it->second.pc;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_main_wait() {
+    const auto& c = th185::app::instance().ecl().coroutines;
+    const auto it = c.find("main");
+    return it == c.end() ? 0xFFFFFFFFu : it->second.wait_frames;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_clear() {
+    return th185::app::instance().stats().stage_clear;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_clear_frames() {
+    return th185::app::instance().stats().clear_frames;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

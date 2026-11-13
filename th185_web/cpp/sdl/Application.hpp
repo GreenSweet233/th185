@@ -1,4 +1,10 @@
 #pragma once
+
+// How many consecutive enemy-free frames count as a cleared field. One empty
+// frame happens between waves, so a clear needs a sustained gap.
+namespace th185 {
+constexpr unsigned CLEAR_CONFIRM_FRAMES = 30;
+}  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
 // ## Why this exists
@@ -104,6 +110,10 @@ struct FrameStats {
     u32 lives_gained = 0;
     u32 game_over = 0;
     u32 deaths = 0;
+    // Consecutive frames with no live enemy. A single empty frame happens
+    // between waves, so a clear needs several.
+    u32 clear_frames = 0;
+    u32 stage_clear = 0;
     u32 sounds_played = 0;
     u32 sounds_loaded = 0;
     u32 sounds_dropped = 0;

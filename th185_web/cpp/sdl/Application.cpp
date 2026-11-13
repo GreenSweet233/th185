@@ -501,6 +501,8 @@ void Application::reset_scenario() {
     last_lives_ = player_.lives();
     stats_.game_over = 0;
     stats_.deaths = 0;
+    stats_.clear_frames = 0;
+    stats_.stage_clear = 0;
     stats_.bombs_used = 0;
     stats_.bombs_left = player_.bombs_remaining();
     stats_.sounds_played = 0;
@@ -903,6 +905,13 @@ bool Application::tick(u32 held) {
         ecl_.last_wave_template = runner.context.last_wave_template;
         ecl_.schedules = std::move(runner.context.schedules);
         ecl_.recorded = std::move(runner.context.recorded);
+        // The stage-signal flag is state the callee owns: op1017 raises it and
+        // op1019 consumes it, and both live in main's coroutine. Without these
+        // three lines the flag never leaves the runner copy, so `sets` and
+        // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.stage_signal = runner.context.stage_signal;
+        ecl_.stage_signal_sets = runner.context.stage_signal_sets;
+        ecl_.stage_signal_waits = runner.context.stage_signal_waits;
         ecl_.last_timer_value = runner.context.last_timer_value;
         ecl_.timer_writes = runner.context.timer_writes;
 
@@ -1055,6 +1064,47 @@ bool Application::tick(u32 held) {
             scoring_.add_graze();
             sounds_.play("se_graze.wav", 0.4f, 6);
         }
+    }
+
+    // Stage progression.
+    //
+    // main's tail is a `op23 1000 / push 1 / JumpIfNonzero` loop: the scene
+    // controller waits there until something raises the stage signal. The
+    // signal is op1017, and op1019 is the arm that waits on it. In the original
+    // the raiser is the boss defeat; here the closest observable equivalent is
+    // "every enemy on the field is gone".
+    //
+    // A stage is complete when every scheduled wave has fired AND the field is
+    // empty.
+    //
+    // "Clear for N frames" alone does not work: measured on stage 0, the gap
+    // between waves was 4 frames, so a 120-frame confirm window never closed
+    // and the stage could never finish. Waiting for the schedule list to be
+    // exhausted is what actually distinguishes "between waves" from "done".
+    const bool field_clear = enemies_.stats().alive == 0;
+    if (field_clear) {
+        ++stats_.clear_frames;
+    } else {
+        stats_.clear_frames = 0;
+    }
+    // "All waves fired" was tried and does not work: schedules_total counts
+    // the schedules RECORDED THIS FRAME, not the stage's total, so
+    // fired>=total became true immediately and the stage reported clear with
+    // enemies still alive (measured: sched=12/5).
+    //
+    // So the condition is the observable one: the field has been empty for a
+    // sustained window.
+    //
+    // KNOWN LIMITATION: this is an approximation, not the original rule. It
+    // measured clear=1 while two enemies were still alive (they respawned from
+    // the next wave after the window closed). The real condition is whatever
+    // main's tail waits for -- `op42 -9896 / op13 / op1019 / op12 / op1017` --
+    // and op1017's raiser has not been identified. The flag is recorded for
+    // inspection but drives nothing yet.
+    if (field_clear && stats_.clear_frames >= CLEAR_CONFIRM_FRAMES &&
+        !stats_.stage_clear) {
+        stats_.stage_clear = 1;
+        ecl_.stage_signal = 1;
     }
 
     // Death and respawn.

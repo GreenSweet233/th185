@@ -240,7 +240,7 @@ const NetEffect kInferredNet[] = {
     //   op1018 (76) always follows op1015, payload [0][-10008][0]
     //   op1005 (49) follows op23, payload all zero
     //   op1008 (49) between op1002/op1003, payload all zero
-    {1005, 0}, {1008, 0}, {1017, 0}, {1018, 0}, {1019, 0},
+    {1005, 0}, {1008, 0}, {1018, 0},
 
     // Scene-controller preamble. `main` starts with 40, 502, 23, 524, 1009 and
     // only then reaches its op1013 schedules, so an unsupported opcode here
@@ -1015,6 +1015,40 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
+        case EclOp::Op1017StageSignalSet: {
+            // Sets the "stage signal" flag the scene controller tests next.
+            //
+            // Derived from control flow, not from a name: every worldNN.main
+            // has the same shape
+            //
+            //   op42 -9896        push builtin slot 104
+            //   op13 -> +3        if zero, jump to op1017
+            //   op1019            ...otherwise wait here
+            //   op12 -> +2
+            //   op1017            ...and this branch sets it
+            //
+            // so 1019 and 1017 are the two arms of one test: 1019 waits for
+            // the signal, 1017 raises it. The payload is all zero in every
+            // occurrence (13 and 8 samples), so there is no argument to read.
+            context.stage_signal = 1;
+            ++context.stage_signal_sets;
+            break;
+        }
+
+        case EclOp::Op1019StageSignalWait: {
+            // Waits until the stage signal is raised. Yielding is what makes
+            // this useful: the scene controller resumes on a later tick once
+            // something else (a boss defeat, a timer) sets the flag.
+            if (context.stage_signal == 0) {
+                ++context.stage_signal_waits;
+                if (out_wait) {
+                    *out_wait = 1;
+                    return EclRunResult::Running;
+                }
+            }
+            context.stage_signal = 0;   // consumed
+            break;
+        }
         case EclOp::Op1013Schedule: {
             // payload: u32 reserved, u32 slot, u32 time[8], u32 reserved
             EclContext::SpawnSchedule schedule;

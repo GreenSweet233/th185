@@ -231,6 +231,11 @@ struct EclContext {
     // means some call site enters the pattern loop with a short stack, which
     // is a stack-balance signal rather than a hard error.
     u32 short_pops = 0;
+    // The "stage signal" flag that op1017 raises and op1019 waits on. See the
+    // op1017 case for how the two were identified from control flow.
+    u32 stage_signal = 0;
+    u32 stage_signal_sets = 0;
+    u32 stage_signal_waits = 0;
     // Times op601 found fewer values than it expected; a signal that the
 
     // --- op 1015: field query ------------------------------------------
