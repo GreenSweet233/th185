@@ -1582,6 +1582,16 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // before the callee ran -- so the caller's own pc and wait_frames
             // reverted to their pre-call values. Measured on Boss01test: its pc
             // sat at 548 forever because every op300 call rewound it.
+            // The callee must not touch the caller's coroutine table at all.
+            //
+            // `context = nested.context` copies the callee's whole view back, and
+            // that view was snapshotted before the callee ran -- so restoring it
+            // wholesale also rewound the CALLER's own pc. Measured on Boss01test:
+            // op524 wrote pc=548, then the op300 call that followed restored the
+            // pre-call pc=528, and the next frame re-executed op524 forever.
+            //
+            // Nested runs only need the callee's variable/frame writes, so the
+            // coroutine table is taken from the caller and left untouched.
             const auto saved_coroutines = context.coroutines;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
@@ -1721,6 +1731,19 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
 EclRunResult EclInterpreter::run_coroutine(const std::string& key,
                                            const std::vector<u8>& code,
                                            u32 code_base) {
+    // NOTE: `state` is a reference INTO context.coroutines. A nested call
+    // (op11 / op300) does `context = nested.context`, which replaces the whole
+    // map -- so this reference is DANGLING after run() returns. Every write
+    // through it went to freed memory, which is why Boss01test's pc never
+    // advanced past op524: the value was written to the old map and lost.
+    //
+    // All writes below therefore re-fetch the entry by key.
+    {
+        const auto it = context.coroutines.find(key);
+        if (it != context.coroutines.end() && it->second.finished) {
+            return EclRunResult::Finished;
+        }
+    }
     EclContext::CoroutineState& state = context.coroutines[key];
 
     if (state.finished) return EclRunResult::Finished;
@@ -1745,8 +1768,16 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
 
     // Bound the work per frame: a loop with no wait inside would otherwise spin
     // forever now that every opcode is implemented.
-    const EclRunResult result = run(code, 20000, code_base, state.pc, &state.pc,
-                                    &state.wait_frames);
+    // Pass locals, not the map entry: run() may replace the map underneath us.
+    u32 resume_pc = state.pc;
+    u32 resume_wait = state.wait_frames;
+    const EclRunResult result = run(code, 20000, code_base, resume_pc, &resume_pc,
+                                    &resume_wait);
+
+    // Re-fetch AFTER run(): a nested call may have replaced the map.
+    EclContext::CoroutineState& after = context.coroutines[key];
+    after.pc = resume_pc;
+    after.wait_frames = resume_wait;
 
     // A coroutine that reached its end must NOT be re-run from a stale pc.
     //
@@ -1756,15 +1787,15 @@ EclRunResult EclInterpreter::run_coroutine(const std::string& key,
     // frame, which is why bossIndexSets reached 8046 and effectSlots 10746 for
     // a script that should have run once.
     if (result == EclRunResult::Finished) {
-        state.finished = true;
-        state.pc = u32(code.size());
+        after.finished = true;
+        after.pc = u32(code.size());
     }
 
     // Save the stack for the next resume.
-    if (state.wait_frames > 0) {
-        stack_.save(state.stack);
+    if (after.wait_frames > 0) {
+        stack_.save(after.stack);
     } else {
-        state.stack.clear();
+        after.stack.clear();
     }
     return result;
 }
