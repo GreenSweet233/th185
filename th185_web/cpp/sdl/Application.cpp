@@ -65,14 +65,27 @@ namespace {
 
 // A boss script's entry subroutine is named BossNN or BossNNt (the tutorial
 // variant). Boss01Boss, Boss01Boss1, Boss01BossCard1 and friends are helpers.
+// The boss SCENE controller is BossNNtest / BossNNttest, not BossNN.
+//
+// Boss01test is the entry: it opens with op40 (EnterFrame), carries nine
+// op1013 wave schedules, then op300 Call Boss01 (the boss body) and
+// op11 Call WaveSync, then waits on builtin slot 104 with the op1019 / op1017
+// pair -- exactly the shape worldNN.main has.
+//
+// Boss01 itself is the BODY that the controller calls: it opens with op40 /
+// op502 / op30 / op1006 / op1024 / op307 then op300 Call Boss01Boss. Running
+// both as top-level coroutines would run the body twice.
 bool is_boss_entry(const std::string& name) {
-    // BossNN   (6 chars)  or  BossNNt (7 chars).
-    if (name.size() != 6 && name.size() != 7) return false;
+    // BossNNtest (10 chars) or BossNNttest (11 chars).
+    if (name.size() != 10 && name.size() != 11) return false;
     if (name.compare(0, 4, "Boss") != 0) return false;
     if (name[4] < '0' || name[4] > '9') return false;
     if (name[5] < '0' || name[5] > '9') return false;
-    if (name.size() == 7 && name[6] != 't') return false;
-    return true;
+    // The suffix is "test" for BossNNtest and "ttest" for BossNNttest;
+    // compare from the end so the offset is derived, not hardcoded.
+    const char* tail = (name.size() == 11) ? "ttest" : "test";
+    const std::size_t tail_len = (name.size() == 11) ? 5u : 4u;
+    return name.compare(name.size() - tail_len, tail_len, tail) == 0;
 }
 
 }  // namespace
@@ -944,6 +957,25 @@ bool Application::tick(u32 held) {
         // op1019 consumes it, and both live in main's coroutine. Without these
         // three lines the flag never leaves the runner copy, so `sets` and
         // `waits` stayed at 0 no matter how long the scene ran.
+        ecl_.wait_value = runner.context.wait_value;
+        ecl_.wait_values = runner.context.wait_values;
+        ecl_.boss_extra_a = runner.context.boss_extra_a;
+        ecl_.boss_extra_b = runner.context.boss_extra_b;
+        ecl_.boss_extra_c = runner.context.boss_extra_c;
+        ecl_.boss_extras = runner.context.boss_extras;
+        ecl_.boss_config_radius = runner.context.boss_config_radius;
+        ecl_.boss_config_flags = runner.context.boss_config_flags;
+        ecl_.boss_configs = runner.context.boss_configs;
+        ecl_.attack_slots = runner.context.attack_slots;
+        ecl_.spawn_count_a = runner.context.spawn_count_a;
+        ecl_.spawn_count_b = runner.context.spawn_count_b;
+        ecl_.spawn_counts = runner.context.spawn_counts;
+        ecl_.spawn_rect_w = runner.context.spawn_rect_w;
+        ecl_.spawn_rect_h = runner.context.spawn_rect_h;
+        ecl_.spawn_rects = runner.context.spawn_rects;
+        ecl_.boss_wait_marks = runner.context.boss_wait_marks;
+        ecl_.angle_table = runner.context.angle_table;
+        ecl_.angle_tables = runner.context.angle_tables;
         ecl_.pattern_extra_frames = runner.context.pattern_extra_frames;
         ecl_.pattern_extra_mode = runner.context.pattern_extra_mode;
         ecl_.pattern_extra_scale = runner.context.pattern_extra_scale;

@@ -136,6 +136,9 @@ const OpName kOpNames[] = {
     {400, "EffectSlot"}, {404, "BulletPattern"}, {405, "BulletLaunch"},
     {501, "SetPositionPair"}, {503, "BossPhase"}, {505, "BranchAction"},
     {412, "PatternExtra"}, {401, "PatternAux"}, {504, "BossSpawnBox"},
+    {629, "BossConfig"}, {632, "AttackSlot"}, {573, "SpawnCount"}, {316, "BossExtra"},
+    {601, "BulletConsume"},
+    {527, "SpawnRect"}, {523, "BossWaitMark"}, {536, "AngleTable"},
     {513, "ScriptMark"}, {514, "CallNamedExt"}, {521, "CallNamedEffect"},
     {507, "SpawnParams"}, {1026, "BossTimerValue"},
     {545, "AttackPrepare"}, {445, "TimedValue"},
@@ -208,7 +211,7 @@ const NetEffect kInferredNet[] = {
     // It has a dedicated case that actually normalizes the angle into
     // (-pi, pi]; listing it as net -2 would swallow that work.
     {45, -1}, {81, -1}, {93, +1}, {94, +1},
-    {303, 0}, {313, -1}, {316, -1}, {319, +1},
+    {303, 0}, {313, -1}, {319, +1},
     {404, 0}, {405, +1}, {412, +1}, {422, 0}, {441, +1}, {445, +2},
     {555, 0}, {1021, -1},
     // NOTE: op1011 is deliberately NOT here. The inferred-net path runs BEFORE
@@ -820,12 +823,19 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 }
                 if (!seen) context.calls_made.push_back(key);
             }
-            if (context.call_depth >= EclContext::MAX_CALL_DEPTH) {
+
+            // Depth is tracked on the interpreter, NOT on the shared context.
+            //
+            // It used to live in EclContext, but `context = nested.context`
+            // copies the callee's counter back into the caller, so each level
+            // added one again on return: a 3-deep call chain measured as
+            // depth=1257. The nesting is real (Boss23 -> Boss23Boss ->
+            // Boss23Boss1) and only three levels deep.
+            if (nesting_ >= MAX_NESTING) {
                 TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
             }
-            ++context.call_depth;
             // Nested runs share the CONTEXT (variables, frames) but must NOT
             // share the operand stack: run() resets it, which would wipe the
             // caller's operands. Hand the callee a fresh stack and give the
@@ -834,12 +844,13 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             stack_ = EclStack{};
             EclInterpreter nested;
             nested.context = context;
+            nested.nesting_ = nesting_ + 1;
             const EclRunResult nested_result = nested.run(found->second.code, 20000, found->second.code_base);
             stack_ = caller_stack;
 
             // Preserve variable/frame state written by the callee.
             context = nested.context;
-            --context.call_depth;
+            context.call_depth = nesting_ + 1;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
             // Propagate the nested opcode too, otherwise the outer run reports
@@ -877,7 +888,13 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // instruction. Without that the scene controller's
             // `op23 1000 / push 1 / JumpIfNonzero` loop spins forever, which is
             // exactly why WorldWave01 never ran.
-            const u32 frames = arg_u32(payload, 0);
+            const i32 raw_frames = arg_i32(payload, 0);
+            // A NEGATIVE argument is not a frame count. Measured in wave45 and
+            // wave65: `op23 0xFFFFFFFF` (-1) appears right after a push and
+            // before op600 -- it is a sentinel, not a delay. Treating it as a
+            // huge unsigned value made the coroutine wait forever and the
+            // per-frame budget was exhausted instead of the script progressing.
+            const u32 frames = raw_frames > 0 ? u32(raw_frames) : 0u;
             context.last_timer_value = frames;
             ++context.timer_writes;
             if (out_wait && frames > 0) {
@@ -1102,6 +1119,91 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.boss_attack_a = arg_u32(payload, 0);
             context.boss_attack_b = arg_u32(payload, 1);
             ++context.boss_attack_timers;
+            break;
+        }
+        case EclOp::Op316BossExtra: {
+            // Boss extra parameter block.
+            //
+            // Evidence: 37 occurrences across 16 files, size ALWAYS 24 so the
+            // payload is [u32][u32][u32][u32]. Payload is all-zero in 13/37,
+            // [0][0][0][0x3C=60] in 9/37, [0][0][1][0] in 4/37. Context is
+            // prev=op302 (a setter) next=op23 / op0 / op15.
+            context.boss_extra_a = arg_u32(payload, 1);
+            context.boss_extra_b = arg_u32(payload, 2);
+            context.boss_extra_c = arg_u32(payload, 3);
+            ++context.boss_extras;
+            break;
+        }
+        case EclOp::Op629BossConfig: {
+            // Boss configuration: one float and a flag word.
+            //
+            // Evidence: 28 occurrences across 28 files, size ALWAYS 24 so the
+            // payload is [u32][f32][u32][u32]. Payload is
+            // [0][160.0][0x00000F80][1]; 160.0 is a field-scale distance and
+            // 0xF80 is a bit set (bits 7..11). Context is prev=op302 next=op11
+            // in 28/28 -- it configures the boss right before its body is called.
+            context.boss_config_radius = arg_float(payload, 1);
+            context.boss_config_flags = arg_u32(payload, 2);
+            ++context.boss_configs;
+            break;
+        }
+
+        case EclOp::Op632AttackSlot: {
+            // Zero-argument attack slot marker.
+            //
+            // Evidence: 41 occurrences across 29 files, size ALWAYS 20 (payload
+            // all zero), context is prev=op523 next=op545 in 41/41 -- op545 is
+            // the attack-prepare instruction, so this immediately precedes it.
+            ++context.attack_slots;
+            break;
+        }
+
+        case EclOp::Op573SpawnCount: {
+            // Spawn counts, same shape as op507.
+            //
+            // Evidence: 44 occurrences across 22 files, size ALWAYS 24, payload
+            // [0][count][mode][0] with pairs (20,15) and (2,4). Context is
+            // prev=op507 next=op507 / op23, i.e. it pairs with op507.
+            context.spawn_count_a = arg_u32(payload, 1);
+            context.spawn_count_b = arg_u32(payload, 2);
+            ++context.spawn_counts;
+            break;
+        }
+
+        case EclOp::Op527SpawnRect: {
+            // Spawn rectangle: two floats plus a sentinel.
+            //
+            // Evidence: 40 occurrences across 28 files, size ALWAYS 28 so the
+            // payload is [u32][u32][f32][f32][u32]. Observed floats are 1300.0
+            // and 28.75 / 720.0 -- field-scale extents. Context is prev=op521
+            // (the named effect call) next=op540 / op527.
+            context.spawn_rect_w = arg_float(payload, 2);
+            context.spawn_rect_h = arg_float(payload, 3);
+            ++context.spawn_rects;
+            break;
+        }
+
+        case EclOp::Op523BossWaitMark: {
+            // Zero-argument wait marker.
+            //
+            // Evidence: 43 occurrences across 29 files, size ALWAYS 16 (42/43
+            // payload all zero), context is prev=op616 next=op632 in 41/43.
+            ++context.boss_wait_marks;
+            break;
+        }
+
+        case EclOp::Op536AngleTable: {
+            // A table of angles.
+            //
+            // Evidence: 43 occurrences across 26 files, size ALWAYS 52 so the
+            // payload is 11 floats. Sample values are 12.0, 112.0, 112.0, 144.0,
+            // 160.0, 180.0, 208.0, 224.0, 240.0, 256.0, 0 -- a monotone angle
+            // sweep, and a second variant runs -9990.0 (a builtin reference)
+            // through -2.0, -4.0, -6.0, -8.0, -10.0, -12.0, -14.0, -16.0, -18.0.
+            for (u32 k = 0; k < 11; ++k) {
+                context.angle_table[k] = arg_float(payload, k);
+            }
+            ++context.angle_tables;
             break;
         }
         case EclOp::Op412PatternExtra: {

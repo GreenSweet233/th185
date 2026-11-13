@@ -79,6 +79,13 @@ enum class EclOp : u16 {
     Op400EffectSlot = 400,
     Op401PatternAux = 401,
     Op412PatternExtra = 412,
+    Op523BossWaitMark = 523,
+    Op527SpawnRect = 527,
+    Op536AngleTable = 536,
+    Op573SpawnCount = 573,
+    Op316BossExtra = 316,
+    Op629BossConfig = 629,
+    Op632AttackSlot = 632,
     Op504BossSpawnBox = 504,
     Op507SpawnParams = 507,
     Op513ScriptMark = 513,
@@ -139,6 +146,7 @@ public:
     bool restore(const std::vector<std::pair<u32, u32>>& in);
 
 private:
+
     EclValue slots_[CAPACITY]{};
     u32 depth_ = 0;
     std::vector<u32> frames_;
@@ -187,6 +195,12 @@ public:
                      u32* out_pc = nullptr, u32* out_wait = nullptr);
 
     const EclRunStats& stats() const { return stats_; }
+
+    // Call nesting depth. Lives here rather than in EclContext because the
+    // context is copied back from the callee, which double-counted it: a
+    // 3-deep chain (Boss23 -> Boss23Boss -> Boss23Boss1) measured as 1257.
+    static constexpr u32 MAX_NESTING = 32;
+    u32 nesting_ = 0;
 
     // Runs `code` as a COROUTINE: resumes at the saved pc, stops at op23
     // (wait N frames) by recording the wait, and returns Running. Call it once
