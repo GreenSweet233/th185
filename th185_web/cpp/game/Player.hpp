@@ -74,6 +74,8 @@ struct PlayerStats {
     u32 focused_frames = 0;
     u32 shots = 0;
     u32 bombs = 0;
+    // Bombs in stock. TH185 starts with 3 like the rest of the series.
+    u32 bombs_left = 3;
     u32 clamped_frames = 0;
     u32 bullets_fired = 0;
     u32 hits_taken = 0;
@@ -92,6 +94,10 @@ public:
     // Applies one hit. Ignored while invulnerable. Returns true when a life was
     // actually lost.
     bool take_hit();
+
+    // Consumes one bomb. Returns false when none are left.
+    bool take_bomb();
+    u32 bombs_remaining() const { return bombs_left_; }
 
     u32 lives() const { return lives_; }
     u32 invulnerable_frames() const { return invulnerable_; }
@@ -119,6 +125,7 @@ private:
     u32 shot_cooldown_ = 0;
     u32 lives_ = PLAYER_STARTING_LIVES;
     u32 invulnerable_ = 0;
+    u32 bombs_left_ = 3;
     PlayerStats stats_{};
 };
 

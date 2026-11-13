@@ -40,6 +40,15 @@ void Player::select_script(u32 script_index) {
     script_ = script_index;
 }
 
+bool Player::take_bomb() {
+    if (bombs_left_ == 0) return false;
+    --bombs_left_;
+    // A bomb grants the same invulnerability window as a hit, so it can be
+    // used as an escape rather than only as damage.
+    invulnerable_ = PLAYER_INVULNERABLE_FRAMES;
+    return true;
+}
+
 bool Player::take_hit() {
     if (dead() || invulnerable_ > 0) return false;
     --lives_;

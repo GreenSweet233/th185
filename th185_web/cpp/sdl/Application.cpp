@@ -497,6 +497,8 @@ void Application::reset_scenario() {
     stats_.player_hits_taken = 0;
     scoring_.reset();
     last_killed_ = 0;
+    stats_.bombs_used = 0;
+    stats_.bombs_left = player_.bombs_remaining();
     stats_.score = 0;
     stats_.grazes = 0;
     stats_.score_capped = 0;
@@ -795,7 +797,26 @@ bool Application::tick(u32 held) {
     }
 
     // Input drives the player, which drives its animation instance.
+    const u32 bombs_before = player_.stats().bombs;
     player_.update(held, &bullets_);
+
+    // A bomb press clears the screen: every hostile bullet is cancelled (and
+    // scores), and every enemy takes damage. The edge is detected by comparing
+    // the cumulative counter, so holding the button does not repeat.
+    if (player_.stats().bombs > bombs_before) {
+        if (player_.take_bomb()) {
+            u32 cancelled = 0;
+            for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+                Bullet& bullet = bullets_.mutable_bullet(i);
+                if (!bullet.alive || !bullet.hostile) continue;
+                bullets_.release(i);
+                ++cancelled;
+            }
+            if (cancelled > 0) scoring_.add_bullet_cancel(cancelled);
+            enemies_.damage_all(1);
+            ++stats_.bombs_used;
+        }
+    }
     bullets_.update();
     enemies_.update();
     // Collision runs after both pools have moved, so a bullet and a target that
@@ -857,6 +878,7 @@ bool Application::tick(u32 held) {
     stats_.score_cap = scoring_.cap();
     stats_.grazes = scoring_.stats().grazes;
     stats_.score_capped = scoring_.stats().capped;
+    stats_.bombs_left = player_.bombs_remaining();
     stats_.player_x = player_.x();
     stats_.player_y = player_.y();
     stats_.player_focused = player_.focused();

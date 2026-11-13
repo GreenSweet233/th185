@@ -294,3 +294,6 @@ BHV-SCORE-006,SYS-GAME-SCORE,"★ 上限钳制而非回绕：超出上限时 sco
 BHV-DIFF-020,SYS-GAME-DIFFICULTY,"★★★ 8 档难度接入运行时：builtin 槽 41 = 难度索引、47..50 = is_difficulty_0..3（仅匹配档为 1），ECL 脚本通过这两个槽分支",original,observed,verified,"th185_web/scripts/probe-input.mjs","slot41=2 is0..3=0,0,1,0"
 BHV-DIFF-021,SYS-GAME-DIFFICULTY,"★★ 分数上限按难度实测：500000/1000000/1500000/2000000/1000000；tiers 5..7 原版读取越界（表仅 5 项），钳制到表末项 1000000",original,observed,verified,"th185_web/scripts/probe-input.mjs","caps 500000..2000000"
 BHV-DIFF-022,SYS-GAME-DIFFICULTY,"★ 关键修正：ScoreSystem 原在 out_of_range 时把 cap 设为 0xFFFFFFFF（无上限哨兵），导致所有分数立即被钳制；改为只在 cap==0 时用哨兵",original,observed,verified,"th185_web/scripts/probe-input.mjs","-1 → 1000000"
+BHV-BOMB-001,SYS-GAME-PLAYER,"★★★ Bomb 清屏：按下消耗 1 个 Bomb（初始 3 个），清空所有敌方子弹（计消除分）并对所有敌人造成 1 点伤害（伤害量为 inferred，清屏与库存行为为 observed）；Bomb 也给予无敌帧",original,observed,verified,"th185_web/scripts/probe-input.mjs","bullets 124→2 stock 3→2"
+BHV-BOMB-002,SYS-GAME-PLAYER,"★ Bomb 边沿检测：用累计 bombs 计数比较而非 held 位，按住不重复触发；库存耗尽后第 4 次按键无效（used 恒为 3）",original,observed,verified,"th185_web/scripts/probe-input.mjs","left=0 used=3"
+BHV-BOMB-003,SYS-GAME-PLAYER,"★ 实测两次 Bomb 清光 18 个敌人（HP=2，每次扣 1），第三次库存归零，第四次无效",original,observed,verified,"th185_web/scripts/probe-input.mjs","enemies 18→0"

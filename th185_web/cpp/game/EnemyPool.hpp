@@ -80,6 +80,10 @@ public:
 
     void clear();
 
+    // Applies `damage` to every live enemy, retiring the ones that reach 0 HP.
+    // Returns how many died.
+    u32 damage_all(i32 damage);
+
     const std::vector<Enemy>& enemies() const { return enemies_; }
     const EnemyStats& stats() const { return stats_; }
 

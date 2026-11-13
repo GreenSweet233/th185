@@ -155,6 +155,23 @@ u32 EnemyPool::fire_at(BulletPool* bullets, float target_x, float target_y) {
     return fired;
 }
 
+u32 EnemyPool::damage_all(i32 damage) {
+    if (damage <= 0) return 0;
+    u32 killed = 0;
+    for (u32 i = 0; i < ENEMY_CAPACITY; ++i) {
+        Enemy& enemy = enemies_[i];
+        if (!enemy.alive) continue;
+        enemy.hp -= damage;
+        if (enemy.hp > 0) continue;
+        enemy.alive = false;
+        free_slots_.push_back(i);
+        --stats_.alive;
+        ++stats_.killed;
+        ++killed;
+    }
+    return killed;
+}
+
 void EnemyPool::clear() {
     free_slots_.clear();
     for (u32 i = 0; i < ENEMY_CAPACITY; ++i) {

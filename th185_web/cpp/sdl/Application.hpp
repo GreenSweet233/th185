@@ -93,6 +93,8 @@ struct FrameStats {
     u32 grazes = 0;
     u32 score_capped = 0;
     u32 difficulty = 0;
+    u32 bombs_used = 0;
+    u32 bombs_left = 0;
     // ECL wave schedules consumed so far.
     u32 schedules_total = 0;
     u32 schedules_fired = 0;

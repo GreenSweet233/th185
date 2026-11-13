@@ -296,6 +296,33 @@ check('the difficulty slot reflects the selection', slot41 === 2);
 check('only the matching is_difficulty_N slot is set',
       isDiff.join(',') === '0,0,1,0');
 
+// Bombs.
+//
+// A bomb clears every hostile bullet (scoring the cancels) and damages every
+// enemy. The stock is 3; a fourth press must do nothing.
+module._th185_load_stage(1);
+module._th185_reset_scenario();
+tick(0, 400);
+const preBombs = module._th185_bombs_left();
+const preBullets = module._th185_bullets_alive();
+const preEnemies = module._th185_enemies_alive();
+module._th185_tick(BOMB);
+module._th185_tick(0);
+const postBullets = module._th185_bullets_alive();
+const postBombs = module._th185_bombs_left();
+console.log('bomb        : bullets ' + preBullets + ' -> ' + postBullets
+            + ', enemies ' + preEnemies + ', stock ' + preBombs + ' -> ' + postBombs);
+
+check('a bomb clears hostile bullets', postBullets < preBullets);
+check('a bomb consumes stock', postBombs === preBombs - 1);
+
+module._th185_reset_scenario();
+for (let i = 0; i < 4; ++i) { module._th185_tick(BOMB); module._th185_tick(0); }
+console.log('bomb stock  : left=' + module._th185_bombs_left()
+            + ' used=' + module._th185_bombs_used());
+check('the stock cannot go negative', module._th185_bombs_left() === 0);
+check('only three bombs are usable', module._th185_bombs_used() === 3);
+
 console.log('');
 if (failures) {
   console.error('probe failed: ' + failures + ' item(s)');

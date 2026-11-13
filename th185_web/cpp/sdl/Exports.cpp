@@ -484,6 +484,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_builtin_slot(unsigned slot) {
     return slot < b.size() ? b[slot] : 0xFFFFFFFFu;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_bombs_left() {
+    return th185::app::instance().stats().bombs_left;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bombs_used() {
+    return th185::app::instance().stats().bombs_used;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }
