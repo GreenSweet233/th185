@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
-"""Check that every mutable EclContext field is merged back after a coroutine run.
+"""Check that the interpreter runs against the LIVE EclContext, not a copy.
 
-## Why
+## Why this check changed
 
-`Application::tick` runs the scene controller against a COPY of EclContext and
-merges back only the fields listed in `std::move(runner.context.X)`. A field
-that is written by the interpreter but missing from that list is silently
-discarded -- and the symptom is always "the counter is 0" rather than a crash.
+`Application::tick` used to run each coroutine against a COPY of EclContext and
+merge ~120 fields back by hand. A field written by the interpreter but missing
+from that list was silently discarded, and the symptom was always "the counter
+is 0" rather than a crash. It was hit three times: wave_blocks, stage_signal,
+and boss_index_sets.
 
-That trap was hit twice (wave_blocks, then stage_signal), so this check exists
-to make the third time impossible.
+That whole class of bug is now impossible: the interpreter swaps the live
+context in (`std::swap(runner.context, ecl_)`), so there is nothing to merge and
+nothing to forget. The copy was also the dominant cost -- a 133-field struct
+owning several vectors and maps, copied once per script per frame.
 
-## What it does
+## What it asserts
 
-1. Parse `cpp/game/EclContext.hpp` for the members of `struct EclContext`.
-2. Parse `cpp/sdl/Application.cpp` for `ecl_.X = ... runner.context.X`.
-3. Report any field that the interpreter writes (recorded in `record_op`,
-   the `schedules` vector, the bullet-request counters, ...) but is not merged.
-
-Read-only fields (frames, builtins, subroutines) are exempt: the callee is not
-expected to change them.
+1. `Application.cpp` no longer contains `runner.context = ecl_` or any
+   `ecl_.X = runner.context.X` merge line. If one reappears, someone has
+   reintroduced the copy.
+2. Every place that constructs an `EclInterpreter` around the live context uses
+   `std::swap` in BOTH directions, so the context cannot be left detached.
+3. `EclContext.hpp` still declares the fields the interpreter needs -- a cheap
+   guard against an accidental rename breaking compilation silently in a
+   header-only path.
 
 Usage: python th185_web/scripts/native/ecl_merge_check.py [--selftest]
 """
@@ -37,168 +41,105 @@ ROOT = HERE.parent.parent.parent   # th185/
 CONTEXT = ROOT / "th185_web" / "cpp" / "game" / "EclContext.hpp"
 APP = ROOT / "th185_web" / "cpp" / "sdl" / "Application.cpp"
 
-# Fields the callee never writes, so they need no merge.
-READ_ONLY = {
-    "owner", "builtins", "subroutines", "frames", "recorded_total",
-    "first_unsupported_opcode", "short_pops",
-}
+
+def check(app_text: str, context_text: str, verbose: bool = True) -> int:
+    problems = 0
+
+    def report(ok: bool, label: str, detail: str = "") -> None:
+        nonlocal problems
+        if not ok:
+            problems += 1
+        if verbose:
+            suffix = (" (%s)" % detail) if detail else ""
+            print("[%s] %s%s" % ("PASS" if ok else "FAIL", label, suffix))
+
+    # 1. No copy of the context.
+    copies = re.findall(r"\w+\.context\s*=\s*ecl_\s*;", app_text)
+    report(not copies, "the context is never copied out of Application",
+           "%d copy site(s)" % len(copies) if copies else "")
+
+    # 2. No field-by-field merge.
+    merges = re.findall(r"ecl_\.\w+\s*=\s*(?:std::move\()?runner\.context\.", app_text)
+    report(not merges, "no field-by-field merge remains",
+           "%d field(s)" % len(merges) if merges else "")
+
+    # 3. Every interpreter constructed around the live context swaps in AND out.
+    swaps_in = app_text.count("std::swap(runner.context, ecl_)")
+    report(swaps_in > 0, "the live context is swapped into the interpreter",
+           "%d site(s)" % swaps_in)
+    # Each site needs two swaps (in and out); an odd count leaves it detached.
+    report(swaps_in % 2 == 0, "every swap-in is paired with a swap-out",
+           "%d swap(s)" % swaps_in)
+
+    # 4. The fields the interpreter writes still exist.
+    for field in ("coroutines", "schedules", "wave_blocks", "bullet_requests",
+                  "stage_signal", "boss_index", "builtins"):
+        report((" %s" % field) in context_text or ("%s;" % field) in context_text,
+               "EclContext still declares %s" % field)
+
+    return problems
 
 
-def parse_context_fields(text: str):
-    """Member names declared DIRECTLY inside `struct EclContext { ... }`.
+def selftest() -> int:
+    """Prove the checker catches the regressions it claims to catch."""
+    good_app = (
+        "        EclInterpreter runner;\n"
+        "        std::swap(runner.context, ecl_);\n"
+        "        runner.run(code, 4000, code_base);\n"
+        "        std::swap(runner.context, ecl_);\n"
+    )
+    good_ctx = "    std::map<std::string, CoroutineState> coroutines;\n    std::vector<SpawnSchedule> schedules;\n    std::vector<std::vector<i32>> wave_blocks;\n    std::vector<BulletRequest> bullet_requests;\n    u32 stage_signal = 0;\n    u32 boss_index = 0;\n    u32 builtins[256];\n"
 
-    Nested structs (BulletRequest, CoroutineState, SpawnSchedule, ...) are
-    skipped: their members belong to those types, not to the context, and
-    several are merged indirectly through the vectors that hold them.
-    """
-    start = text.find("struct EclContext {")
-    if start < 0:
-        raise SystemExit("EclContext struct not found")
+    print("=== selftest: the clean shape must pass ===")
+    ok = check(good_app, good_ctx, verbose=True) == 0
+    print("  -> %s" % ("PASS" if ok else "FAIL"))
+    failures = 0 if ok else 1
 
-    # Walk from the opening brace, tracking brace depth so nested structs are
-    # skipped wholesale.
-    brace = text.find("{", start)
-    if brace < 0:
-        raise SystemExit("EclContext has no body")
+    print("=== selftest: a reintroduced copy must be caught ===")
+    bad_copy = good_app + "        runner.context = ecl_;\n"
+    caught = check(bad_copy, good_ctx, verbose=False) > 0
+    print("  -> %s" % ("PASS" if caught else "FAIL"))
+    if not caught:
+        failures += 1
 
-    depth = 0
-    end = -1
-    for i in range(brace, len(text)):
-        if text[i] == "{":
-            depth += 1
-        elif text[i] == "}":
-            depth -= 1
-            if depth == 0:
-                end = i
-                break
-    if end < 0:
-        raise SystemExit("EclContext struct is not terminated")
+    print("=== selftest: a reintroduced merge must be caught ===")
+    bad_merge = good_app + "        ecl_.schedules = std::move(runner.context.schedules);\n"
+    caught = check(bad_merge, good_ctx, verbose=False) > 0
+    print("  -> %s" % ("PASS" if caught else "FAIL"))
+    if not caught:
+        failures += 1
 
-    body = text[brace + 1:end]
+    print("=== selftest: an unpaired swap must be caught ===")
+    bad_swap = "        EclInterpreter runner;\n        std::swap(runner.context, ecl_);\n"
+    caught = check(bad_swap, good_ctx, verbose=False) > 0
+    print("  -> %s" % ("PASS" if caught else "FAIL"))
+    if not caught:
+        failures += 1
 
-    fields = []
-    depth = 0
-    for line in body.splitlines():
-        stripped = line.strip()
-
-        # A nested type opens a scope: record nothing from inside it.
-        if depth > 0:
-            depth += stripped.count("{") - stripped.count("}")
-            if depth < 0:
-                depth = 0
-            continue
-
-        if not stripped or stripped.startswith("//"):
-            continue
-
-        if re.match(r"(struct|class|enum|union)\b", stripped):
-            # Either a full definition (opens a brace) or a forward use.
-            if "{" in stripped:
-                depth = stripped.count("{") - stripped.count("}")
-            continue
-
-        if re.match(r"(void|static|constexpr|using|typedef|friend)\b", stripped):
-            continue
-        if "(" in stripped:
-            continue
-
-        match = re.match(r"^[\w:<>,\s]+?\s+(\w+)\s*(=|;|\{)", stripped)
-        if match:
-            name = match.group(1)
-            if name in ("return", "public", "private", "protected"):
-                continue
-            fields.append(name)
-    return fields
-
-
-def parse_merged_fields(text: str):
-    """Field names on the right of `ecl_.X = ... runner.context.X`."""
-    merged = set()
-    for match in re.finditer(r"ecl_\.(\w+)\s*=\s*(?:std::move\()?runner\.context\.(\w+)", text):
-        merged.add(match.group(2))
-    return merged
-
-
-def check():
-    context_text = CONTEXT.read_text(encoding="utf-8")
-    app_text = APP.read_text(encoding="utf-8")
-
-    fields = parse_context_fields(context_text)
-    merged = parse_merged_fields(app_text)
-
-    if not fields:
-        print("[FAIL] no EclContext fields parsed")
-        return 1
-    if not merged:
-        print("[FAIL] no merged fields parsed")
-        return 1
-
-    missing = [f for f in fields if f not in merged and f not in READ_ONLY]
-    extra = [f for f in merged if f not in fields]
-
-    print("[%s] EclContext fields parsed (%d)" % ("PASS" if fields else "FAIL", len(fields)))
-    print("[%s] merge list parsed (%d)" % ("PASS" if merged else "FAIL", len(merged)))
-
-    ok = True
-    if missing:
-        ok = False
-        print("[FAIL] fields written by the interpreter but never merged: %s"
-              % ", ".join(missing))
-        print("       add `ecl_.X = std::move(runner.context.X);` in Application::tick")
-    else:
-        print("[PASS] every mutable field is merged back")
-
-    if extra:
-        ok = False
-        print("[FAIL] merge list names fields that do not exist: %s" % ", ".join(extra))
-    else:
-        print("[PASS] the merge list names no stale fields")
-
-    return 0 if ok else 1
-
-
-def selftest():
-    """Prove the parser catches a missing field, not just that it runs."""
-    sample_context = """
-struct EclContext {
-    u32 kept = 0;
-    u32 dropped = 0;
-    u32 read_only_thing = 0;
-};
-"""
-    sample_app = """
-    ecl_.kept = std::move(runner.context.kept);
-"""
-
-    fields = parse_context_fields(sample_context)
-    merged = parse_merged_fields(sample_app)
-    missing = [f for f in fields if f not in merged and f not in READ_ONLY]
-
-    ok = True
-    if "dropped" not in missing:
-        ok = False
-        print("[FAIL] the parser did not notice the unmerged field")
-    else:
-        print("[PASS] the parser notices an unmerged field")
-
-    if "kept" in missing:
-        ok = False
-        print("[FAIL] the parser flagged a merged field")
-    else:
-        print("[PASS] the parser accepts a merged field")
-
-    return 0 if ok else 1
+    return failures
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--selftest", action="store_true",
-                        help="check the parser itself")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--selftest", action="store_true")
     args = parser.parse_args()
 
     if args.selftest:
-        return selftest()
-    return check()
+        failures = selftest()
+        if failures:
+            print("selftest failed: %d item(s)" % failures)
+            return 1
+        print("selftest passed: the checker catches every regression it names")
+        return 0
+
+    app_text = APP.read_text(encoding="utf-8")
+    context_text = CONTEXT.read_text(encoding="utf-8")
+    problems = check(app_text, context_text)
+    if problems:
+        print("ecl-merge failed: %d item(s)" % problems)
+        return 1
+    print("ecl-merge passed: the interpreter runs in place")
+    return 0
 
 
 if __name__ == "__main__":

@@ -188,6 +188,7 @@ public:
     // writing somewhere arbitrary.
     EclContext context;
 
+
     // Run at most step_budget instructions (0 = unlimited).
     //
     // `code_base` is the offset in the ORIGINAL file that code[0] corresponds

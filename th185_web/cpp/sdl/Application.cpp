@@ -1,5 +1,7 @@
 #include "Application.hpp"
 
+#include <algorithm>
+
 #include "../game/EclInterpreter.hpp"
 
 #include <cmath>
@@ -511,23 +513,34 @@ void Application::consume_schedules() {
             if (fired_schedule_keys_.count(key)) continue;
             fired_schedule_keys_.insert(key);
 
-            char bank[32];
-            std::snprintf(bank, sizeof(bank), "wave%02d.ecl", int(template_index));
-            std::size_t entry = archive_.entries.size();
-            for (std::size_t k = 0; k < archive_.entries.size(); ++k) {
-                if (archive_.entries[k].name == bank) { entry = k; break; }
+            // Extract + parse once per template, then reuse.
+            auto cached = wave_cache_.find(template_index);
+            if (cached == wave_cache_.end()) {
+                char bank[32];
+                std::snprintf(bank, sizeof(bank), "wave%02d.ecl", int(template_index));
+                std::size_t entry = archive_.entries.size();
+                for (std::size_t k = 0; k < archive_.entries.size(); ++k) {
+                    if (archive_.entries[k].name == bank) { entry = k; break; }
+                }
+                if (entry >= archive_.entries.size()) continue;
+
+                std::string wave_error;
+                std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &wave_error);
+                if (blob.empty()) continue;
+                EclResource parsed;
+                if (!parsed.parse(std::move(blob), &wave_error)) continue;
+                cached = wave_cache_.emplace(template_index, std::move(parsed)).first;
             }
-            if (entry >= archive_.entries.size()) continue;
+            const EclResource& wave_resource = cached->second;
 
-            std::string wave_error;
-            std::vector<u8> blob = archive_.extract(archive_bytes_, entry, &wave_error);
-            if (blob.empty()) continue;
-            EclResource wave_resource;
-            if (!wave_resource.parse(std::move(blob), &wave_error)) continue;
-
-            // Run every subprogram in the template once. The pattern
-            // recorders (op600..op611, op535) then fill bullet_requests,
-            // which the loop below turns into real bullets.
+            // Run every subprogram in the template ONCE, then remember it.
+            //
+            // These subroutines emit bullets; re-running them on every firing
+            // of the same template multiplied the bullet count and the cost.
+            // The set below makes each template's emission happen exactly once,
+            // which is what a wave template is: a definition, not a per-frame
+            // event.
+            if (!wave_run_once_.insert(template_index).second) continue;
             for (const EclSubroutine& sub : wave_resource.subs) {
                 std::vector<u8> code;
                 u32 code_base = 0;
@@ -545,12 +558,14 @@ void Application::consume_schedules() {
                 ecl_.add_subroutine(sub.name, code);
                 ecl_.subroutines[sub.name].code_base = code_base;
 
+                // Same swap trick as tick(): a deep copy of EclContext here
+                // ran once per SUBROUTINE per wave template. Stage 5 and 7
+                // have the largest wave banks, which is why they were 15-25x
+                // slower than the others (measured: 353 s for 1807 frames).
                 EclInterpreter runner;
-                runner.context = ecl_;
+                std::swap(runner.context, ecl_);
                 runner.run(code, 4000, code_base);
-                ecl_.bullet_requests = std::move(runner.context.bullet_requests);
-                ecl_.delays_seen = std::move(runner.context.delays_seen);
-                ecl_.requests_total = runner.context.requests_total;
+                std::swap(runner.context, ecl_);
             }
         }
     }
@@ -636,8 +651,25 @@ void Application::reset_scenario() {
     stats_.grazes = 0;
     stats_.score_capped = 0;
     ecl_.coroutines.clear();
+    // The recorded schedules belong to the stage that declared them. Leaving
+    // them in place made the next stage fire the previous stage's timers as
+    // well: after preloading stages 0-4, stage 5 started with 17 enemies
+    // already on the field and then reached 42 enemies / 1139 bullets, which
+    // cost 280 ms per frame (stage 5 alone: 35 s, after preload: 400 s).
+    ecl_.schedules.clear();
+    ecl_.wave_blocks.clear();
+    ecl_.pending_templates.clear();
+    ecl_.wave_templates.clear();
     fired_schedule_keys_.clear();
     stats_.schedules_fired = 0;
+    stats_.schedules_expected = 0;
+    // Template indices are per-stage, so the "already emitted" set and the
+    // parsed cache must both be dropped. Leaving wave_run_once_ populated made
+    // the next stage skip templates that happened to share an index with the
+    // previous one, and every skipped firing then fell through to a fresh
+    // extract+parse -- stage 5 measured 35 s alone but 355 s after stage 0-4.
+    wave_run_once_.clear();
+    wave_cache_.clear();
 
     stats_.player_lives = player_.lives();
 }
@@ -1010,159 +1042,24 @@ bool Application::tick(u32 held) {
         // snapshot taken before this script ran -- which is exactly why
         // WorldWave01 was called repeatedly but its op1011 template never
         // appeared: the next script's write-back discarded it.
+        // Hand the interpreter the live context by SWAP, not by copy.
+        //
+        // This used to be `runner.context = ecl_`, a deep copy of a 133-field
+        // struct that owns several vectors and maps -- once per script per
+        // frame. Measured on stage 8: 404 ms per frame for a stage needing only
+        // 712 frames, i.e. 288 s for that stage and 679 s for all nine, which
+        // blew the CI budget.
+        //
+        // std::swap moves the internal pointers, so it is O(1) regardless of
+        // how much the containers hold. It also removes the ~120-line field
+        // merge below, which repeatedly dropped fields (wave_blocks,
+        // stage_signal, boss_index_sets, coroutines).
         EclInterpreter runner;
-        runner.context = ecl_;
+        std::swap(runner.context, ecl_);
         runner.run_coroutine(name, found->second.code,
                              found->second.code_base);
-
-        // Merge: coroutines (progress), stacks are inside them, and the
-        // records the interpreter accumulates. Everything else (frames,
-        // builtins, subroutines) is read-only here.
-        ecl_.coroutines = std::move(runner.context.coroutines);
-        ecl_.calls_made = std::move(runner.context.calls_made);
-        ecl_.missing_calls = std::move(runner.context.missing_calls);
-        ecl_.wave_templates = std::move(runner.context.wave_templates);
-        ecl_.pending_templates = std::move(runner.context.pending_templates);
-        ecl_.wave_blocks = std::move(runner.context.wave_blocks);
-        ecl_.bullet_requests = std::move(runner.context.bullet_requests);
-        ecl_.delays_seen = std::move(runner.context.delays_seen);
-        ecl_.requests_total = runner.context.requests_total;
-        ecl_.last_wave_template = runner.context.last_wave_template;
-        ecl_.schedules = std::move(runner.context.schedules);
-        ecl_.recorded = std::move(runner.context.recorded);
-        // The stage-signal flag is state the callee owns: op1017 raises it and
-        // op1019 consumes it, and both live in main's coroutine. Without these
-        // three lines the flag never leaves the runner copy, so `sets` and
-        // `waits` stayed at 0 no matter how long the scene ran.
-        ecl_.spawn_commits = runner.context.spawn_commits;
-        ecl_.scene_syncs = runner.context.scene_syncs;
-        ecl_.scene_sync_count = runner.context.scene_sync_count;
-        ecl_.wait_value = runner.context.wait_value;
-        ecl_.wait_values = runner.context.wait_values;
-        ecl_.angle_normalize_ref = runner.context.angle_normalize_ref;
-        ecl_.angle_normalizes = runner.context.angle_normalizes;
-        ecl_.named_tail_length = runner.context.named_tail_length;
-        ecl_.named_tail_target = std::move(runner.context.named_tail_target);
-        ecl_.named_tail_calls = runner.context.named_tail_calls;
-        ecl_.float_block = runner.context.float_block;
-        ecl_.float_blocks = runner.context.float_blocks;
-        ecl_.effect_spawn_mode = runner.context.effect_spawn_mode;
-        ecl_.effect_spawn_scale = runner.context.effect_spawn_scale;
-        ecl_.effect_spawns = runner.context.effect_spawns;
-        ecl_.angle_to_a = runner.context.angle_to_a;
-        ecl_.angle_to_b = runner.context.angle_to_b;
-        ecl_.angle_to_c = runner.context.angle_to_c;
-        ecl_.angle_to_d = runner.context.angle_to_d;
-        ecl_.angle_to_e = runner.context.angle_to_e;
-        ecl_.angle_to_calls = runner.context.angle_to_calls;
-        ecl_.pattern_ext = runner.context.pattern_ext;
-        ecl_.pattern_exts = runner.context.pattern_exts;
-        ecl_.pattern_count = runner.context.pattern_count;
-        ecl_.pattern_counts = runner.context.pattern_counts;
-        ecl_.frame_value = runner.context.frame_value;
-        ecl_.frame_values = runner.context.frame_values;
-        ecl_.boss_extra_a = runner.context.boss_extra_a;
-        ecl_.boss_extra_b = runner.context.boss_extra_b;
-        ecl_.boss_extra_c = runner.context.boss_extra_c;
-        ecl_.boss_extras = runner.context.boss_extras;
-        ecl_.boss_config_radius = runner.context.boss_config_radius;
-        ecl_.boss_config_flags = runner.context.boss_config_flags;
-        ecl_.boss_configs = runner.context.boss_configs;
-        ecl_.attack_slots = runner.context.attack_slots;
-        ecl_.spawn_count_a = runner.context.spawn_count_a;
-        ecl_.spawn_count_b = runner.context.spawn_count_b;
-        ecl_.spawn_counts = runner.context.spawn_counts;
-        ecl_.spawn_rect_w = runner.context.spawn_rect_w;
-        ecl_.spawn_rect_h = runner.context.spawn_rect_h;
-        ecl_.spawn_rects = runner.context.spawn_rects;
-        ecl_.boss_wait_marks = runner.context.boss_wait_marks;
-        ecl_.angle_table = runner.context.angle_table;
-        ecl_.angle_tables = runner.context.angle_tables;
-        ecl_.pattern_extra_frames = runner.context.pattern_extra_frames;
-        ecl_.pattern_extra_mode = runner.context.pattern_extra_mode;
-        ecl_.pattern_extra_scale = runner.context.pattern_extra_scale;
-        ecl_.pattern_extra_tail = runner.context.pattern_extra_tail;
-        ecl_.pattern_extras = runner.context.pattern_extras;
-        ecl_.pattern_aux_a = runner.context.pattern_aux_a;
-        ecl_.pattern_aux_b = runner.context.pattern_aux_b;
-        ecl_.pattern_aux_c = runner.context.pattern_aux_c;
-        ecl_.pattern_aux_count = runner.context.pattern_aux_count;
-        ecl_.spawn_box_x = runner.context.spawn_box_x;
-        ecl_.spawn_box_y = runner.context.spawn_box_y;
-        ecl_.spawn_box_flag = runner.context.spawn_box_flag;
-        ecl_.spawn_boxes = runner.context.spawn_boxes;
-        ecl_.spawn_param_a = runner.context.spawn_param_a;
-        ecl_.spawn_param_b = runner.context.spawn_param_b;
-        ecl_.spawn_param_sets = runner.context.spawn_param_sets;
-        ecl_.script_marks = runner.context.script_marks;
-        ecl_.named_call_length = runner.context.named_call_length;
-        ecl_.named_call_target = std::move(runner.context.named_call_target);
-        ecl_.named_call_exts = runner.context.named_call_exts;
-        ecl_.named_effect_length = runner.context.named_effect_length;
-        ecl_.named_effect_target = std::move(runner.context.named_effect_target);
-        ecl_.named_effect_calls = runner.context.named_effect_calls;
-        ecl_.boss_timer_value = runner.context.boss_timer_value;
-        ecl_.boss_timer_values = runner.context.boss_timer_values;
-        ecl_.position_x = runner.context.position_x;
-        ecl_.position_y = runner.context.position_y;
-        ecl_.position_pairs = runner.context.position_pairs;
-        ecl_.boss_phase = runner.context.boss_phase;
-        ecl_.boss_phases = runner.context.boss_phases;
-        ecl_.branch_actions = runner.context.branch_actions;
-        ecl_.branch_action_count = runner.context.branch_action_count;
-        ecl_.attack_prepares = runner.context.attack_prepares;
-        ecl_.timed_value_frames = runner.context.timed_value_frames;
-        ecl_.timed_value = runner.context.timed_value;
-        ecl_.timed_values = runner.context.timed_values;
-        ecl_.effect_slot = runner.context.effect_slot;
-        ecl_.effect_slot_calls = runner.context.effect_slot_calls;
-        ecl_.bullet_pattern_flag = runner.context.bullet_pattern_flag;
-        ecl_.bullet_pattern_mode = runner.context.bullet_pattern_mode;
-        ecl_.bullet_pattern_a = runner.context.bullet_pattern_a;
-        ecl_.bullet_pattern_b = runner.context.bullet_pattern_b;
-        ecl_.bullet_patterns = runner.context.bullet_patterns;
-        ecl_.bullet_launch_flag = runner.context.bullet_launch_flag;
-        ecl_.bullet_launch_speed = runner.context.bullet_launch_speed;
-        ecl_.bullet_launch_a = runner.context.bullet_launch_a;
-        ecl_.bullet_launch_b = runner.context.bullet_launch_b;
-        ecl_.bullet_launches = runner.context.bullet_launches;
-        ecl_.boss_frame = runner.context.boss_frame;
-        ecl_.boss_frame_length = runner.context.boss_frame_length;
-        ecl_.boss_frame_lengths = runner.context.boss_frame_lengths;
-        ecl_.boss_attack_a = runner.context.boss_attack_a;
-        ecl_.boss_attack_b = runner.context.boss_attack_b;
-        ecl_.boss_attack_timers = runner.context.boss_attack_timers;
-        ecl_.boss_frame_enters = runner.context.boss_frame_enters;
-        ecl_.boss_timer_a = runner.context.boss_timer_a;
-        ecl_.boss_timer_b = runner.context.boss_timer_b;
-        ecl_.boss_timer_sets = runner.context.boss_timer_sets;
-        ecl_.boss_index = runner.context.boss_index;
-        ecl_.boss_index_sets = runner.context.boss_index_sets;
-        ecl_.stage_signal = runner.context.stage_signal;
-        ecl_.stage_signal_sets = runner.context.stage_signal_sets;
-        ecl_.stage_signal_waits = runner.context.stage_signal_waits;
-        ecl_.last_timer_value = runner.context.last_timer_value;
-
-        // Everything else the interpreter writes. These were missing until
-        // ecl_merge_check.py compared the struct against this list: the
-        // counters looked like they never moved, which is the same symptom as
-        // wave_blocks and stage_signal before them.
-        ecl_.timer_writes = runner.context.timer_writes;
-        ecl_.difficulty_mask = runner.context.difficulty_mask;
-        ecl_.call_depth = runner.context.call_depth;
-        ecl_.pending_bullet = runner.context.pending_bullet;
-        ecl_.query_count = runner.context.query_count;
-        ecl_.last_query_reference = runner.context.last_query_reference;
-        ecl_.last_query_field = runner.context.last_query_field;
-        ecl_.set_count = runner.context.set_count;
-        ecl_.last_set_a = runner.context.last_set_a;
-        ecl_.last_set_b = runner.context.last_set_b;
-        ecl_.last_position_x = runner.context.last_position_x;
-        ecl_.last_position_y = runner.context.last_position_y;
-        ecl_.position_sets = runner.context.position_sets;
-        ecl_.comments = std::move(runner.context.comments);
-        ecl_.timer_writes = runner.context.timer_writes;
-
+        std::swap(runner.context, ecl_);
+        // Nothing to merge back: the interpreter ran against the live context.
 
         stats_.ecl_instructions += runner.stats().instructions;
         stats_.ecl_faults += runner.stats().fault_count;

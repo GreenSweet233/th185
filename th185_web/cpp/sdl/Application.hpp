@@ -67,6 +67,7 @@ constexpr int BOSS_STARTING_HP = 60;
 #include "../game/StageScript.hpp"
 #include "Types.hpp"
 
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -275,6 +276,16 @@ private:
     // per-index bitmap because the interpreter re-records the same schedules
     // every tick (main is re-run from the start each frame).
     std::set<u64> fired_schedule_keys_;
+
+    // Parsed wave templates, keyed by template index.
+    //
+    // Extraction and parsing used to run again on every firing: a wave bank is
+    // a compressed archive entry plus an ECL parse, and stages 5/7 fire 80 of
+    // them. Caching also avoids re-running each template's subroutines, which
+    // was the real cost.
+    std::map<i32, EclResource> wave_cache_;
+    // Template indices whose subroutines have already emitted.
+    std::set<i32> wave_run_once_;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     std::string animation_bank_;
     SoftwareRaster raster_;
