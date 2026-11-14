@@ -93,9 +93,17 @@ u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
     }
     if (live_count == 0) return 0;
 
-    // Same for bullets: walk only the live ones.
-    for (u32 b = 0; b < BULLET_CAPACITY; ++b) {
+    // Walk the pool's own live list.
+    //
+    // This used to be `for (b = 0; b < BULLET_CAPACITY; ++b)` with an alive
+    // check, i.e. 4096 iterations per frame for the ~740 bullets stage 5 keeps
+    // on the field. BulletPool::update() already touches every slot once, so it
+    // maintains the list for free.
+    const std::vector<u32>& live_bullets = bullets->live_indices();
+    for (const u32 b : live_bullets) {
         Bullet& bullet = bullets->mutable_bullet(b);
+        // release() during this loop does not invalidate the list: it only
+        // flips `alive`, and the list is rebuilt next frame.
         if (!bullet.alive) continue;
         // Enemy fire must not hit its own side. Without this guard the aimed
         // shots are consumed the moment they leave the muzzle -- which is why
@@ -105,6 +113,12 @@ u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
         for (u32 k = 0; k < live_count; ++k) {
             const u32 e = live[k];
             Enemy& enemy = enemies_[e];
+            // Cheap vertical reject before the full distance test. Bullets and
+            // enemies both stay inside a 384x448 field, so |dy| > 64 rules out
+            // every radius in use (16 for enemies, 32 for bosses).
+            if (bullet.y - enemy.y > 64.0f || enemy.y - bullet.y > 64.0f) {
+                continue;
+            }
             // The list was built before this frame's bullets were walked, so an
             // earlier bullet may already have killed this enemy. Without this
             // check the corpse is hit again and stats_.alive goes negative

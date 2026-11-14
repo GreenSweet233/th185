@@ -68,6 +68,15 @@ void BulletPool::update() {
             ++stats_.retired;
         }
     }
+
+    // Rebuild the live list for the collision pass. Delayed bullets are
+    // excluded for the same reason update() skips them: they are not on the
+    // field yet.
+    live_indices_.clear();
+    for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+        const Bullet& bullet = bullets_[i];
+        if (bullet.alive && bullet.delay == 0) live_indices_.push_back(i);
+    }
 }
 
 void BulletPool::release(u32 index) {

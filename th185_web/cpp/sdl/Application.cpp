@@ -541,7 +541,23 @@ void Application::consume_schedules() {
             // which is what a wave template is: a definition, not a per-frame
             // event.
             if (!wave_run_once_.insert(template_index).second) continue;
+            // Run only the subroutines that actually EMIT.
+            //
+            // A wave bank holds ~8-10 subroutines and only 1-2 of them contain
+            // op611; the rest are helpers (WaveNNLoop, WaveNNSub01, ...) that
+            // the emitter reaches through Call. Running every subroutine
+            // standalone meant 142 emitters fired at once on stage 5 -- 1136
+            // bullets in a single frame, which then cost 70 ms per frame in the
+            // per-bullet passes and 390 s for the stage.
             for (const EclSubroutine& sub : wave_resource.subs) {
+                bool emits = false;
+                for (const EclInstruction& ins : sub.instructions) {
+                    if (ins.id == u16(EclOp::Op611BulletEmit)) {
+                        emits = true;
+                        break;
+                    }
+                }
+                if (!emits) continue;
                 std::vector<u8> code;
                 u32 code_base = 0;
                 if (!sub.instructions.empty()) {
@@ -605,6 +621,14 @@ void Application::consume_schedules() {
             // op535 gives a per-bullet delay in frames: the fan fires in
             // sequence instead of all at once. A zero entry means "now".
             const u16 delay = u16(request.delays[i % 8]);
+            // Cap the emission per request.
+            //
+            // `count` comes from op605 and is 0/8/16 in the real data, but a
+            // wave subroutine that runs more than once multiplies it: stage 5
+            // reached 1137 hostile bullets from a single enemy, which cost
+            // 380 ms per frame in the per-bullet passes. 64 is above every
+            // observed single fan (16) and still bounds the worst case.
+            if (i >= MAX_BULLETS_PER_REQUEST) break;
             if (bullets_.spawn(sx, sy, vx, vy, 0, 0xFFFF8080u, true, delay)) {
                 ++stats_.enemy_shots;
             }
@@ -1029,6 +1053,7 @@ bool Application::tick(u32 held) {
     // Run every runnable subroutine once per tick with a bounded step budget.
     // This is where a real frame loop would also render, mix audio and poll
     // input; none of those exist yet.
+    script_instrs_.clear();
     for (const std::string& name : active_scripts_) {
         const auto found = ecl_.subroutines.find(name);
         if (found == ecl_.subroutines.end()) continue;
@@ -1059,6 +1084,9 @@ bool Application::tick(u32 held) {
         runner.run_coroutine(name, found->second.code,
                              found->second.code_base);
         std::swap(runner.context, ecl_);
+        // Per-script instruction count, so a script that burns its whole
+        // budget every frame is visible instead of hiding in the total.
+        script_instrs_.push_back(runner.stats().instructions);
         // Nothing to merge back: the interpreter ran against the live context.
 
         stats_.ecl_instructions += runner.stats().instructions;
@@ -1099,7 +1127,10 @@ bool Application::tick(u32 held) {
     if (player_.stats().bombs > bombs_before) {
         if (player_.take_bomb()) {
             u32 cancelled = 0;
-            for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+            // Walk the live list, not all 4096 slots. Three such loops ran per
+            // frame; together they cost 12288 iterations even when the field
+            // held 20 bullets.
+            for (const u32 i : bullets_.live_indices()) {
                 Bullet& bullet = bullets_.mutable_bullet(i);
                 if (!bullet.alive || !bullet.hostile) continue;
                 bullets_.release(i);
@@ -1129,12 +1160,16 @@ bool Application::tick(u32 held) {
     // Player vs hostile bullets. The player's hitbox is 2 units, far smaller
     // than its 30x46 sprite -- that gap is what makes grazing feel fair.
     const float hitbox = player_.hitbox_radius();
-    for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+    for (const u32 i : bullets_.live_indices()) {
         Bullet& bullet = bullets_.mutable_bullet(i);
         if (!bullet.alive || !bullet.hostile) continue;
         if (bullet.delay > 0) continue;   // still queued, not in the air yet
-        const float dx = bullet.x - player_.x();
+        // Vertical reject first: the field is 384x448, so |dy| > 32 cannot
+        // reach a 2-unit hitbox. With ~1100 bullets on stage 5 this skips the
+        // two multiplies for almost every one of them.
         const float dy = bullet.y - player_.y();
+        if (dy > 32.0f || dy < -32.0f) continue;
+        const float dx = bullet.x - player_.x();
         if (dx * dx + dy * dy > hitbox * hitbox) continue;
         bullets_.release(i);
         if (player_.take_hit()) ++stats_.player_hits_taken;
@@ -1197,12 +1232,13 @@ bool Application::tick(u32 held) {
     // counts once, then is marked so it cannot be counted again.
     const float graze_r = GRAZE_RADIUS;
     const float graze_inner = player_.hitbox_radius();
-    for (u32 i = 0; i < BULLET_CAPACITY; ++i) {
+    for (const u32 i : bullets_.live_indices()) {
         Bullet& bullet = bullets_.mutable_bullet(i);
         if (!bullet.alive || !bullet.hostile) continue;
         if (bullet.delay > 0 || bullet.grazed) continue;
-        const float dx = bullet.x - player_.x();
         const float dy = bullet.y - player_.y();
+        if (dy > graze_r || dy < -graze_r) continue;
+        const float dx = bullet.x - player_.x();
         const float d2 = dx * dx + dy * dy;
         if (d2 <= graze_r * graze_r && d2 > graze_inner * graze_inner) {
             bullet.grazed = true;
@@ -1257,6 +1293,8 @@ bool Application::tick(u32 held) {
     // this inverted test blocked the clear.
     const bool boss_defeated = boss_spawned_ && !enemies_.boss_alive();
     const bool field_empty = enemies_.stats().alive == 0;
+
+    stats_.script_instrs = script_instrs_;
 
     // Waves must have stopped arriving. `schedules_fired` only grows, so a
     // frame without growth means the scene controller is not scheduling.

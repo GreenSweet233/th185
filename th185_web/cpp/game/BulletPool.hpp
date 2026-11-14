@@ -95,9 +95,19 @@ public:
     void release(u32 index);
     const BulletStats& stats() const { return stats_; }
 
+    // Indices of the live bullets.
+    //
+    // The collision pass used to walk all 4096 slots and skip the dead ones.
+    // On stage 5 that meant 4096 iterations per frame for ~740 live bullets,
+    // plus a 17-enemy inner scan each. `update()` already touches every slot
+    // once per frame, so it can maintain this list for free.
+    const std::vector<u32>& live_indices() const { return live_indices_; }
+
 private:
     std::vector<Bullet> bullets_;
     std::vector<u32> free_slots_;
+    // Live bullet indices, rebuilt by update() each frame.
+    std::vector<u32> live_indices_;
     BulletStats stats_{};
 };
 

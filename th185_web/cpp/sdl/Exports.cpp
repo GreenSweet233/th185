@@ -804,6 +804,17 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_schedules_expected() {
     return th185::app::instance().stats().schedules_expected;
 }
 
+EMSCRIPTEN_KEEPALIVE const char* th185_active_script_name(unsigned i) {
+    const auto& s = th185::app::instance().active_scripts();
+    return i < s.size() ? s[i].c_str() : "";
+}
+
+// Instructions executed by the i-th active script during the last tick.
+EMSCRIPTEN_KEEPALIVE unsigned th185_script_instrs(unsigned i) {
+    const auto& v = th185::app::instance().stats().script_instrs;
+    return i < v.size() ? v[i] : 0u;
+}
+
 EMSCRIPTEN_KEEPALIVE const char* th185_error() {
     return th185::app::instance().error().c_str();
 }

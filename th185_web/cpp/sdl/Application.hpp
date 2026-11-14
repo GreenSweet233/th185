@@ -15,6 +15,10 @@ constexpr unsigned BOSS_DOWN_CONFIRM_FRAMES = 30;
 // Boss health. The original's value is unknown; 60 gives a fight long enough
 // to observe without being unkillable.
 constexpr int BOSS_STARTING_HP = 60;
+
+// Upper bound on one op611 emission. The recorded op605 counts are 0/8/16,
+// so this only clips pathological repeats.
+constexpr unsigned MAX_BULLETS_PER_REQUEST = 64;
 }  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
@@ -129,6 +133,8 @@ struct FrameStats {
     u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;
     u32 schedules_expected = 0;
+    // Instructions per active script, refreshed every tick.
+    std::vector<u32> script_instrs;
     u32 stage_clear = 0;
     u32 sounds_played = 0;
     u32 sounds_loaded = 0;
@@ -183,6 +189,10 @@ public:
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
+    // Names of the coroutines driven each frame, in execution order.
+    const std::vector<std::string>& active_scripts() const {
+        return active_scripts_;
+    }
     const StageScript& stage() const { return stage_; }
     const ScoreSystem& scoring() const { return scoring_; }
     const ItemPool& items() const { return items_; }
@@ -286,6 +296,7 @@ private:
     std::map<i32, EclResource> wave_cache_;
     // Template indices whose subroutines have already emitted.
     std::set<i32> wave_run_once_;
+    std::vector<u32> script_instrs_;
     // Fired schedule entries, keyed by (slot << 32 | time). A set rather than a
     std::string animation_bank_;
     SoftwareRaster raster_;
