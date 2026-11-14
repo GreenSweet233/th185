@@ -873,6 +873,71 @@ void Application::render() {
     // Opaque dark clear: a transparent framebuffer composites to white in
     // every viewer and hides the geometry.
     raster_.clear(Rgba8{24, 24, 48, 255});
+
+    // Background.
+    //
+    // worldNN.anm holds one sprite, and it is a wide strip: 2048x512 out of a
+    // 512x512 atlas, so its UVs run to u1 = 4.0 and it must be tiled with
+    // Repeat addressing. With the default Clamp the strip stretched into
+    // horizontal bands -- which is what the frame looked like before.
+    //
+    // The .std entity table places the strips. They are vertical rows 512
+    // apart, not parallax layers (world01: -48/464/976/1488/2000/2512), so
+    // exactly one covers the 480-pixel screen. Drawing all the ones that clip
+    // the screen cost 300 ms per frame on world01t (17 quads x 307200 pixels
+    // of sampling each); drawing the one nearest the middle fills the field
+    // and costs one quad.
+    {
+        const AnimationBank* bg_bank = nullptr;
+        for (const AnimationBank& bank : banks_) {
+            if (bank.name == session_.stage.anm_name) { bg_bank = &bank; break; }
+        }
+        if (bg_bank != nullptr && !bg_bank->resource.sprites.empty() &&
+            !bg_bank->textures.empty()) {
+            const AnmSprite& sprite = bg_bank->resource.sprites[0];
+            const float half_w = sprite.w * 0.5f;
+            const float half_h = sprite.h * 0.5f;
+            const float cx = float(raster_.width()) * 0.5f;
+            const float cy = float(raster_.height()) * 0.5f;
+
+            // Pick the row whose centre is closest to the screen centre.
+            const StageEntity* chosen = nullptr;
+            float best = 1e9f;
+            for (const StageEntity& entity : session_.stage.entities) {
+                const float distance = std::fabs(entity.y);
+                if (distance < best) { best = distance; chosen = &entity; }
+            }
+
+            if (chosen != nullptr) {
+                AnmQuad quad;
+                quad.x[0] = cx + chosen->x - half_w;
+                quad.y[0] = cy + chosen->y - half_h;
+                quad.x[1] = quad.x[0] + sprite.w;
+                quad.y[1] = quad.y[0];
+                quad.x[2] = quad.x[1];
+                quad.y[2] = quad.y[0] + sprite.h;
+                quad.x[3] = quad.x[0];
+                quad.y[3] = quad.y[2];
+                quad.u[0] = sprite.u0;
+                quad.v[0] = sprite.v0;
+                quad.u[1] = sprite.u1;
+                quad.v[1] = sprite.v0;
+                quad.u[2] = sprite.u1;
+                quad.v[2] = sprite.v1;
+                quad.u[3] = sprite.u0;
+                quad.v[3] = sprite.v1;
+                if (sprite.texture < bg_bank->textures.size()) {
+                    quad.texture = &bg_bank->textures[sprite.texture];
+                }
+                quad.blend = AnmBlendMode::Opaque;
+                quad.nearest = false;
+                quad.address_u = AnmAddress::Repeat;
+                quad.address_v = AnmAddress::Clamp;
+                raster_.draw(quad);
+                stats_.background_quads = 1;
+            }
+        }
+    }
     // AnmVm knows which bank it came from, so it can resolve its own texture;
     // the manager only needs a way to ask. Passing a null array makes it draw
     // untextured, which is why the banks are handed over individually.

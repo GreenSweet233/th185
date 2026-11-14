@@ -1001,6 +1001,25 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('op602 sets bullet appearances', sets > 0);
     check('more than one bullet sprite is in use', kinds > 1);
 }
+// Background layers come from the .std entity table.
+//
+// worldNN.anm holds one sprite, and it is a wide strip: 2048x512 cut from a
+// 512x512 atlas, so its UVs run to u1 = 4.0 and it has to be tiled with Repeat
+// addressing. With the default Clamp the strip stretches into horizontal bands
+// -- which is exactly what the frame looked like before this was fixed.
+//
+// The entity table gives the layers their positions: world01 has 24 entities in
+// six rows 512 apart, z from -500 to 0.
+{
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    for (let f = 0; f < 200; ++f) module._th185_tick(1);
+    const entities = module._th185_stage_entities();
+    const bgQuads = module._th185_background_quads();
+    console.log('background  : entities=' + entities + ' quads=' + bgQuads);
+    check('the stage declares background entities', entities > 0);
+    check('background layers are drawn', bgQuads > 0);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves

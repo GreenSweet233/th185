@@ -513,6 +513,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_sprite_kinds() {
     return th185::app::instance().bullet_sprite_kinds();
 }
 
+// Background quads drawn last frame (diagnostics only).
+EMSCRIPTEN_KEEPALIVE unsigned th185_background_quads() {
+    return th185::app::instance().stats().background_quads;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stage_entities() {
+    return unsigned(th185::app::instance().stage_entity_count());
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_rank_ff() {
     return th185::app::instance().ecl_rank_ff();
 }

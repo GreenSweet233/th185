@@ -135,6 +135,7 @@ struct FrameStats {
     u32 max_stack_depth = 0;
     // Rendering.
     u32 quads = 0;
+    u32 background_quads = 0;
     u32 pixels_written = 0;
     u32 live_animations = 0;
     // Last button bitmask received from the shell.
@@ -255,6 +256,8 @@ public:
     u32 ecl_rank_other() const { return ecl_rank_other_; }
     // How many distinct bullet sprite indices are alive right now.
     u32 bullet_sprite_kinds() const;
+    // Entities in the current stage's .std table (background layers).
+    u32 stage_entity_count() const { return u32(session_.stage.entities.size()); }
     // Card inventory: owned cards, equipped loadout and the market wallet.
     CardInventory& cards() { return cards_; }
     const CardInventory& cards() const { return cards_; }
