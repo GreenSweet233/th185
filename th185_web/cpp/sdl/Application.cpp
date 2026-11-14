@@ -495,6 +495,11 @@ void Application::consume_schedules() {
             const float speed = 0.30f + float(template_index % 8u) * 0.05f;
 
 
+            // `group_size` is the spawn area (world05: 128, world08: 2048).
+            // It is kept as the collision radius because that is what makes
+            // the enemies hittable -- shrinking it to 16 dropped stage 0's
+            // kills from 25 to 1. The DRAWING size is clamped separately in
+            // render(), which is where the 8192x8192 quads came from.
             enemies_.spawn(x, y, 0.0f, speed, group_size, 2, sprite);
         }
     }
@@ -772,7 +777,17 @@ void Application::render() {
         if (!enemy.alive) continue;
 
         AnmQuad quad;
-        const float half = enemy.radius * 2.0f;
+        // Half-extent of the drawn quad, clamped.
+        //
+        // radius doubles as the spawn-area size (world08: 2048), so drawing at
+        // that scale produced quads up to 8192 px per side -- stage 5's render
+        // time grew 0.8 ms -> 150 ms as enemies appeared, because each enemy
+        // covered the whole framebuffer many times over. 32 px is the size of a
+        // real enemy sprite; the collision radius stays untouched.
+        constexpr float MAX_DRAW_HALF = 32.0f;
+        const float half = enemy.radius < MAX_DRAW_HALF
+                               ? enemy.radius
+                               : MAX_DRAW_HALF;
         quad.x[0] = float(raster_.width()) * 0.5f + enemy.x - half;
         quad.y[0] = float(raster_.height()) * 0.5f + enemy.y - half;
         quad.x[1] = quad.x[0] + half * 2.0f;
