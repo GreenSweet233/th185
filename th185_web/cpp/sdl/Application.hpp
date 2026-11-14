@@ -197,6 +197,9 @@ public:
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
+    // Card inventory: owned cards, equipped loadout and the market wallet.
+    CardInventory& cards() { return cards_; }
+    const CardInventory& cards() const { return cards_; }
     // Names of the coroutines driven each frame, in execution order.
     const std::vector<std::string>& active_scripts() const {
         return active_scripts_;
@@ -255,6 +258,7 @@ private:
     std::vector<u8> archive_bytes_;
     GameSession session_;
     EclContext ecl_;
+    CardInventory cards_;
     std::vector<std::string> active_scripts_;
 
     // Animation state. `animation_textures_` must outlive the manager because

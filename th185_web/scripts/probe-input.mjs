@@ -513,6 +513,53 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     console.log('stage clear : ' + rows.join('  '));
     check('every stage can be cleared', cleared === stages);
 }
+// Card system: table, wallet, purchase, loadout and effect aggregation.
+//
+// TH185's loop is buy-in-market then equip-before-stage. The table is parsed
+// from the binary (87 entries, 68 bytes each); price is fields[11] and the
+// active flag is fields[0]. The effect aggregates use fields[9] (category),
+// which is this build's interpretation and is recorded as such in the ledger.
+{
+    const n = module._th185_card_count();
+    const cardName = module.cwrap('th185_card_name', 'string', ['number']);
+    let active = 0, priced = 0;
+    for (let i = 0; i < n; ++i) {
+        if (module._th185_card_is_active(i)) ++active;
+        if (module._th185_card_price(i) > 0) ++priced;
+    }
+    console.log('cards       : ' + n + ' active=' + active + ' priced=' + priced);
+    check('the card table has 87 entries', n === 87);
+    check('26 cards are active-use', active === 26);
+    check('82 cards have a market price', priced === 82);
+    check('the first card is PENDULUM', cardName(0) === 'PENDULUM');
+
+    module._th185_cards_add_currency(100);
+    const before = module._th185_cards_currency();
+    const dango = module._th185_card_id(2);
+    const price = module._th185_card_price(2);
+    const bought = module._th185_cards_buy(dango);
+    const after = module._th185_cards_currency();
+    console.log('buy         : id=' + dango + ' price=' + price +
+                ' ' + before + ' -> ' + after + ' owned=' + module._th185_cards_owned());
+    check('a card can be bought', bought === 1);
+    check('buying deducts the price', after === before - price);
+    check('the bought card is owned', module._th185_cards_owned() === 1);
+    check('buying the same card twice fails', module._th185_cards_buy(dango) === 0);
+
+    check('an owned card can be equipped', module._th185_cards_equip(dango) === 1);
+    check('the loadout holds it',
+          module._th185_cards_loadout_size() === 1 &&
+          module._th185_cards_loadout_at(0) === dango);
+    check('an unowned card cannot be equipped',
+          module._th185_cards_equip(module._th185_card_id(5)) === 0);
+
+    // DANGO is category 1 (life), so exactly one extra life.
+    const lives = module._th185_cards_extra_lives();
+    console.log('effects     : lives=' + lives +
+                ' bombs=' + module._th185_cards_extra_bombs() +
+                ' shot=' + module._th185_cards_shot_bonus());
+    check('a life card grants an extra life', lives === 1);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves

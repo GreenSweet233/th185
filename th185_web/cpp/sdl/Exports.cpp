@@ -819,6 +819,73 @@ EMSCRIPTEN_KEEPALIVE void th185_render_only() {
     th185::app::instance().render();
 }
 
+// --- Cards ---------------------------------------------------------------
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_count() {
+    return th185::CARD_COUNT;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_id(unsigned index) {
+    const auto& table = th185::cards();
+    return index < table.size() ? table[index].id : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE const char* th185_card_name(unsigned index) {
+    const auto& table = th185::cards();
+    return index < table.size() ? table[index].name : "";
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_price(unsigned index) {
+    const auto& table = th185::cards();
+    return index < table.size() ? table[index].price() : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_is_active(unsigned index) {
+    const auto& table = th185::cards();
+    return (index < table.size() && table[index].is_active()) ? 1u : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_cards_add_currency(unsigned amount) {
+    th185::app::instance().cards().add_currency(amount);
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_currency() {
+    return th185::app::instance().cards().currency();
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_cards_buy(unsigned card_id) {
+    return th185::app::instance().cards().buy(card_id) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_owned() {
+    return th185::app::instance().cards().owned_count();
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_cards_equip(unsigned card_id) {
+    return th185::app::instance().cards().equip(card_id) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_loadout_size() {
+    return unsigned(th185::app::instance().cards().loadout().size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_loadout_at(unsigned index) {
+    const auto& l = th185::app::instance().cards().loadout();
+    return index < l.size() ? l[index] : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_extra_lives() {
+    return th185::app::instance().cards().extra_lives();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_extra_bombs() {
+    return th185::app::instance().cards().extra_bombs();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_shot_bonus() {
+    return unsigned(th185::app::instance().cards().shot_power_bonus());
+}
+
 // Requests the last tick turned into bullets (diagnostics only).
 EMSCRIPTEN_KEEPALIVE unsigned th185_last_frame_requests() {
     return th185::app::instance().stats().last_frame_requests;

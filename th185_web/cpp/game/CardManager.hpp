@@ -29,6 +29,8 @@
 #include "Types.hpp"
 
 #include <array>
+#include <set>
+#include <vector>
 #include <string>
 
 namespace th185 {
@@ -46,12 +48,24 @@ constexpr u32 CARD_ID_BACK = 86;
 struct CardEntry {
     const char* name = "";
     u32 id = 0;
-    // Raw fields +0x08 .. +0x34 (13 DWORDs). Semantics not fully resolved;
-    // small enumerations. Kept verbatim so nothing is lost.
+    // Raw fields +0x08 .. +0x34 (13 DWORDs).
+    //
+    // Two of them are now identified from the full 87-card distribution:
+    //   fields[11] = PRICE in market currency (10/25/30/50/60/75 across 11
+    //                distinct values; the two hidden-boss cards cost 0)
+    //   fields[9]  = category (1..5, 6 distinct values)
+    //   fields[5]  = rarity tier (1 for 76 cards, 999 for the two special)
+    //   fields[0]  = active vs passive (1 for 26 cards)
+    // The rest stay verbatim so nothing is lost.
     std::array<u32, 13> fields{};
     u32 icon_left = 0;    // +0x38, always odd
     u32 icon_right = 0;   // +0x3C, always icon_left + 1
     u32 reserved = 0;     // +0x40, always 0
+
+    // Price in market currency (fields[11]).
+    u32 price() const { return fields[11]; }
+    // True when the card has an active use (fields[0] == 1).
+    bool is_active() const { return fields[0] == 1; }
 };
 
 // The 87-entry table, in table order (NOT sorted by id).
@@ -62,5 +76,47 @@ const CardEntry* find_card(u32 id);
 
 // True for the two ids that gate the hidden bosses.
 bool is_special_card(u32 id);
+
+// Owned cards, equipped loadout and the market wallet.
+//
+// TH185's loop is: buy cards in the market with currency, equip a loadout
+// before a stage, and each card modifies the run. The table above describes
+// the cards; this class holds the player's state.
+class CardInventory {
+public:
+    static constexpr u32 LOADOUT_SIZE = 8;   // cards carried into a stage
+
+    // Wallet.
+    void add_currency(u32 amount);
+    bool spend(u32 amount);
+    u32 currency() const { return currency_; }
+
+    // Buying. Fails when the card is already owned, unknown, or unaffordable.
+    bool buy(u32 card_id);
+    bool owns(u32 card_id) const;
+    u32 owned_count() const;
+
+    // Loadout. A card must be owned; equipping a full loadout replaces slot
+    // `index` when it is in range, otherwise the oldest entry is dropped.
+    bool equip(u32 card_id);
+    bool unequip(u32 index);
+    const std::vector<u32>& loadout() const { return loadout_; }
+    void clear_loadout() { loadout_.clear(); }
+
+    // Aggregate effects the run reads. Each is the sum over equipped cards,
+    // which is how the original stacks card bonuses.
+    u32 extra_lives() const;
+    u32 extra_bombs() const;
+    float shot_power_bonus() const;
+    u32 starting_currency_bonus() const;
+
+    // Resets everything except the wallet (a stage restart keeps purchases).
+    void reset_run();
+
+private:
+    u32 currency_ = 0;
+    std::set<u32> owned_;
+    std::vector<u32> loadout_;
+};
 
 }  // namespace th185

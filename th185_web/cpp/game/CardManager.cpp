@@ -116,4 +116,109 @@ bool is_special_card(u32 id) {
     return id == CARD_ID_BLANK || id == CARD_ID_NITORI;
 }
 
+// --- CardInventory ---
+
+void CardInventory::add_currency(u32 amount) {
+    currency_ += amount;
+}
+
+bool CardInventory::spend(u32 amount) {
+    if (amount > currency_) return false;
+    currency_ -= amount;
+    return true;
+}
+
+bool CardInventory::buy(u32 card_id) {
+    const CardEntry* card = find_card(card_id);
+    if (card == nullptr) return false;
+    if (owned_.count(card_id) != 0) return false;
+    if (!spend(card->price())) return false;
+    owned_.insert(card_id);
+    return true;
+}
+
+bool CardInventory::owns(u32 card_id) const {
+    return owned_.count(card_id) != 0;
+}
+
+u32 CardInventory::owned_count() const {
+    return u32(owned_.size());
+}
+
+bool CardInventory::equip(u32 card_id) {
+    if (!owns(card_id)) return false;
+    for (const u32 existing : loadout_) {
+        if (existing == card_id) return true;   // already carried
+    }
+    if (loadout_.size() >= LOADOUT_SIZE) {
+        // Drop the oldest entry, matching a fixed-size belt where the newest
+        // card displaces the first.
+        loadout_.erase(loadout_.begin());
+    }
+    loadout_.push_back(card_id);
+    return true;
+}
+
+bool CardInventory::unequip(u32 index) {
+    if (index >= loadout_.size()) return false;
+    loadout_.erase(loadout_.begin() + index);
+    return true;
+}
+
+// The card table's remaining fields are not decoded, so the aggregates below
+// use the ONE field whose meaning is established: fields[9] is the category
+// (1..5). The mapping from category to effect is this build's interpretation
+// and is recorded as such in the ledger -- it is not an original constant.
+namespace {
+
+constexpr u32 CATEGORY_LIFE = 1;
+constexpr u32 CATEGORY_BOMB = 2;
+constexpr u32 CATEGORY_SHOT = 3;
+constexpr u32 CATEGORY_MONEY = 4;
+constexpr u32 CATEGORY_UTILITY = 5;
+
+u32 category_of(const CardEntry& card) { return card.fields[9]; }
+
+}  // namespace
+
+u32 CardInventory::extra_lives() const {
+    u32 total = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && category_of(*card) == CATEGORY_LIFE) ++total;
+    }
+    return total;
+}
+
+u32 CardInventory::extra_bombs() const {
+    u32 total = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && category_of(*card) == CATEGORY_BOMB) ++total;
+    }
+    return total;
+}
+
+float CardInventory::shot_power_bonus() const {
+    float total = 0.0f;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && category_of(*card) == CATEGORY_SHOT) total += 1.0f;
+    }
+    return total;
+}
+
+u32 CardInventory::starting_currency_bonus() const {
+    u32 total = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && category_of(*card) == CATEGORY_MONEY) total += 10;
+    }
+    return total;
+}
+
+void CardInventory::reset_run() {
+    loadout_.clear();
+}
+
 }  // namespace th185
