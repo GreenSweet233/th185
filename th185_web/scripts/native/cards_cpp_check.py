@@ -187,12 +187,26 @@ def main() -> int:
     if not ok:
         failures += 1
 
-    # 7. Cost column: exactly two distinct values, which is why the field is
-    #    NOT a usable cost in TH185 (the Cost system is elsewhere).
+    # 7. The Cost column is a tier ladder at +0x34 (fields[11]).
+    #
+    # This check used to assert the opposite -- that `cost` holds only 0/1 and
+    # is therefore not a cost column. That was true of +0x30 (fields[12]), but
+    # `cards.py` was reading +0x30 while calling it "cost", so the assertion
+    # was protecting the wrong offset. The real cost is +0x2C (fields[11]).
     costs = sorted({c["cost"] for c in ref})
-    ok = costs == [0, 1]
-    print("[%s] +0x30 holds only %s (not a real cost column)"
+    expected = [0, 10, 25, 30, 50, 60, 75, 100, 125, 150, 200]
+    ok = costs == expected
+    print("[%s] +0x34 holds the cost tier ladder %s"
           % ("PASS" if ok else "FAIL", costs))
+    if not ok:
+        failures += 1
+
+    # 8. +0x30 (fields[12]) is a flag, not a cost -- only 0/1.
+    # The exposed fields list is fields[2:], so +0x30 is c["fields"][8].
+    flags = sorted({c["fields"][8] for c in ref})
+    ok = flags == [0, 1]
+    print("[%s] +0x30 holds only %s, so it is a flag not a cost"
+          % ("PASS" if ok else "FAIL", flags))
     if not ok:
         failures += 1
 

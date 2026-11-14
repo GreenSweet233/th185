@@ -76,12 +76,17 @@ struct CardEntry {
     u32 icon_right = 0;   // +0x3C, always icon_left + 1
     u32 reserved = 0;     // +0x40, always 0
 
-    // COST, the equip budget this card consumes (fields[11], byte +0x2C).
+    // COST, the equip budget this card consumes. Byte +0x34 in the table.
+    //
+    // Its 11 distinct values are 0/10/25/30/50/60/75/100/125/150/200 --
+    // exactly the tier ladder the original's `Equip Cost %d%%` /
+    // `Total Cost %d%%/%d%%` strings describe.
     //
     // docs/CARDS.md guessed +0x30; that field is only 0/1 across all 87 cards,
-    // so it cannot be a cost. The real one is +0x2C, whose 11 distinct values
-    // are 0/10/25/30/50/60/75/100/125/150/200 -- exactly the tier ladder the
-    // original's `Equip Cost %d%%` / `Total Cost %d%%/%d%%` strings describe.
+    // so it cannot be a cost.
+    //
+    // The index is 11 here because CardEntry::fields starts after name+id;
+    // in the raw 17-dword entry the same slot is index 13.
     //
     // The market price reuses the same number in this build; the original may
     // scale it per shop (`Shop Cost %d(%d)`), which is not decoded.

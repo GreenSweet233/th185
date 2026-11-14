@@ -133,7 +133,11 @@ def load_cards():
                 "index": index,
                 "id": fields[1],
                 "name": name,
-                "cost": fields[12],      # +0x30，待确认
+                "cost": fields[13],      # byte +0x34: the equip budget (11 tiers).
+                            # fields[k] is at byte +0x04*k, so [13] is +0x34.
+                            # The exposed "fields" list is fields[2:], so the
+                            # SAME dword is c["fields"][11] -- two indexings of
+                            # one table, which is why this was easy to confuse.
                 "fields": fields[2:],
             }
         )
