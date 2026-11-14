@@ -311,6 +311,11 @@ constexpr u32 INSTRUCTION_HEADER = 8;
 // first version of the verifier report 2220 bad jump targets.
 constexpr u32 ARGUMENT_BIAS = 4;
 
+// Upper bound on one bullet emission. The recorded op606 counts top out at
+// 32; this only stops a corrupt or referenced value from becoming a
+// multi-billion-iteration loop (which aborted the WASM instance once).
+constexpr u32 MAX_EMIT = 64;
+
 u32 arg_u32(const u8* payload, u32 index) {
     return read_u32(payload + ARGUMENT_BIAS + index * 4);
 }
@@ -970,8 +975,24 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
         case EclOp::Op606BulletCount: {
-            // Two integers; observed (2,1) and (1,1). Recorded, not acted on.
-            context.pending_bullet.count = arg_u32(payload, 0);
+            // (mode, count, flag): the emission count is the SECOND word.
+            //
+            // Measured payload distribution over 190 occurrences:
+            //   [0][0][1][1][0]   x67
+            //   [8][0][-1][1][0]  x17
+            //   [0][1][1][1][0]   x12
+            //   [0][0][5][1][0]   x9
+            //   [0][0][32][1][0]  x6
+            // The third word is the count (1/2/3/5/8/32 ...) and the fourth is
+            // always 1. Reading index 0 gave 0 for 90% of them, so every
+            // emission fell back to the default 8 and the field filled with
+            // 1140 bullets.
+            context.pending_bullet.mode = arg_u32(payload, 0);
+            // A negative count is a REFERENCE (payload [8][0][-1][1][0]), not a
+            // number of bullets. Treating it as u32 made the emit loop run
+            // 4 billion times and aborted the WASM instance.
+            const i32 raw = arg_i32(payload, 1);
+            context.pending_bullet.count = raw > 0 ? u32(raw) : 0u;
             break;
         }
         case EclOp::Op604BulletSpeed: {
@@ -980,8 +1001,15 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
         case EclOp::Op605BulletFan: {
-            // (count, lo, hi): N bullets across an angular range.
-            context.pending_bullet.count = arg_u32(payload, 0);
+            // (lo, hi): the angular range of the fan.
+            //
+            // Measured on Boss05BossCard2_at: the payload is
+            //   [0][0][1.5][1.0]   -> 00000000 00000000 0000c03f 0000803f
+            // so the two floats are at +8 and +12, i.e. arg index 1 and 2.
+            // There is NO count here -- reading index 0 gave 0 and CLOBBERED
+            // the count that op606 had just set, which is why every emission
+            // fell back to the default 8 and the field filled with 1140
+            // bullets.
             context.pending_bullet.angle_lo = arg_float(payload, 1);
             context.pending_bullet.angle_hi = arg_float(payload, 2);
             break;
@@ -1023,7 +1051,11 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // The angles are therefore taken from the pattern fields that the
             // 600-family opcodes already recorded, not from the stack.
             request.angles.clear();
-            const u32 want = request.count > 0 ? request.count : 8u;
+            // Clamp: op606's count reaches 32 in the data, and a corrupt or
+            // referenced value must not turn into a 4-billion-iteration loop.
+            const u32 want = request.count > 0
+                                  ? (request.count > MAX_EMIT ? MAX_EMIT : request.count)
+                                  : 8u;
             const float lo = request.angle_lo;
             const float hi = request.angle_hi;
             for (u32 i = 0; i < want; ++i) {
