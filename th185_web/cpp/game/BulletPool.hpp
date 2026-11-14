@@ -103,6 +103,7 @@ public:
     // once per frame, so it can maintain this list for free.
     const std::vector<u32>& live_indices() const { return live_indices_; }
 
+
 private:
     std::vector<Bullet> bullets_;
     std::vector<u32> free_slots_;

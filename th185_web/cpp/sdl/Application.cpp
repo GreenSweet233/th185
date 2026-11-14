@@ -1160,13 +1160,17 @@ bool Application::tick(u32 held) {
     // Player vs hostile bullets. The player's hitbox is 2 units, far smaller
     // than its 30x46 sprite -- that gap is what makes grazing feel fair.
     const float hitbox = player_.hitbox_radius();
+    // Walk the live list with a cheap vertical reject.
+    //
+    // A Y-bucket index was tried and reverted: `bucket_at` copies the matching
+    // indices into a scratch vector, and on stages 7/8 the bullets cluster in a
+    // few rows, so the copy cost more than the scan it replaced (stage 8 went
+    // 246 s -> 426 s). The reject below skips the two multiplies for almost
+    // every bullet without touching memory.
     for (const u32 i : bullets_.live_indices()) {
         Bullet& bullet = bullets_.mutable_bullet(i);
         if (!bullet.alive || !bullet.hostile) continue;
         if (bullet.delay > 0) continue;   // still queued, not in the air yet
-        // Vertical reject first: the field is 384x448, so |dy| > 32 cannot
-        // reach a 2-unit hitbox. With ~1100 bullets on stage 5 this skips the
-        // two multiplies for almost every one of them.
         const float dy = bullet.y - player_.y();
         if (dy > 32.0f || dy < -32.0f) continue;
         const float dx = bullet.x - player_.x();
