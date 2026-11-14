@@ -90,6 +90,10 @@ enum class Phase : u32 {
     Running = 1,
     Paused = 2,
     Failed = 3,
+    // The stage is complete and the market is open. The original returns to
+    // the scene select after the purchases; this build stops here so the
+    // shell can show the result and the next load_stage resets it.
+    Cleared = 4,
 };
 
 struct FrameStats {
@@ -136,6 +140,10 @@ struct FrameStats {
     // Consecutive frames with no live enemy. A single empty frame happens
     // between waves, so a clear needs several.
     u32 clear_frames = 0;
+    // Frame at which the stage was cleared, and the end-of-stage bookkeeping.
+    u32 clear_frame = 0;
+    u32 banked = 0;
+    u32 market_open = 0;
     u32 boss_kill_frames = 0;
     u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;
@@ -172,7 +180,7 @@ public:
 
     // Advances one logic tick. `held` is a bitmask of held buttons.
     // Returns false on a fatal error.
-    bool tick(u32 held);
+    bool tick(u32 held, bool do_render = true);
 
     // Enters Running. Idle -> Running is the shell's "start" action.
     bool start();

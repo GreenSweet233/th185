@@ -701,6 +701,12 @@ void Application::reset_scenario() {
     stats_.boss_kill_frames = 0;
     stats_.frames_since_schedule = 0;
     stats_.stage_clear = 0;
+    // A stage restart clears the end-of-stage state too, otherwise the
+    // application stays in Phase::Cleared and the next tick does nothing.
+    stats_.clear_frame = 0;
+    stats_.banked = 0;
+    stats_.market_open = 0;
+    if (phase_ == Phase::Cleared) phase_ = Phase::Running;
     last_schedules_fired_ = 0;
     boss_spawned_ = false;
     stats_.boss_spawned = 0;
@@ -1084,15 +1090,23 @@ bool Application::load_stage(u32 stage_index) {
     // enemies through op1013, so seeding a test wave would only pollute the
     // formation with enemies that are not in the stage data.
     render();
+    // A freshly loaded stage is playable, whatever the previous one ended as.
+    phase_ = Phase::Running;
     return true;
 }
 
-bool Application::tick(u32 held) {
+bool Application::tick(u32 held, bool do_render) {
     // Input is recorded but not yet consumed: no player entity exists, so there
     // is nothing to steer. Keeping the parameter plumbed means the shell can
     // already send it and wiring the player will not change this signature.
     stats_.held_buttons = held;
     if (phase_ == Phase::Failed) return false;
+    // Cleared keeps ticking (so the market can be used) but stops simulating.
+    if (phase_ == Phase::Cleared) {
+        ++stats_.ticks;
+        if (do_render) render();
+        return true;
+    }
     if (phase_ != Phase::Running) return true;
 
     ++stats_.ticks;
@@ -1389,6 +1403,14 @@ bool Application::tick(u32 held) {
         // Raise builtin slot 104 -- the value op1017 reads.
         ecl_.builtins[STAGE_CLEAR_SLOT] = 1;
         stats_.stage_clear = 1;
+        stats_.clear_frame = stats_.ticks;
+
+        // End-of-stage bookkeeping, in the order the original does it:
+        // bullet money is banked, then the market opens.
+        stats_.banked = cards_.bank_bullet_money();
+        cards_.open_market(scene_card_pool(stage_index_), stats_.ticks + 1u);
+        stats_.market_open = 1;
+        phase_ = Phase::Cleared;
     }
     // Death and respawn.
     //

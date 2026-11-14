@@ -659,6 +659,19 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_clear_frames() {
     return th185::app::instance().stats().clear_frames;
 }
 
+// End-of-stage bookkeeping.
+EMSCRIPTEN_KEEPALIVE unsigned th185_clear_frame() {
+    return th185::app::instance().stats().clear_frame;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_banked() {
+    return th185::app::instance().stats().banked;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_open_flag() {
+    return th185::app::instance().stats().market_open;
+}
+
 // ECL interpreter counters, exported so a test can prove they actually move.
 // Before ecl_merge_check.py these were written by the interpreter and then
 // thrown away by the context merge, so every one of them read as 0.

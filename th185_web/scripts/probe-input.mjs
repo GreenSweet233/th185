@@ -702,6 +702,64 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('a purchase consumes one of the three slots',
           module._th185_market_purchases_left() === 2);
 }
+// End-of-stage flow: clear -> bank -> market -> next stage.
+//
+// Before this link existed, `stage_clear` was set and nothing happened: the
+// stage never ended, bullet money was never banked, and the market never
+// opened. The chain is: bank the bullet purse, open the market from the
+// scene's pool, switch to Phase::Cleared; a fresh load_stage resets it.
+{
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    module._th185_add_bullet_money(500);
+    const phaseBefore = module._th185_phase();
+
+    let clearAt = -1;
+    for (let f = 0; f < 8000; ++f) {
+        module._th185_tick(1);
+        if (module._th185_stage_clear()) { clearAt = f; break; }
+    }
+    const phaseAfter = module._th185_phase();
+    const banked = module._th185_banked();
+    const marketOpen = module._th185_market_open_flag();
+    console.log('end of stage: cleared at ' + clearAt +
+                ' phase ' + phaseBefore + ' -> ' + phaseAfter +
+                ' banked=' + banked + ' market=' + marketOpen);
+    check('the stage clears', clearAt > 0);
+    check('clearing switches to Phase::Cleared', phaseBefore === 1 && phaseAfter === 4);
+    check('the bullet purse is banked on clear', banked === 500);
+    check('the market opens on clear', marketOpen === 1);
+    check('banking empties the bullet purse', module._th185_bullet_money() === 0);
+    check('the banked money reaches funds', module._th185_funds() >= 500);
+
+    const offersAfterClear = module._th185_market_offers();
+    check('the market offers cards after a clear', offersAfterClear === 3);
+
+    const beforeBuy = module._th185_funds();
+    const tempBefore = module._th185_temporary_cards();
+    const bought = module._th185_market_buy(0);
+    const tempAfter = module._th185_temporary_cards();
+    console.log('post-clear  : buy=' + bought + ' funds ' + beforeBuy +
+                ' -> ' + module._th185_funds() +
+                ' temp ' + tempBefore + ' -> ' + tempAfter);
+    check('a post-clear purchase succeeds', bought === 1);
+    // Compare the delta: earlier checks already bought cards this run.
+    check('the purchase is temporary', tempAfter === tempBefore + 1);
+
+    // Ticking while cleared must not resume simulation.
+    for (let f = 0; f < 10; ++f) module._th185_tick(1);
+    check('Phase::Cleared is stable across ticks', module._th185_phase() === 4);
+
+    // A fresh stage resets the end-of-stage state.
+    module._th185_load_stage(2);
+    module._th185_reset_scenario();
+    console.log('next stage  : phase=' + module._th185_phase() +
+                ' clear=' + module._th185_stage_clear() +
+                ' market=' + module._th185_market_open_flag());
+    check('loading a stage resets the phase', module._th185_phase() === 1);
+    check('loading a stage clears the clear flag', module._th185_stage_clear() === 0);
+    check('loading a stage closes the market', module._th185_market_open_flag() === 0);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves
