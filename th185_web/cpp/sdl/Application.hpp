@@ -27,6 +27,18 @@ constexpr unsigned MAX_BULLETS_PER_REQUEST = 64;
 // each request is small -- it is the COUNT that explodes.
 constexpr unsigned MAX_REQUESTS_PER_FRAME = 32;
 
+// Button bits, matching th185::PlayerButton and the shell's BUTTON table.
+// These were briefly written in a different order than PlayerButton, which
+// made the pause menu's "confirm" fire on the wrong key.
+constexpr unsigned BUTTON_SHOT = 1u << 0;
+constexpr unsigned BUTTON_BOMB = 1u << 1;
+constexpr unsigned BUTTON_FOCUS = 1u << 2;
+constexpr unsigned BUTTON_SPECIAL = 1u << 3;
+constexpr unsigned BUTTON_UP = 1u << 4;
+constexpr unsigned BUTTON_DOWN = 1u << 5;
+constexpr unsigned BUTTON_LEFT = 1u << 6;
+constexpr unsigned BUTTON_RIGHT = 1u << 7;
+
 // What clearing a scene grants. The original ties slot count and the cost cap
 // to progress ("通过踏破场景和击败新 BOSS 提升卡槽数量与 Cost 上限"); the exact
 // increments are this build's choice, sized so a 200-cost card becomes
@@ -92,6 +104,16 @@ constexpr unsigned PROGRESS_COST_PER_CLEAR = 25;
 
 namespace th185::app {
 
+// Items on the pause screen. The original has a full menu with options and
+// key config; this build offers the three actions a player actually needs
+// mid-stage.
+enum class PauseItem : u32 {
+    Resume = 0,
+    Restart = 1,
+    Quit = 2,
+    Count = 3,
+};
+
 enum class Phase : u32 {
     Idle = 0,
     Running = 1,
@@ -117,6 +139,7 @@ struct FrameStats {
     u32 live_animations = 0;
     // Last button bitmask received from the shell.
     u32 held_buttons = 0;
+    u32 held_buttons_prev = 0;
     // Player.
     float player_x = 0.0f;
     float player_y = 0.0f;
@@ -195,6 +218,13 @@ public:
     bool start();
 
     bool pause();
+    // Pause-menu navigation. Movement is edge-triggered so holding a key does
+    // not scroll the list.
+    void pause_move(i32 delta);
+    // Runs the selected item. Resume returns to play; Restart reloads the
+    // stage; Quit returns to the scene-select phase.
+    void pause_confirm();
+    PauseItem pause_item() const { return pause_item_; }
     bool resume();
     bool restart();
 
@@ -217,6 +247,12 @@ public:
     const Player& player() const { return player_; }
     const Player& player_state() const { return player_; }
     const EclContext& ecl() const { return ecl_; }
+    // Instructions the interpreter skipped for the current difficulty tier.
+    u32 ecl_difficulty_skipped() const { return ecl_difficulty_skipped_; }
+    u32 ecl_first_masked_opcode() const { return ecl_first_masked_opcode_; }
+    u32 ecl_first_masked_rank() const { return ecl_first_masked_rank_; }
+    u32 ecl_rank_ff() const { return ecl_rank_ff_; }
+    u32 ecl_rank_other() const { return ecl_rank_other_; }
     // Card inventory: owned cards, equipped loadout and the market wallet.
     CardInventory& cards() { return cards_; }
     const CardInventory& cards() const { return cards_; }
@@ -278,6 +314,12 @@ private:
     std::vector<u8> archive_bytes_;
     GameSession session_;
     EclContext ecl_;
+    PauseItem pause_item_ = PauseItem::Resume;
+    u32 ecl_difficulty_skipped_ = 0;
+    u32 ecl_first_masked_opcode_ = 0;
+    u32 ecl_first_masked_rank_ = 0;
+    u32 ecl_rank_ff_ = 0;
+    u32 ecl_rank_other_ = 0;
     CardInventory cards_;
     std::vector<std::string> active_scripts_;
 

@@ -84,6 +84,11 @@ struct EclContext {
     // Difficulty mask used by the rank check (op-level, not per-instruction).
     u8 difficulty_mask = 0xFF;
 
+// Current difficulty tier, 0..7. The interpreter consults this against each
+// instruction's rank_mask; difficulty_mask above is the derived all-ones value
+// the scripts read as a builtin.
+u32 difficulty = 0;
+
     // Callable subroutines, keyed by name. Call (op 11) resolves through here.
     std::unordered_map<std::string, EclCallable> subroutines;
 

@@ -233,6 +233,11 @@ check('invulnerability prevents instant death', hitsTaken < 10);
 // frame numbers". This is the first place the ECL data actually drives the game
 // instead of being merely recorded.
 module._th185_reset_scenario();
+// The schedule table is populated by `main` DURING a tick, and
+// reset_scenario now clears the counters (they are per-scenario). Reading
+// schedules_total before the first tick therefore sees 0 -- which is the
+// correct behaviour, not a missing controller.
+tick(0, 1);
 const schedTotal = module._th185_schedules_total();
 console.log('schedules   : total=' + schedTotal);
 
@@ -500,9 +505,9 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
         module._th185_load_stage(s);
         module._th185_reset_scenario();
         let at = -1;
-        // 8000 is comfortably above the slowest observed clear (stage0 at
-        // 2183 frames) while keeping the whole probe inside its budget.
-        for (let f = 0; f < 8000; ++f) {
+        // 10000 covers the slowest observed clear (stage3 at 8302 frames,
+        // where the last enemy dies long after the boss).
+        for (let f = 0; f < 10000; ++f) {
             tick(SHOOT, 1);
             if (module._th185_stage_clear() && at < 0) { at = f; break; }
         }
@@ -850,6 +855,114 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     }
     check('the priciest card costs more than the starting cap', maxCost > 100);
     check('progress eventually covers the priciest card', endCap >= maxCost);
+}
+// Pause menu: Resume / Restart / Quit.
+//
+// Phase::Paused existed but had no menu -- pressing Esc froze the game with no
+// way back except restarting the page. The three items cover what a player
+// needs mid-stage.
+{
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    for (let f = 0; f < 50; ++f) module._th185_tick(0);
+    const playingPhase = module._th185_phase();
+
+    module._th185_pause();
+    const pausedPhase = module._th185_phase();
+    const firstItem = module._th185_pause_item();
+    console.log('pause       : phase ' + playingPhase + ' -> ' + pausedPhase +
+                ' item=' + firstItem);
+    check('pausing switches to Phase::Paused',
+          playingPhase === 1 && pausedPhase === 2);
+    check('the pause menu starts on Resume', firstItem === 0);
+
+    // Navigation wraps around three items.
+    module._th185_pause_move(1);
+    const item1 = module._th185_pause_item();
+    module._th185_pause_move(1);
+    const item2 = module._th185_pause_item();
+    module._th185_pause_move(1);
+    const wrapped = module._th185_pause_item();
+    console.log('pause nav   : 0 -> ' + item1 + ' -> ' + item2 + ' -> ' + wrapped);
+    check('moving down advances the selection', item1 === 1 && item2 === 2);
+    check('the selection wraps back to Resume', wrapped === 0);
+
+    // Resume.
+    module._th185_pause_confirm();
+    check('Resume returns to play', module._th185_phase() === 1);
+
+    // Quit returns to scene select.
+    module._th185_pause();
+    module._th185_pause_move(-1);
+    const quitItem = module._th185_pause_item();
+    module._th185_pause_confirm();
+    console.log('pause quit  : item=' + quitItem + ' phase=' + module._th185_phase());
+    check('Quit selects the third item', quitItem === 2);
+    check('Quit returns to Idle', module._th185_phase() === 0);
+
+    // Restart reloads the stage. `stats_.ticks` is a global frame counter and
+    // deliberately keeps running, so the check is that the SCENARIO was reset
+    // (no live bullets, no clear flag), not that the counter went to zero.
+    module._th185_start();
+    for (let f = 0; f < 50; ++f) module._th185_tick(0);
+    module._th185_pause();
+    module._th185_pause_move(1);
+    module._th185_pause_confirm();
+    // FrameStats is synced inside tick(), so read the pools after one frame --
+    // checking right after the restart would report the pre-pause numbers.
+    module._th185_tick(0);
+    console.log('pause restart: phase=' + module._th185_phase() +
+                ' clear=' + module._th185_stage_clear() +
+                ' bullets=' + module._th185_bullets_alive());
+    check('Restart returns to play', module._th185_phase() === 1);
+    check('Restart clears the scenario',
+          module._th185_stage_clear() === 0 &&
+          module._th185_bullets_alive() < 50);
+}
+// Difficulty gating and per-stage determinism.
+//
+// The instruction header's +0x06 byte is a DIFFICULTY BITMASK (0x01..0x80,
+// one bit per tier; 0xFF = every tier). This build used to read +0x04/+0x06 as
+// rank/argc and never consulted the mask.
+//
+// The second half of this block is the more important one: before
+// `stats_.ticks` was reset per scenario, reloading the same stage produced a
+// DIFFERENT run each time (bullets 62 -> 136 -> 141 -> 143) because the
+// schedule table compares `stats_.ticks < due` and the clock kept climbing.
+{
+    // Instructions skipped because the tier bit was not set.
+    module._th185_set_difficulty(0);
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    const skip0 = module._th185_ecl_difficulty_skipped();
+    for (let f = 0; f < 200; ++f) module._th185_tick(0);
+    const skippedAtTier0 = module._th185_ecl_difficulty_skipped() - skip0;
+
+    module._th185_set_difficulty(7);
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    const skip7 = module._th185_ecl_difficulty_skipped();
+    for (let f = 0; f < 200; ++f) module._th185_tick(0);
+    const skippedAtTier7 = module._th185_ecl_difficulty_skipped() - skip7;
+
+    console.log('difficulty  : skipped tier0=' + skippedAtTier0 +
+                ' tier7=' + skippedAtTier7);
+    check('difficulty gating skips instructions', skippedAtTier0 > 0);
+    check('a different tier skips a different number',
+          skippedAtTier7 !== skippedAtTier0);
+
+    // Determinism: the same stage loaded twice must behave identically.
+    module._th185_set_difficulty(0);
+    const runs = [];
+    for (let k = 0; k < 3; ++k) {
+        module._th185_load_stage(1);
+        module._th185_reset_scenario();
+        for (let f = 0; f < 400; ++f) module._th185_tick(0);
+        runs.push(module._th185_bullets_alive() + '/' + module._th185_enemies_alive());
+    }
+    console.log('determinism : ' + runs.join(' '));
+    check('reloading a stage is deterministic',
+          runs[0] === runs[1] && runs[1] === runs[2]);
 }
 // Boss opcode coverage.
 //

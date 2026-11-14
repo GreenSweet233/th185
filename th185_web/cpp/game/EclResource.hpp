@@ -47,11 +47,27 @@ constexpr u32 ECLH_INSTRUCTION_START = 20;  // tag + 16 header bytes
 constexpr u32 ECL_TRAILER = 12;             // fixed tail after the last instruction
 
 // One ECL instruction.
+// Instruction header, verified against the raw bytes of every instruction in
+// 40 ECL files:
+//
+//   +0x00 u16 id
+//   +0x02 u16 size            // total bytes, header included
+//   +0x04 u16 param_mask      // 0 or 1 in practice: 1 = an argument is a
+//                             // stack/global reference rather than a literal
+//   +0x06 u8  rank_mask       // DIFFICULTY BITMASK. Values observed: 0x01,
+//                             // 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80
+//                             // (one bit per difficulty tier) and 0xFF = all.
+//   +0x07 u8  param_count     // number of arguments, 0..9
+//
+// Earlier this build read +0x04 as `rank` and +0x06 as `argc`, which threw
+// away the difficulty mask entirely -- so every difficulty-conditional
+// instruction ran on every tier.
 struct EclInstruction {
     u16 id = 0;
     u16 size = 0;
-    u16 rank = 0;
-    u16 argc = 0;
+    u16 param_mask = 0;
+    u8 rank_mask = 0xFF;
+    u8 param_count = 0;
     u32 offset = 0;                 // offset inside the ECLH block
     const u8* payload = nullptr;    // points into the resource buffer
     u32 payload_size = 0;

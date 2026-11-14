@@ -477,6 +477,31 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_difficulty() {
     return th185::app::instance().difficulty();
 }
 
+// The difficulty the ECL interpreter itself sees (diagnostics only).
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_difficulty() {
+    return th185::app::instance().ecl().difficulty;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_ecl_difficulty_skipped() {
+    return th185::app::instance().ecl_difficulty_skipped();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_first_masked_opcode() {
+    return th185::app::instance().ecl_first_masked_opcode();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_first_masked_rank() {
+    return th185::app::instance().ecl_first_masked_rank();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_rank_ff() {
+    return th185::app::instance().ecl_rank_ff();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_rank_other() {
+    return th185::app::instance().ecl_rank_other();
+}
+
 // Reads a builtin slot back, so a test can confirm the ECL scripts will see
 // the difficulty the shell selected.
 EMSCRIPTEN_KEEPALIVE unsigned th185_builtin_slot(unsigned slot) {
@@ -680,6 +705,19 @@ EMSCRIPTEN_KEEPALIVE void th185_reset_progress() {
     th185::app::instance().cards().set_loadout_slots(8);
     th185::app::instance().cards().set_cost_cap(100);
     th185::app::instance().cards().clear_loadout();
+}
+
+// Pause menu: 0=Resume, 1=Restart, 2=Quit.
+EMSCRIPTEN_KEEPALIVE unsigned th185_pause_item() {
+    return unsigned(th185::app::instance().pause_item());
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_pause_move(int delta) {
+    th185::app::instance().pause_move(delta);
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_pause_confirm() {
+    th185::app::instance().pause_confirm();
 }
 
 // Loadout limits after progress (what the original's cost/slot growth yields).

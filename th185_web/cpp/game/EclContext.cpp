@@ -27,6 +27,8 @@ void EclContext::add_subroutine(std::string name, std::vector<u8> code) {
 }
 
 void EclContext::set_difficulty(u32 difficulty) {
+    // The interpreter consults this against each instruction's rank_mask.
+    this->difficulty = difficulty & 7u;
     builtins[BUILTIN_SLOT_DIFFICULTY] = difficulty;
     builtins[BUILTIN_SLOT_IS_DIFFICULTY_0] = (difficulty == 0) ? 1u : 0u;
     builtins[BUILTIN_SLOT_IS_DIFFICULTY_1] = (difficulty == 1) ? 1u : 0u;

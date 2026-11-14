@@ -587,6 +587,17 @@ void Application::consume_schedules() {
                 std::swap(runner.context, ecl_);
                 runner.run(code, 4000, code_base);
                 std::swap(runner.context, ecl_);
+                // Wave banks are where most instructions actually run, so
+                // their difficulty statistics have to be accumulated too --
+                // the coroutine path only reaches ~40 instructions per frame
+                // because `main` suspends at its first wait.
+                ecl_difficulty_skipped_ += runner.stats().difficulty_skipped;
+                ecl_rank_ff_ += runner.stats().rank_ff;
+                ecl_rank_other_ += runner.stats().rank_other;
+                if (ecl_first_masked_opcode_ == 0 && runner.stats().first_masked_opcode != 0) {
+                    ecl_first_masked_opcode_ = runner.stats().first_masked_opcode;
+                    ecl_first_masked_rank_ = runner.stats().first_masked_rank;
+                }
             }
         }
     }
@@ -728,8 +739,19 @@ void Application::reset_scenario() {
     ecl_.pending_templates.clear();
     ecl_.wave_templates.clear();
     fired_schedule_keys_.clear();
+    // The schedule counters are per-scenario, not per-session. Leaving them
+    // running made a second load_stage of the same stage start at 18/72
+    // already fired, which silently changed how many waves spawned.
     stats_.schedules_fired = 0;
+    stats_.schedules_total = 0;
     stats_.schedules_expected = 0;
+    // `stats_.ticks` is the clock the schedule table compares against
+    // (`if (stats_.ticks < due) continue;`). Leaving it running meant a
+    // second load of the same stage saw ticks already past every `due`, so
+    // every wave fired on the first frame -- measured as bullets 62 -> 136
+    // for the same stage on the second run.
+    stats_.ticks = 0;
+    last_schedules_fired_ = 0;
     // Template indices are per-stage, so the "already emitted" set and the
     // parsed cache must both be dropped. Leaving wave_run_once_ populated made
     // the next stage skip templates that happened to share an index with the
@@ -1107,8 +1129,21 @@ bool Application::tick(u32 held, bool do_render) {
         if (do_render) render();
         return true;
     }
+    if (phase_ == Phase::Paused) {
+        // Edge-triggered menu input: `held` is a level, so compare against the
+        // previous frame to get presses.
+        const u32 pressed = held & ~stats_.held_buttons_prev;
+        if (pressed & BUTTON_UP) pause_move(-1);
+        if (pressed & BUTTON_DOWN) pause_move(1);
+        if (pressed & BUTTON_SHOT) pause_confirm();
+        stats_.held_buttons_prev = held;
+        ++stats_.ticks;
+        if (do_render) render();
+        return true;
+    }
     if (phase_ != Phase::Running) return true;
 
+    stats_.held_buttons_prev = held;
     ++stats_.ticks;
 
     // Run every runnable subroutine once per tick with a bounded step budget.
@@ -1147,6 +1182,13 @@ bool Application::tick(u32 held, bool do_render) {
         std::swap(runner.context, ecl_);
         // Per-script instruction count, so a script that burns its whole
         // budget every frame is visible instead of hiding in the total.
+        ecl_difficulty_skipped_ += runner.stats().difficulty_skipped;
+        ecl_rank_ff_ += runner.stats().rank_ff;
+        ecl_rank_other_ += runner.stats().rank_other;
+        if (ecl_first_masked_opcode_ == 0 && runner.stats().first_masked_opcode != 0) {
+            ecl_first_masked_opcode_ = runner.stats().first_masked_opcode;
+            ecl_first_masked_rank_ = runner.stats().first_masked_rank;
+        }
         script_instrs_.push_back(runner.stats().instructions);
         // Nothing to merge back: the interpreter ran against the live context.
 
@@ -1492,7 +1534,37 @@ bool Application::start() {
 bool Application::pause() {
     if (phase_ != Phase::Running) return false;
     phase_ = Phase::Paused;
+    pause_item_ = PauseItem::Resume;
     return true;
+}
+
+void Application::pause_move(i32 delta) {
+    if (phase_ != Phase::Paused) return;
+    const i32 count = i32(PauseItem::Count);
+    i32 index = (i32(pause_item_) + delta) % count;
+    if (index < 0) index += count;
+    pause_item_ = PauseItem(u32(index));
+}
+
+void Application::pause_confirm() {
+    if (phase_ != Phase::Paused) return;
+    switch (pause_item_) {
+        case PauseItem::Resume:
+            resume();
+            break;
+        case PauseItem::Restart:
+            // A restart keeps the wallet and progress but reloads the stage
+            // from the top, exactly like the original's restart.
+            load_stage(stage_index_);
+            reset_scenario();
+            break;
+        case PauseItem::Quit:
+            // Back to scene select: Idle means "loaded but not playing".
+            phase_ = Phase::Idle;
+            break;
+        default:
+            break;
+    }
 }
 
 bool Application::resume() {

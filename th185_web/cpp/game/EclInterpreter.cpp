@@ -408,10 +408,33 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         const u8* instruction = code.data() + pc;
         const u16 opcode = read_u16(instruction);
         const u16 size = read_u16(instruction + 2);
-        // rank_mask at +4, param_mask at +6. The low 8 bits of param_mask flag
-        // which arguments are references rather than literals.
-        const u16 param_mask = read_u16(instruction + 6);
+        // Header layout, verified against every instruction in 40 ECL files:
+        //   +0x04 u16 param_mask    (0 or 1)
+        //   +0x06 u8  rank_mask     (difficulty bitmask: 0x01..0x80, or 0xFF)
+        //   +0x07 u8  param_count
+        // The previous version read +0x06 as the whole mask, which is why the
+        // difficulty tier was never consulted.
+        const u16 param_mask = read_u16(instruction + 4);
         (void)param_mask;  // reserved for opcodes with mixed literal/reference args
+        const u8 rank_mask = instruction[6];
+
+        // Difficulty gate. 0xFF means "every tier"; otherwise the instruction
+        // only runs when the bit for the current tier is set. Without this the
+        // higher difficulties executed every tier's instructions at once.
+
+        if (rank_mask != 0xFF) {
+            const u8 tier_bit = u8(1u << (context.difficulty & 7u));
+
+            if ((rank_mask & tier_bit) == 0) {
+                ++stats_.difficulty_skipped;
+                if (stats_.difficulty_skipped == 1) {
+                    stats_.first_masked_opcode = opcode;
+                    stats_.first_masked_rank = rank_mask;
+                }
+                pc += size;
+                continue;
+            }
+        }
         ++stats_.instructions;
         if (stack_.depth() > stats_.max_stack_depth) {
             stats_.max_stack_depth = stack_.depth();

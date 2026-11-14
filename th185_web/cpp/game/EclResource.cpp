@@ -138,8 +138,9 @@ bool EclResource::parse(std::vector<u8> blob, std::string* error) {
             ins.size = size;
             ins.offset = pos;
             if (size >= 8) {
-                ins.rank = read_u16(data.data() + pos + 4);
-                ins.argc = read_u16(data.data() + pos + 6);
+                ins.param_mask = read_u16(data.data() + pos + 4);
+                ins.rank_mask = data[pos + 6];
+                ins.param_count = data[pos + 7];
                 ins.payload = data.data() + pos + 8;
                 ins.payload_size = u32(size) - 8;
             } else {

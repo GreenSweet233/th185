@@ -175,6 +175,15 @@ struct EclRunStats {
     u32 fault_count = 0;
     u16 first_unsupported_opcode = 0;
     u32 max_stack_depth = 0;
+    // Instructions skipped because the current difficulty tier's bit was not
+    // set in their rank_mask.
+    u32 difficulty_skipped = 0;
+    u16 first_masked_opcode = 0;
+    u8 first_masked_rank = 0;
+    // How many instructions carried each rank_mask value, so a test can prove
+    // the header is being read from the right byte.
+    u32 rank_ff = 0;
+    u32 rank_other = 0;
 };
 
 // Interpreter over one subroutine.
