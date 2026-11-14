@@ -886,6 +886,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_cards_shot_bonus() {
     return unsigned(th185::app::instance().cards().shot_power_bonus());
 }
 
+// What the equipped loadout actually did to the run (applied in reset_scenario).
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_extra_lives_applied() {
+    return th185::app::instance().stats().card_extra_lives;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_extra_bombs_applied() {
+    return th185::app::instance().stats().card_extra_bombs;
+}
+
 // Requests the last tick turned into bullets (diagnostics only).
 EMSCRIPTEN_KEEPALIVE unsigned th185_last_frame_requests() {
     return th185::app::instance().stats().last_frame_requests;

@@ -670,6 +670,18 @@ void Application::reset_scenario() {
     // sprites that still render (the frame showed 46 quads with 1 enemy).
     animations_.clear();
     player_ = Player{};
+    // Apply the equipped card loadout. Lives and bombs are additive; the
+    // shot bonus is published for the firing code to read.
+    //
+    // Only the CATEGORY -> effect mapping is this build's interpretation
+    // (CardManager.cpp documents that); the categories themselves come from
+    // the card table.
+    for (u32 i = 0; i < cards_.extra_lives(); ++i) player_.add_life();
+    for (u32 i = 0; i < cards_.extra_bombs(); ++i) player_.add_bomb();
+    stats_.card_extra_lives = cards_.extra_lives();
+    stats_.card_extra_bombs = cards_.extra_bombs();
+    stats_.card_shot_bonus = cards_.shot_power_bonus();
+    scoring_.add(cards_.starting_currency_bonus());
     // Re-bind the player to its bank: the reset dropped the animation handle.
     for (const AnimationBank& bank : banks_) {
         if (bank.name == "pl01.anm") {

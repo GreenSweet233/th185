@@ -559,6 +559,33 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
                 ' bombs=' + module._th185_cards_extra_bombs() +
                 ' shot=' + module._th185_cards_shot_bonus());
     check('a life card grants an extra life', lives === 1);
+
+    // The loadout must reach the PLAYER, not just the aggregate.
+    //
+    // reset_scenario applies the equipped cards; before that link existed the
+    // inventory reported extra_lives but the player still started with 3.
+    // Equip a fresh set and compare before/after, so earlier test cards in the
+    // loadout do not confuse the arithmetic.
+    module._th185_load_stage(0);
+    module._th185_reset_scenario();
+    const baseLives = module._th185_player_lives();
+    const baseApplied = module._th185_card_extra_lives_applied();
+    module._th185_cards_add_currency(10000);
+    const equipped = [];
+    for (let i = 0; i < 6 && i < n; ++i) {
+        const id = module._th185_card_id(i);
+        if (module._th185_cards_buy(id) && module._th185_cards_equip(id)) {
+            equipped.push(id);
+        }
+    }
+    module._th185_reset_scenario();
+    const boosted = module._th185_player_lives();
+    const applied = module._th185_card_extra_lives_applied();
+    console.log('cards->player: equipped=' + equipped.length +
+                ' lives ' + baseLives + ' -> ' + boosted +
+                ' (applied ' + baseApplied + ' -> ' + applied + ')');
+    check('equipping more life cards raises the player lives',
+          applied > baseApplied && boosted === 3 + applied);
 }
 // Boss opcode coverage.
 //

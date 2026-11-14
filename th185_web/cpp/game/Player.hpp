@@ -109,6 +109,9 @@ public:
 
     // Grants one life. Capped so a fragment chain cannot overflow the HUD.
     void add_life();
+    // Adds one bomb, capped like lives.
+    void add_bomb();
+    u32 bombs_gained() const { return bombs_gained_; }
     u32 lives_gained() const { return lives_gained_; }
     u32 invulnerable_frames() const { return invulnerable_; }
     bool dead() const { return lives_ == 0; }
@@ -137,6 +140,7 @@ private:
     u32 lives_gained_ = 0;
     u32 invulnerable_ = 0;
     u32 bombs_left_ = 3;
+    u32 bombs_gained_ = 0;
     PlayerStats stats_{};
 };
 

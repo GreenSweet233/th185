@@ -141,6 +141,9 @@ struct FrameStats {
     u32 frames_since_schedule = 0;
     u32 schedules_expected = 0;
     u32 last_frame_requests = 0;
+    u32 card_extra_lives = 0;
+    u32 card_extra_bombs = 0;
+    float card_shot_bonus = 0.0f;
     // Instructions per active script, refreshed every tick.
     std::vector<u32> script_instrs;
     u32 stage_clear = 0;

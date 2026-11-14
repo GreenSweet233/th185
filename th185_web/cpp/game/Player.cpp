@@ -55,6 +55,13 @@ void Player::add_life() {
     ++lives_;
     ++lives_gained_;
 }
+void Player::add_bomb() {
+    // Same cap as lives: the original's bomb stock tops out at 8.
+    if (bombs_left_ < 8) {
+        ++bombs_left_;
+        ++bombs_gained_;
+    }
+}
 
 bool Player::take_bomb() {
     if (bombs_left_ == 0) return false;
