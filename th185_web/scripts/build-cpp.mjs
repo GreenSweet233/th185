@@ -31,6 +31,23 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync
 import { resolve, relative, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+// Collects `_th185_*` from the EMSCRIPTEN_KEEPALIVE declarations in Exports.cpp.
+//
+// The linker needs an explicit list, and keeping it in sync by hand failed:
+// every diagnostic export added after the initial set was missing at runtime,
+// so probes calling them threw "not a function" and the checks built on them
+// silently did nothing.
+function exportedFunctions(sourcePath) {
+    const text = readFileSync(sourcePath, "utf8");
+    const names = ["_malloc", "_free"];
+    const seen = new Set(names);
+    for (const match of text.matchAll(/EMSCRIPTEN_KEEPALIVE[\s\S]{0,120}?\b(th185_\w+)\s*\(/g)) {
+        const symbol = "_" + match[1];
+        if (!seen.has(symbol)) { seen.add(symbol); names.push(symbol); }
+    }
+    return "-sEXPORTED_FUNCTIONS=" + JSON.stringify(names);
+}
+
 const here = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(here, "..");             // th185_web
 const repo = resolve(root, "..");             // th185
@@ -282,22 +299,14 @@ async function main() {
         "-sDEFAULT_TO_CXX=1",
         "-sFORCE_FILESYSTEM=1",
         "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8,HEAPF32",
-        // Every th185_* function is EMSCRIPTEN_KEEPALIVE, but exporting them
-        // explicitly keeps the JS surface auditable.
-        "-sEXPORTED_FUNCTIONS=[\"_malloc\",\"_free\",\"_th185_initialize\"," +
-          "\"_th185_start\",\"_th185_tick\",\"_th185_pause\",\"_th185_resume\",\"_th185_restart\"," +
-          "\"_th185_load_stage\",\"_th185_phase\",\"_th185_frame\",\"_th185_ticks\"," +
-          "\"_th185_ecl_instructions\",\"_th185_ecl_faults\"," +
-          "\"_th185_max_stack_depth\",\"_th185_runnable_subroutines\"," +
-          "\"_th185_frame_width\",\"_th185_frame_height\",\"_th185_frame_pixels\",\"_th185_frame_bytes\"," +
-      "\"_th185_audio_frames_per_tick\",\"_th185_audio_rate\",\"_th185_audio_frame\",\"_th185_audio_frame_samples\"," +
-          "\"_th185_render_quads\",\"_th185_live_animations\"," +
-          "\"_th185_animation_bank\",\"_th185_stage_index\"," +
-          "\"_th185_player_x\",\"_th185_player_y\",\"_th185_player_focused\"," +
-          "\"_th185_player_shots\",\"_th185_player_bombs\"," +
-          "\"_th185_bullets_alive\",\"_th185_bullets_fired\"," +
-          "\"_th185_enemies_alive\",\"_th185_enemies_killed\",\"_th185_collision_hits\",\"_th185_spawn_test_wave\"," +
-          "\"_th185_error\"]",
+        // Every th185_* function is EMSCRIPTEN_KEEPALIVE, so the list is
+        // generated from Exports.cpp rather than hand-maintained.
+        //
+        // It used to be written out by hand, and every function added later
+        // (schedule_count, coro_pc, script_instrs, boss_alive, ...) silently
+        // did not exist on the JS side -- the probes reported "not a
+        // function" and the diagnostics I built around them were useless.
+        exportedFunctions(join(fileURLToPath(new URL(".", import.meta.url)), "..", "cpp", "sdl", "Exports.cpp")),
       ], "app link");
       console.log("ok");
     }

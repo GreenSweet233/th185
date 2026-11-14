@@ -28,8 +28,19 @@ def read(path: Path) -> str:
 
 
 def exported_functions() -> set[str]:
-    """Names from build-cpp.mjs's EXPORTED_FUNCTIONS list."""
+    """Names the build will export.
+
+    The list is GENERATED from Exports.cpp, not written in build-cpp.mjs.
+    It used to be hand-maintained and every function added later was missing
+    at runtime (probes threw "not a function"), so the build now scans the
+    EMSCRIPTEN_KEEPALIVE declarations. This check mirrors that scan.
+    """
     build = read(ROOT / 'scripts' / 'build-cpp.mjs')
+    if 'exportedFunctions(' in build:
+        source = read(ROOT / 'cpp' / 'sdl' / 'Exports.cpp')
+        return set('_' + name for name in re.findall(
+            r'EMSCRIPTEN_KEEPALIVE[\s\S]{0,120}?\b(th185_\w+)\s*\(', source))
+    # Legacy hand-written list.
     names = set()
     for match in re.finditer(r'\\"(_th185_[a-z_]+)\\"', build):
         names.add(match.group(1))

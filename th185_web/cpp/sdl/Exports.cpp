@@ -809,6 +809,16 @@ EMSCRIPTEN_KEEPALIVE const char* th185_active_script_name(unsigned i) {
     return i < s.size() ? s[i].c_str() : "";
 }
 
+// Total bullets the pending requests would emit (sum of angles.size()).
+//
+// Diagnostics only: this is how the emission size was traced back to op606.
+EMSCRIPTEN_KEEPALIVE unsigned th185_request_total_bullets() {
+    const auto& r = th185::app::instance().ecl().bullet_requests;
+    unsigned n = 0;
+    for (const auto& q : r) n += unsigned(q.angles.size());
+    return n;
+}
+
 // Instructions executed by the i-th active script during the last tick.
 EMSCRIPTEN_KEEPALIVE unsigned th185_script_instrs(unsigned i) {
     const auto& v = th185::app::instance().stats().script_instrs;

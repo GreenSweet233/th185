@@ -592,7 +592,16 @@ void Application::consume_schedules() {
     // speed, aimed along the enemy's facing. Delays are per-bullet frame
     // counts, so a request fans out over time instead of all at once.
     for (const EclContext::BulletRequest& request : ecl_.bullet_requests) {
-        const u32 count = request.count > 0 ? request.count : u32(request.angles.size());
+        // Bound the emission here, not only in the inner loop.
+        //
+        // `count` comes from op606 (max 32 in the data) but an unbounded
+        // value reached 4094 on stage 0 frame 4 and filled the whole pool in
+        // one tick. The inner guard alone was not enough because the loop
+        // body re-reads `count` for the angle interpolation.
+        const u32 raw_count =
+            request.count > 0 ? request.count : u32(request.angles.size());
+        const u32 count =
+            raw_count > MAX_BULLETS_PER_REQUEST ? MAX_BULLETS_PER_REQUEST : raw_count;
         if (count == 0) continue;
         const float speed = request.speed > 0.0f ? request.speed : 3.0f;
         const float lo = request.angle_lo;
