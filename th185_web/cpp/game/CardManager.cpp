@@ -1,5 +1,7 @@
 #include "CardManager.hpp"
 
+#include <cstring>
+
 namespace th185 {
 
 namespace {
@@ -165,19 +167,46 @@ bool CardInventory::unequip(u32 index) {
     return true;
 }
 
-// The card table's remaining fields are not decoded, so the aggregates below
-// use the ONE field whose meaning is established: fields[9] is the category
-// (1..5). The mapping from category to effect is this build's interpretation
-// and is recorded as such in the ledger -- it is not an original constant.
+// Card effects are keyed by NAME, not by a table field.
+//
+// An earlier version used fields[9] as a "category" and mapped category 1 to
+// extra lives. That was wrong: category 1 holds 25 cards including BLANK and
+// BACK, which are not life cards. The field's meaning is not established, so
+// nothing is inferred from it now.
+//
+// What IS established is the card's own name, and several are self-describing:
+//   EXTEND      the series' standard 1-up
+//   AUTOBOMB    automatic bomb on death
+//   POWERMAX    full power
+//   MONEY       currency
+//   KOZUCHI     the mallet, a classic extra-life item
+// The rest are character cards whose effect depends on systems this build does
+// not have yet, so they contribute nothing.
 namespace {
 
-constexpr u32 CATEGORY_LIFE = 1;
-constexpr u32 CATEGORY_BOMB = 2;
-constexpr u32 CATEGORY_SHOT = 3;
-constexpr u32 CATEGORY_MONEY = 4;
-constexpr u32 CATEGORY_UTILITY = 5;
+bool name_is(const CardEntry& card, const char* name) {
+    return std::strcmp(card.name, name) == 0;
+}
 
-u32 category_of(const CardEntry& card) { return card.fields[9]; }
+// Cards that grant an extra life.
+bool grants_life(const CardEntry& card) {
+    return name_is(card, "EXTEND") || name_is(card, "KOZUCHI");
+}
+
+// Cards that grant an extra bomb.
+bool grants_bomb(const CardEntry& card) {
+    return name_is(card, "AUTOBOMB");
+}
+
+// Cards that raise shot power.
+bool grants_shot_power(const CardEntry& card) {
+    return name_is(card, "POWERMAX");
+}
+
+// Cards that grant starting currency.
+bool grants_money(const CardEntry& card) {
+    return name_is(card, "MONEY");
+}
 
 }  // namespace
 
@@ -185,7 +214,7 @@ u32 CardInventory::extra_lives() const {
     u32 total = 0;
     for (const u32 id : loadout_) {
         const CardEntry* card = find_card(id);
-        if (card != nullptr && category_of(*card) == CATEGORY_LIFE) ++total;
+        if (card != nullptr && grants_life(*card)) ++total;
     }
     return total;
 }
@@ -194,7 +223,7 @@ u32 CardInventory::extra_bombs() const {
     u32 total = 0;
     for (const u32 id : loadout_) {
         const CardEntry* card = find_card(id);
-        if (card != nullptr && category_of(*card) == CATEGORY_BOMB) ++total;
+        if (card != nullptr && grants_bomb(*card)) ++total;
     }
     return total;
 }
@@ -203,7 +232,7 @@ float CardInventory::shot_power_bonus() const {
     float total = 0.0f;
     for (const u32 id : loadout_) {
         const CardEntry* card = find_card(id);
-        if (card != nullptr && category_of(*card) == CATEGORY_SHOT) total += 1.0f;
+        if (card != nullptr && grants_shot_power(*card)) total += 1.0f;
     }
     return total;
 }
@@ -212,7 +241,7 @@ u32 CardInventory::starting_currency_bonus() const {
     u32 total = 0;
     for (const u32 id : loadout_) {
         const CardEntry* card = find_card(id);
-        if (card != nullptr && category_of(*card) == CATEGORY_MONEY) total += 10;
+        if (card != nullptr && grants_money(*card)) total += 10;
     }
     return total;
 }

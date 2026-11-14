@@ -553,39 +553,63 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('an unowned card cannot be equipped',
           module._th185_cards_equip(module._th185_card_id(5)) === 0);
 
-    // DANGO is category 1 (life), so exactly one extra life.
+    // Effects are keyed by card NAME, not by a table field.
+    //
+    // EXTEND is the series' standard 1-up card, so equipping it must grant
+    // exactly one extra life. DANGO (the card bought above) grants nothing --
+    // an earlier version assumed it was a life card because of its table
+    // category, which turned out to be wrong.
     const lives = module._th185_cards_extra_lives();
     console.log('effects     : lives=' + lives +
                 ' bombs=' + module._th185_cards_extra_bombs() +
                 ' shot=' + module._th185_cards_shot_bonus());
-    check('a life card grants an extra life', lives === 1);
+    check('a character card grants no life bonus', lives === 0);
+
+    // Find EXTEND by name and equip it.
+    let extendId = -1;
+    for (let i = 0; i < n; ++i) {
+        if (cardName(i) === 'EXTEND') { extendId = module._th185_card_id(i); break; }
+    }
+    check('the table contains EXTEND', extendId >= 0);
+    module._th185_cards_add_currency(1000);
+    if (extendId >= 0) {
+        module._th185_cards_buy(extendId);
+        module._th185_cards_equip(extendId);
+    }
+    const withExtend = module._th185_cards_extra_lives();
+    console.log('EXTEND      : equipped id=' + extendId + ' extraLives=' + withExtend);
+    check('EXTEND grants exactly one extra life', withExtend === 1);
 
     // The loadout must reach the PLAYER, not just the aggregate.
     //
     // reset_scenario applies the equipped cards; before that link existed the
     // inventory reported extra_lives but the player still started with 3.
-    // Equip a fresh set and compare before/after, so earlier test cards in the
-    // loadout do not confuse the arithmetic.
+    // The loadout must reach the PLAYER, not just the aggregate.
+    //
+    // Before that link existed the inventory reported extra_lives but the
+    // player still started with 3. EXTEND is the card that grants one, so
+    // equipping it must raise the starting lives by exactly one.
+    // The loadout must reach the PLAYER, not just the aggregate.
+    //
+    // Comparing before/after within one run does not work here because the
+    // card is already equipped from the earlier check. Instead: clear the
+    // loadout, measure, equip EXTEND, measure again.
+    module._th185_cards_clear_loadout();
     module._th185_load_stage(0);
     module._th185_reset_scenario();
-    const baseLives = module._th185_player_lives();
-    const baseApplied = module._th185_card_extra_lives_applied();
-    module._th185_cards_add_currency(10000);
-    const equipped = [];
-    for (let i = 0; i < 6 && i < n; ++i) {
-        const id = module._th185_card_id(i);
-        if (module._th185_cards_buy(id) && module._th185_cards_equip(id)) {
-            equipped.push(id);
-        }
-    }
+    const withoutLives = module._th185_player_lives();
+    const withoutApplied = module._th185_card_extra_lives_applied();
+
+    module._th185_cards_add_currency(1000);
+    if (extendId >= 0) module._th185_cards_equip(extendId);
     module._th185_reset_scenario();
-    const boosted = module._th185_player_lives();
-    const applied = module._th185_card_extra_lives_applied();
-    console.log('cards->player: equipped=' + equipped.length +
-                ' lives ' + baseLives + ' -> ' + boosted +
-                ' (applied ' + baseApplied + ' -> ' + applied + ')');
-    check('equipping more life cards raises the player lives',
-          applied > baseApplied && boosted === 3 + applied);
+    const withLives = module._th185_player_lives();
+    const withApplied = module._th185_card_extra_lives_applied();
+    console.log('cards->player: no card ' + withoutLives + ' lives (applied ' +
+                withoutApplied + ') -> EXTEND ' + withLives + ' lives (applied ' +
+                withApplied + ')');
+    check('EXTEND raises the applied life bonus', withApplied === withoutApplied + 1);
+    check('EXTEND raises the player lives', withLives === withoutLives + 1);
 }
 // Stage structure: nine selectable scenes with fixed wave counts.
 //
