@@ -591,6 +591,17 @@ void Application::consume_schedules() {
     // emission: N bullets spread over [angle_lo, angle_hi] at the recorded
     // speed, aimed along the enemy's facing. Delays are per-bullet frame
     // counts, so a request fans out over time instead of all at once.
+    // Cap how many requests one frame may realise.
+    //
+    // A wave loop body emits on every iteration when op23 cannot wait, so a
+    // single tick produced 1638 requests on stage 0 (4094 bullets, pool full).
+    // The per-request cap does not help because each request is small; the
+    // count of requests is what explodes. 32 is well above what a normal
+    // pattern needs in one frame and keeps the field playable.
+    stats_.last_frame_requests = u32(ecl_.bullet_requests.size());
+    if (ecl_.bullet_requests.size() > MAX_REQUESTS_PER_FRAME) {
+        ecl_.bullet_requests.resize(MAX_REQUESTS_PER_FRAME);
+    }
     for (const EclContext::BulletRequest& request : ecl_.bullet_requests) {
         // Bound the emission here, not only in the inner loop.
         //

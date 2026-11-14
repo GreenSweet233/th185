@@ -19,6 +19,13 @@ constexpr int BOSS_STARTING_HP = 60;
 // Upper bound on one op611 emission. The recorded op605 counts are 0/8/16,
 // so this only clips pathological repeats.
 constexpr unsigned MAX_BULLETS_PER_REQUEST = 64;
+
+// Requests one frame may realise.
+//
+// A wave loop body emits per iteration when op23 cannot wait; stage 0 produced
+// 1638 requests in one tick. The per-request cap does not help there because
+// each request is small -- it is the COUNT that explodes.
+constexpr unsigned MAX_REQUESTS_PER_FRAME = 32;
 }  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
@@ -133,6 +140,7 @@ struct FrameStats {
     u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;
     u32 schedules_expected = 0;
+    u32 last_frame_requests = 0;
     // Instructions per active script, refreshed every tick.
     std::vector<u32> script_instrs;
     u32 stage_clear = 0;

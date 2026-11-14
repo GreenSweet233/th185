@@ -809,6 +809,11 @@ EMSCRIPTEN_KEEPALIVE const char* th185_active_script_name(unsigned i) {
     return i < s.size() ? s[i].c_str() : "";
 }
 
+// Requests the last tick turned into bullets (diagnostics only).
+EMSCRIPTEN_KEEPALIVE unsigned th185_last_frame_requests() {
+    return th185::app::instance().stats().last_frame_requests;
+}
+
 // Total bullets the pending requests would emit (sum of angles.size()).
 //
 // Diagnostics only: this is how the emission size was traced back to op606.
