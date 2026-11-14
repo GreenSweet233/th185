@@ -587,6 +587,40 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('equipping more life cards raises the player lives',
           applied > baseApplied && boosted === 3 + applied);
 }
+// Stage structure: nine selectable scenes with fixed wave counts.
+//
+// From docs/BUILD.md (THBWiki + thprac warp tables). The wave counts are the
+// check that matters: they sum to the documented 50 mid-stage slots.
+{
+    const sceneCount = module._th185_scene_count();
+    const sceneName = module.cwrap('th185_scene_name', 'string', ['number']);
+    let waves = 0, bosses = 0;
+    const rows = [];
+    for (let s = 0; s < sceneCount; ++s) {
+        waves += module._th185_scene_waves(s);
+        bosses += module._th185_scene_boss_candidates(s);
+        rows.push(module._th185_scene_waves(s));
+    }
+    console.log('scenes      : ' + sceneCount + ' waves=' + JSON.stringify(rows) +
+                ' total=' + waves);
+    check('there are nine scenes', sceneCount === 9);
+    check('the tutorial is scene 0', sceneName(0) === 'Tutorial');
+    check('scene 8 is the Challenge Market',
+          sceneName(8) === 'Challenge Market');
+    check('wave counts match the documented table',
+          JSON.stringify(rows) === JSON.stringify([3, 3, 4, 5, 5, 7, 7, 4, 12]));
+    check('the wave slots total 50', waves === 50);
+    check('the Challenge Market has 12 waves', module._th185_scene_waves(8) === 12);
+
+    // Each scene's pool is sized to its boss count.
+    let poolOk = true;
+    for (let s = 0; s < sceneCount; ++s) {
+        if (module._th185_scene_pool_size(s) !== module._th185_scene_boss_candidates(s)) {
+            poolOk = false;
+        }
+    }
+    check('every scene pool is sized to its boss candidates', poolOk);
+}
 // Dual currency and the black market.
 //
 // TH185's economy has two currencies: `funds` (persistent, capped at 999,990,
@@ -618,7 +652,7 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('banking moves bullet money into funds', banked === 300);
     check('banking empties the bullet purse', module._th185_bullet_money() === 0);
 
-    module._th185_market_open(12345);
+    module._th185_market_open(1, 12345);
     const offers = module._th185_market_offers();
     const left = module._th185_market_purchases_left();
     console.log('market      : offers=' + offers + ' purchases=' + left);
@@ -627,7 +661,7 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
 
     const first = [];
     for (let i = 0; i < offers; ++i) first.push(module._th185_market_offer_at(i));
-    module._th185_market_open(12345);
+    module._th185_market_open(1, 12345);
     const second = [];
     for (let i = 0; i < offers; ++i) second.push(module._th185_market_offer_at(i));
     check('the same seed offers the same cards',

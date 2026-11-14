@@ -91,6 +91,42 @@ const CardEntry* find_card(u32 id);
 // True for the two ids that gate the hidden bosses.
 bool is_special_card(u32 id);
 
+// --- Stage structure -----------------------------------------------------
+//
+// TH185 is not a linear 6-stage game: it is nine SELECTABLE scenes, each with
+// a fixed wave count and a set of boss candidates (docs/BUILD.md, from
+// THBWiki + thprac's warp tables).
+//
+//   scene  waves  bosses
+//   0 Tutorial      3   1  (三花)
+//   1 1st Market    3   4  (三花/穰子/爱塔/合欢)
+//   2 2nd Market    4   4  (琪露诺/若鹭姬/赤蛮奇/润美)
+//   3 3rd Market    5   4  (璎花/久侘歌/成美/小町)
+//   4 4th Market    5   5  (早苗/咲夜/妖梦/灵梦/荷取)
+//   5 5th Market    7   4  (典/龙/克劳恩/天子)
+//   6 6th Market    7   5  (萃香/二岩/早鬼/百百世/高岭)
+//   7 End of Market 4   1  (天弓千亦, fixed)
+//   8 Challenge    12   6  (Boss Rush)
+//
+// Totals: 50 mid-stage wave slots, 28 boss indices.
+constexpr u32 SCENE_COUNT = 9;
+
+struct SceneInfo {
+    const char* name;
+    u32 waves;
+    u32 boss_candidates;
+};
+
+const std::array<SceneInfo, SCENE_COUNT>& scenes();
+
+// The card ids a scene's bosses can drop.
+//
+// NOT established from the binary. docs/BUILD.md lists the boss NAMES per
+// scene but not which card each one yields, so this is a deterministic
+// stand-in: it walks the card table and hands each scene a disjoint slice,
+// sized to the scene's candidate count. Recorded as `inferred` in the ledger.
+std::vector<u32> scene_card_pool(u32 scene);
+
 // Owned cards, equipped loadout and the market wallet.
 //
 // TH185's loop is: buy cards in the market with currency, equip a loadout

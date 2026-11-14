@@ -918,6 +918,38 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bank_bullet_money() {
     return th185::app::instance().cards().bank_bullet_money();
 }
 
+// --- Stage structure -----------------------------------------------------
+//
+// Nine selectable scenes; see docs/BUILD.md for the wave counts and boss
+// candidates.
+EMSCRIPTEN_KEEPALIVE unsigned th185_scene_count() {
+    return th185::SCENE_COUNT;
+}
+
+EMSCRIPTEN_KEEPALIVE const char* th185_scene_name(unsigned scene) {
+    const auto& s = th185::scenes();
+    return scene < s.size() ? s[scene].name : "";
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_scene_waves(unsigned scene) {
+    const auto& s = th185::scenes();
+    return scene < s.size() ? s[scene].waves : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_scene_boss_candidates(unsigned scene) {
+    const auto& s = th185::scenes();
+    return scene < s.size() ? s[scene].boss_candidates : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_scene_pool_size(unsigned scene) {
+    return unsigned(th185::scene_card_pool(scene).size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_scene_pool_at(unsigned scene, unsigned i) {
+    const auto pool = th185::scene_card_pool(scene);
+    return i < pool.size() ? pool[i] : 0xFFFFFFFFu;
+}
+
 // --- Black market --------------------------------------------------------
 
 EMSCRIPTEN_KEEPALIVE void th185_market_open(unsigned seed) {

@@ -297,4 +297,47 @@ bool CardInventory::market_buy(u32 index) {
     return true;
 }
 
+// --- Stage structure ---
+
+namespace {
+
+const std::array<SceneInfo, SCENE_COUNT> kScenes = {{
+    {"Tutorial", 3, 1},
+    {"1st Market", 3, 4},
+    {"2nd Market", 4, 4},
+    {"3rd Market", 5, 4},
+    {"4th Market", 5, 5},
+    {"5th Market", 7, 4},
+    {"6th Market", 7, 5},
+    {"End of Market", 4, 1},
+    {"Challenge Market", 12, 6},
+}};
+
+}  // namespace
+
+const std::array<SceneInfo, SCENE_COUNT>& scenes() { return kScenes; }
+
+std::vector<u32> scene_card_pool(u32 scene) {
+    std::vector<u32> pool;
+    if (scene >= SCENE_COUNT) return pool;
+
+    // Walk the priced cards and give this scene a slice sized to its boss
+    // count. The offset accumulates across scenes so the pools stay disjoint,
+    // which keeps a Challenge-Market run from seeing the tutorial's cards.
+    std::vector<u32> priced;
+    for (const CardEntry& card : kCards) {
+        if (card.price() > 0) priced.push_back(card.id);
+    }
+    if (priced.empty()) return pool;
+
+    u32 offset = 0;
+    for (u32 i = 0; i < scene; ++i) offset += kScenes[i].boss_candidates;
+
+    const u32 want = kScenes[scene].boss_candidates;
+    for (u32 i = 0; i < want; ++i) {
+        pool.push_back(priced[(offset + i) % priced.size()]);
+    }
+    return pool;
+}
+
 }  // namespace th185
