@@ -26,6 +26,27 @@ void EclContext::add_subroutine(std::string name, std::vector<u8> code) {
     subroutines[entry.name] = std::move(entry);
 }
 
+// Records the enemy family from a wave subroutine name.
+//
+// Names look like `Wave13_Cir`, `Wave01_GirlA01`, `Wave23_Phantom`. The family
+// is the alphabetic run after `WaveNN_`, with trailing digits dropped so that
+// `GirlA01` and `GirlA02` both yield `GirlA`.
+void EclContext::note_named_target(const std::string& name) {
+    const std::size_t underscore = name.find('_');
+    if (underscore == std::string::npos || underscore + 1 >= name.size()) return;
+    std::size_t begin = underscore + 1;
+    std::size_t end = begin;
+    while (end < name.size()) {
+        const char ch = name[end];
+        const bool alpha = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z');
+        if (!alpha) break;
+        ++end;
+    }
+    if (end == begin) return;
+    enemy_family.assign(name, begin, end - begin);
+    ++enemy_family_calls;
+}
+
 void EclContext::set_difficulty(u32 difficulty) {
     // The interpreter consults this against each instruction's rank_mask.
     this->difficulty = difficulty & 7u;

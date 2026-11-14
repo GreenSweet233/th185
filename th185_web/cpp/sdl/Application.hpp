@@ -307,6 +307,9 @@ private:
     bool load_animation_bank(const char* name, u32 script_limit);
     // Loads the background bank named by the scene, then the enemy bank.
     void load_scene_banks();
+    // Sprite index in enemy.anm for an enemy family name (see the .cpp for the
+    // block layout, which is a measured property of the file).
+    static u32 enemy_sprite_for_family(const std::string& family, u32 variant);
     // Turns recorded op1013 schedules into actual enemies.
     void consume_schedules();
 

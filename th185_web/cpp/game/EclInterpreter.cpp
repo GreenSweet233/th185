@@ -1712,6 +1712,8 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
                 return EclRunResult::Fault;
             }
             const std::string key(name, nul);
+            // Remember the enemy family this call names (Wave13_Cir -> Cir).
+            context.note_named_target(key);
             const auto found = context.subroutines.find(key);
             if (found == context.subroutines.end()) {
                 // A missing named target must NOT abort the caller. TH185 calls

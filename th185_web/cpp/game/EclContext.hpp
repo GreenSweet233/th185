@@ -127,6 +127,8 @@ u32 difficulty = 0;
     // the matching tier and 0 for the rest, which is what the original's
     // virtual predicates return.
     void set_difficulty(u32 difficulty);
+    // Extracts the enemy family from a wave subroutine name (see the .cpp).
+    void note_named_target(const std::string& name);
 
     // --- op 1013: spawn schedule ---------------------------------------
     //
@@ -304,6 +306,16 @@ u32 difficulty = 0;
     u32 spawn_param_b = 0;
     u32 spawn_param_sets = 0;
     u32 script_marks = 0;
+    // Enemy family named by the most recent op300/op304 call.
+    //
+    // TH185's op300 is a SUBROUTINE CALL (all 225 names it references are
+    // defined subroutines), not the spawn instruction it is in TH15. The
+    // family still rides along in the subroutine name: `Wave13_Cir`,
+    // `Wave01_GirlA01`, `Wave23_Phantom`. Extracting that token is what lets
+    // render() pick a real enemy sprite instead of an arbitrary atlas cell.
+    std::string enemy_family;
+    u32 enemy_family_calls = 0;
+
     u32 named_call_length = 0;
     std::string named_call_target;
     u32 named_call_exts = 0;

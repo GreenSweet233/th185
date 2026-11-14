@@ -964,6 +964,25 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('reloading a stage is deterministic',
           runs[0] === runs[1] && runs[1] === runs[2]);
 }
+// Enemy sprites come from the ECL's own family names.
+//
+// enemy.anm has 120 sprites in five contiguous size blocks, and the ECL names
+// exactly five enemy families inside its wave subroutine names (Girl 36,
+// GirlA 33, GirlC 33, Phantom 30, Cir 24). render() used to pick
+// `template_index % 120`, i.e. an arbitrary atlas cell; it now maps the family
+// to its block.
+{
+    const family = module.cwrap('th185_enemy_family', 'string', []);
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    for (let f = 0; f < 400; ++f) module._th185_tick(0);
+    const name = family();
+    const calls = module._th185_enemy_family_calls();
+    console.log('enemy family: ' + (name || '(none)') + ' calls=' + calls);
+    check('a wave subroutine named an enemy family', name.length > 0);
+    check('the family is one of the five in the data',
+          ['Girl', 'GirlA', 'GirlC', 'Phantom', 'Cir'].includes(name));
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves

@@ -494,6 +494,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_first_masked_rank() {
     return th185::app::instance().ecl_first_masked_rank();
 }
 
+// The enemy family named by the most recent op300/op304 (diagnostics only).
+EMSCRIPTEN_KEEPALIVE const char* th185_enemy_family() {
+    return th185::app::instance().ecl().enemy_family.c_str();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_family_calls() {
+    return th185::app::instance().ecl().enemy_family_calls;
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_rank_ff() {
     return th185::app::instance().ecl_rank_ff();
 }

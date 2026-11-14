@@ -346,6 +346,40 @@ bool Application::load_animation_bank(const char* name, u32 script_limit) {
     animation_bank_ += name;
     return true;
 }
+// Maps an enemy family name to a sprite in enemy.anm.
+//
+// enemy.anm's 120 sprites are laid out as five contiguous blocks, which is a
+// measured property of the file (the sprite sizes change exactly at these
+// boundaries): [0..47] 32x32, [48..71] 48x32, [72..95] 48x48, [96..107] 64x64,
+// [108..119] 32x32.
+//
+// The ECL names its enemy families inside the wave subroutine names, and there
+// are exactly five: Girl (36 subroutines), GirlA (33), GirlC (33), Phantom
+// (30), Cir (24). Five families against five blocks is what makes a mapping
+// possible at all.
+//
+// Which block belongs to which family is still INFERRED -- the data never says
+// `Girl is 32x32`. The pairing below follows frequency, so the commonest
+// families get the largest blocks. That is a guess about five items instead of
+// 120, and it always yields a real enemy of a plausible size rather than an
+// arbitrary atlas cell.
+u32 Application::enemy_sprite_for_family(const std::string& family,
+                                         u32 variant) {
+    struct Block { const char* name; u32 first; u32 count; };
+    static constexpr Block kBlocks[] = {
+        {"Girl", 0u, 48u},
+        {"GirlA", 0u, 48u},     // shares the 32x32 block with Girl
+        {"GirlC", 48u, 24u},
+        {"Cir", 72u, 24u},
+        {"Phantom", 96u, 12u},
+    };
+    for (const Block& block : kBlocks) {
+        if (family == block.name) return block.first + (variant % block.count);
+    }
+    // Unknown family: use the small-fairy block rather than atlas cell 0.
+    return 108u + (variant % 12u);
+}
+
 void Application::load_scene_banks() {
     banks_.clear();
     animations_ = AnmManager{};
@@ -482,14 +516,16 @@ void Application::consume_schedules() {
                 x = (float(pair) - 2.0f) * 60.0f;
             }
 
-            // The wave template selected by op1011 picks the sprite and the
-            // drift speed. Falling back to template 0 keeps the game playable
-            // for scenes that do not declare one.
+            // Sprite selection from the enemy's own routine name.
+            //
+            // op300/304 name the enemy (`Wave01_GirlA01`); the family token is
+            // the part after the wave number and before the trailing digits.
+            // enemy.anm lays its 120 sprites out in contiguous blocks, one per
+            // family (32x32 x48, 48x32 x24, 48x48 x24, 64x64 x12, 32x32 x12),
+            // so a family maps to a block and the variant picks within it.
             const i32 wave = ecl_.last_wave_template;
             const u32 template_index = wave >= 0 ? u32(wave) : 0u;
-            // The enemy bank has 120 sprites; the template is used modulo that
-            // so every template gets a distinct look without an explicit table.
-            const u32 sprite = template_index % 120u;
+            u32 sprite = enemy_sprite_for_family(ecl_.enemy_family, template_index);
             // Higher templates drift a little faster, which makes the wave
             // progression visible without inventing per-template data.
             const float speed = 0.30f + float(template_index % 8u) * 0.05f;
@@ -555,6 +591,11 @@ void Application::consume_schedules() {
             // bullets in a single frame, which then cost 70 ms per frame in the
             // per-bullet passes and 390 s for the stage.
             for (const EclSubroutine& sub : wave_resource.subs) {
+                // The subroutine NAME carries the enemy family (`Wave13_Cir`).
+                // Recording it here rather than from op300 matters because
+                // this loop skips every subroutine that does not emit bullets,
+                // and the spawners are exactly the ones that do not.
+                ecl_.note_named_target(sub.name);
                 bool emits = false;
                 for (const EclInstruction& ins : sub.instructions) {
                     if (ins.id == u16(EclOp::Op611BulletEmit)) {
