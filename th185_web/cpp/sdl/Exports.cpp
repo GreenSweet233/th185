@@ -809,6 +809,16 @@ EMSCRIPTEN_KEEPALIVE const char* th185_active_script_name(unsigned i) {
     return i < s.size() ? s[i].c_str() : "";
 }
 
+// Re-renders the current frame (diagnostics only).
+//
+// tick() renders internally, so this is called twice in a row to price the
+// rasteriser: the first call pays for the clear plus every quad, the second
+// one is the same work again. Comparing it against a whole tick tells whether
+// stage 5's 58 ms/frame is simulation or drawing.
+EMSCRIPTEN_KEEPALIVE void th185_render_only() {
+    th185::app::instance().render();
+}
+
 // Requests the last tick turned into bullets (diagnostics only).
 EMSCRIPTEN_KEEPALIVE unsigned th185_last_frame_requests() {
     return th185::app::instance().stats().last_frame_requests;
