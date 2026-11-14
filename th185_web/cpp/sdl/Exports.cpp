@@ -886,6 +886,72 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_cards_shot_bonus() {
     return unsigned(th185::app::instance().cards().shot_power_bonus());
 }
 
+// --- Dual currency -------------------------------------------------------
+//
+// funds @ 0x4d106c (cap 999,990) and bulletMoney @ 0x4d1070 in the original;
+// see docs/BUILD.md.
+EMSCRIPTEN_KEEPALIVE void th185_add_funds(unsigned amount) {
+    th185::app::instance().cards().add_funds(amount);
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_funds() {
+    return th185::app::instance().cards().funds();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_funds_cap() {
+    return th185::FUNDS_CAP;
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_add_bullet_money(int amount) {
+    th185::app::instance().cards().add_bullet_money(amount);
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_bullet_money() {
+    return th185::app::instance().cards().bullet_money();
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_void_bullet_money() {
+    th185::app::instance().cards().void_bullet_money();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_bank_bullet_money() {
+    return th185::app::instance().cards().bank_bullet_money();
+}
+
+// --- Black market --------------------------------------------------------
+
+EMSCRIPTEN_KEEPALIVE void th185_market_open(unsigned seed) {
+    // Offers are drawn from the cards that carry a price, which is this
+    // build's stand-in for "the cards this stage's boss can drop".
+    std::vector<unsigned> pool;
+    const auto& table = th185::cards();
+    for (const th185::CardEntry& card : table) {
+        if (card.price() > 0) pool.push_back(card.id);
+    }
+    th185::app::instance().cards().open_market(pool, seed);
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_offers() {
+    return unsigned(th185::app::instance().cards().market_offers().size());
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_offer_at(unsigned index) {
+    const auto& o = th185::app::instance().cards().market_offers();
+    return index < o.size() ? o[index] : 0xFFFFFFFFu;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_purchases_left() {
+    return th185::app::instance().cards().market_purchases_left();
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_market_buy(unsigned index) {
+    return th185::app::instance().cards().market_buy(index) ? 1 : 0;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_temporary_cards() {
+    return unsigned(th185::app::instance().cards().temporary_cards().size());
+}
+
 // What the equipped loadout actually did to the run (applied in reset_scenario).
 EMSCRIPTEN_KEEPALIVE unsigned th185_card_extra_lives_applied() {
     return th185::app::instance().stats().card_extra_lives;

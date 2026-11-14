@@ -587,6 +587,63 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('equipping more life cards raises the player lives',
           applied > baseApplied && boosted === 3 + applied);
 }
+// Dual currency and the black market.
+//
+// TH185's economy has two currencies: `funds` (persistent, capped at 999,990,
+// address 0x4d106c in the original) and `bulletMoney` (int32 at 0x4d1070,
+// voided on a hit). The market offers three purchases after each wave and the
+// cards bought there are TEMPORARY -- they do not join the collection.
+{
+    const cap = module._th185_funds_cap();
+    check('the funds cap is 999990', cap === 999990);
+
+    module._th185_add_funds(cap - 10);
+    const beforeClamp = module._th185_funds();
+    module._th185_add_funds(100);
+    const afterClamp = module._th185_funds();
+    console.log('funds       : cap=' + cap + ' ' + beforeClamp + ' +100 -> ' + afterClamp);
+    check('funds clamp at the cap instead of wrapping', afterClamp === cap);
+
+    module._th185_add_bullet_money(500);
+    const earned = module._th185_bullet_money();
+    module._th185_void_bullet_money();
+    const voided = module._th185_bullet_money();
+    console.log('bulletMoney : +500 -> ' + earned + '  after hit -> ' + voided);
+    check('bullet money accumulates', earned === 500);
+    check('a hit voids all bullet money', voided === 0);
+
+    module._th185_add_bullet_money(300);
+    const banked = module._th185_bank_bullet_money();
+    console.log('bank        : +' + banked + ' -> funds=' + module._th185_funds());
+    check('banking moves bullet money into funds', banked === 300);
+    check('banking empties the bullet purse', module._th185_bullet_money() === 0);
+
+    module._th185_market_open(12345);
+    const offers = module._th185_market_offers();
+    const left = module._th185_market_purchases_left();
+    console.log('market      : offers=' + offers + ' purchases=' + left);
+    check('the market offers three cards', offers === 3);
+    check('three purchases are allowed per wave', left === 3);
+
+    const first = [];
+    for (let i = 0; i < offers; ++i) first.push(module._th185_market_offer_at(i));
+    module._th185_market_open(12345);
+    const second = [];
+    for (let i = 0; i < offers; ++i) second.push(module._th185_market_offer_at(i));
+    check('the same seed offers the same cards',
+          JSON.stringify(first) === JSON.stringify(second));
+
+    const fundsBefore = module._th185_funds();
+    const boughtMarket = module._th185_market_buy(0);
+    const fundsAfter = module._th185_funds();
+    console.log('market buy  : ' + boughtMarket + ' funds ' + fundsBefore +
+                ' -> ' + fundsAfter + ' temp=' + module._th185_temporary_cards());
+    check('a market card can be bought', boughtMarket === 1);
+    check('a market purchase spends funds', fundsAfter < fundsBefore);
+    check('a market card is temporary', module._th185_temporary_cards() === 1);
+    check('a purchase consumes one of the three slots',
+          module._th185_market_purchases_left() === 2);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves

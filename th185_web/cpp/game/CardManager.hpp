@@ -39,6 +39,20 @@ constexpr u32 CARD_TABLE_VA = 0x4CA370u;
 constexpr u32 CARD_COUNT = 87;
 constexpr u32 CARD_ENTRY_SIZE = 68;   // 17 DWORDs
 
+// --- Dual currency -------------------------------------------------------
+//
+// TH185 has TWO currencies, and both addresses are known from thprac's global
+// table (see docs/BUILD.md):
+//
+//   funds        0x4d106c   the persistent money, capped at 999,990
+//   bulletMoney  0x4d1070   bullet-money, int32, TWO copies at 0x4d1070/74
+//
+// bulletMoney is earned by collecting bullets and is VOIDED on a hit -- that
+// is the whole point of the mechanic: it rewards clean play.
+constexpr u32 FUNDS_VA = 0x4d106cu;
+constexpr u32 BULLET_MONEY_VA = 0x4d1070u;
+constexpr u32 FUNDS_CAP = 999990u;
+
 // Special card ids.
 constexpr u32 CARD_ID_BLANK = 0;       // forces Boss26 on stage 5
 constexpr u32 CARD_ID_NITORI = 66;     // forces Boss27 on stage 7
@@ -113,10 +127,45 @@ public:
     // Resets everything except the wallet (a stage restart keeps purchases).
     void reset_run();
 
+    // --- Dual currency ---
+    //
+    // `funds` persists across stages; `bullet_money` is per-run and is wiped
+    // the moment the player is hit.
+    void add_bullet_money(i32 amount);
+    void void_bullet_money();          // on hit
+    i32 bullet_money() const { return bullet_money_; }
+    u32 funds() const { return funds_; }
+    void add_funds(u32 amount);        // clamped to FUNDS_CAP
+    // Collects the bullet money into funds (end of stage).
+    u32 bank_bullet_money();
+
+    // --- Black market ---
+    //
+    // After each wave the market offers three purchases drawn from the cards
+    // this stage's boss can drop. Bought cards are TEMPORARY: they last for
+    // the run and are not added to the permanent collection.
+    static constexpr u32 MARKET_OFFERS = 3;
+
+    // Refreshes the offers. `pool` is the ids this stage may drop.
+    void open_market(const std::vector<u32>& pool, u32 seed);
+    const std::vector<u32>& market_offers() const { return offers_; }
+    u32 market_purchases_left() const { return purchases_left_; }
+    // Buys offer `index`. Spends bullet money first, then funds.
+    bool market_buy(u32 index);
+    // Temporary cards acquired this run.
+    const std::vector<u32>& temporary_cards() const { return temporary_; }
+
 private:
     u32 currency_ = 0;
     std::set<u32> owned_;
     std::vector<u32> loadout_;
+
+    u32 funds_ = 0;
+    i32 bullet_money_ = 0;
+
+    std::vector<u32> offers_;
+    u32 purchases_left_ = 0;
+    std::vector<u32> temporary_;
 };
 
 }  // namespace th185

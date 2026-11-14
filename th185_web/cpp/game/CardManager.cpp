@@ -221,4 +221,80 @@ void CardInventory::reset_run() {
     loadout_.clear();
 }
 
+// --- Dual currency ---
+
+void CardInventory::add_funds(u32 amount) {
+    // The original clamps at 999,990 rather than wrapping.
+    const u64 sum = u64(funds_) + u64(amount);
+    funds_ = sum > FUNDS_CAP ? FUNDS_CAP : u32(sum);
+}
+
+void CardInventory::add_bullet_money(i32 amount) {
+    // int32 in the original (address 0x4d1070); it can go negative if the
+    // player is careless, and a hit wipes it entirely.
+    bullet_money_ += amount;
+}
+
+void CardInventory::void_bullet_money() {
+    bullet_money_ = 0;
+}
+
+u32 CardInventory::bank_bullet_money() {
+    if (bullet_money_ <= 0) {
+        bullet_money_ = 0;
+        return 0;
+    }
+    const u32 gained = u32(bullet_money_);
+    add_funds(gained);
+    bullet_money_ = 0;
+    return gained;
+}
+
+// --- Black market ---
+
+void CardInventory::open_market(const std::vector<u32>& pool, u32 seed) {
+    offers_.clear();
+    purchases_left_ = MARKET_OFFERS;
+    if (pool.empty()) return;
+
+    // Deterministic draw: the same seed always offers the same three cards,
+    // which is what makes the market reproducible in tests.
+    u32 state = seed == 0 ? 1u : seed;
+    std::vector<u32> remaining = pool;
+    while (offers_.size() < MARKET_OFFERS && !remaining.empty()) {
+        state = state * 1103515245u + 12345u;
+        const std::size_t pick = std::size_t(state >> 8) % remaining.size();
+        offers_.push_back(remaining[pick]);
+        remaining.erase(remaining.begin() + pick);
+    }
+}
+
+bool CardInventory::market_buy(u32 index) {
+    if (index >= offers_.size()) return false;
+    if (purchases_left_ == 0) return false;
+
+    const u32 id = offers_[index];
+    const CardEntry* card = find_card(id);
+    if (card == nullptr) return false;
+
+    // Bullet money first: it is the reward for clean play, so it should be
+    // spent before the persistent wallet.
+    u32 price = card->price();
+    if (bullet_money_ > 0) {
+        const i32 from_bullets =
+            bullet_money_ < i32(price) ? bullet_money_ : i32(price);
+        bullet_money_ -= from_bullets;
+        price -= u32(from_bullets);
+    }
+    if (price > funds_) return false;
+    funds_ -= price;
+
+    // Market cards are TEMPORARY: they are not added to `owned_`, so they do
+    // not survive the run.
+    temporary_.push_back(id);
+    loadout_.push_back(id);
+    --purchases_left_;
+    return true;
+}
+
 }  // namespace th185
