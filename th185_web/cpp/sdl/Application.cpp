@@ -1410,6 +1410,15 @@ bool Application::tick(u32 held, bool do_render) {
         stats_.banked = cards_.bank_bullet_money();
         cards_.open_market(scene_card_pool(stage_index_), stats_.ticks + 1u);
         stats_.market_open = 1;
+
+        // Clearing a scene permanently widens the loadout: one more slot and
+        // 25 more cost, which is what makes later scenes playable at all
+        // (a single high-tier card costs 200 against a starting cap of 100).
+        cards_.grant_progress(PROGRESS_SLOTS_PER_CLEAR,
+                              PROGRESS_COST_PER_CLEAR);
+        stats_.progress_slots = cards_.loadout_slots();
+        stats_.progress_cost_cap = cards_.cost_cap();
+
         phase_ = Phase::Cleared;
     }
     // Death and respawn.

@@ -26,6 +26,13 @@ constexpr unsigned MAX_BULLETS_PER_REQUEST = 64;
 // 1638 requests in one tick. The per-request cap does not help there because
 // each request is small -- it is the COUNT that explodes.
 constexpr unsigned MAX_REQUESTS_PER_FRAME = 32;
+
+// What clearing a scene grants. The original ties slot count and the cost cap
+// to progress ("通过踏破场景和击败新 BOSS 提升卡槽数量与 Cost 上限"); the exact
+// increments are this build's choice, sized so a 200-cost card becomes
+// equippable after four clears.
+constexpr unsigned PROGRESS_SLOTS_PER_CLEAR = 1;
+constexpr unsigned PROGRESS_COST_PER_CLEAR = 25;
 }  // namespace th185
 // TH185 application shell: the smallest thing that is still a real program.
 //
@@ -144,6 +151,8 @@ struct FrameStats {
     u32 clear_frame = 0;
     u32 banked = 0;
     u32 market_open = 0;
+    u32 progress_slots = 0;
+    u32 progress_cost_cap = 0;
     u32 boss_kill_frames = 0;
     u32 boss_spawned = 0;
     u32 frames_since_schedule = 0;

@@ -672,6 +672,25 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_market_open_flag() {
     return th185::app::instance().stats().market_open;
 }
 
+// Resets the loadout limits to their starting values (tests only).
+//
+// Progress accumulates across clears, so a probe that measures the starting
+// cap must be able to get back to it.
+EMSCRIPTEN_KEEPALIVE void th185_reset_progress() {
+    th185::app::instance().cards().set_loadout_slots(8);
+    th185::app::instance().cards().set_cost_cap(100);
+    th185::app::instance().cards().clear_loadout();
+}
+
+// Loadout limits after progress (what the original's cost/slot growth yields).
+EMSCRIPTEN_KEEPALIVE unsigned th185_progress_slots() {
+    return th185::app::instance().cards().loadout_slots();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_progress_cost_cap() {
+    return th185::app::instance().cards().cost_cap();
+}
+
 // ECL interpreter counters, exported so a test can prove they actually move.
 // Before ecl_merge_check.py these were written by the interpreter and then
 // thrown away by the context merge, so every one of them read as 0.

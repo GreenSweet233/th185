@@ -710,6 +710,9 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
 // (0/10/25/30/50/60/75/100/125/150/200) are exactly the tier ladder the
 // original's cost strings describe.
 {
+    // Progress accumulates across clears, so reset to the starting limits
+    // before asserting what those limits are.
+    module._th185_reset_progress();
     const cap = module._th185_cost_cap();
     const slots = module._th185_loadout_slots();
     console.log('cost budget : cap=' + cap + ' slots=' + slots);
@@ -810,6 +813,43 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('loading a stage resets the phase', module._th185_phase() === 1);
     check('loading a stage clears the clear flag', module._th185_stage_clear() === 0);
     check('loading a stage closes the market', module._th185_market_open_flag() === 0);
+}
+// Clearing a scene widens the loadout: +1 slot and +25 cost per clear.
+//
+// This is the progress hook the original ties slot count and the cost cap to
+// ("通过踏破场景和击败新 BOSS 提升卡槽数量与 Cost 上限"). Without it a 200-cost
+// card could never be equipped, because the starting cap is 100.
+{
+    const startSlots = module._th185_progress_slots();
+    const startCap = module._th185_progress_cost_cap();
+
+    let clears = 0;
+    for (let round = 0; round < 2; ++round) {
+        module._th185_load_stage(1);
+        module._th185_reset_scenario();
+        for (let f = 0; f < 8000; ++f) {
+            module._th185_tick(1);
+            if (module._th185_stage_clear()) { ++clears; break; }
+        }
+    }
+    const endSlots = module._th185_progress_slots();
+    const endCap = module._th185_progress_cost_cap();
+    console.log('progress    : ' + clears + ' clears, slots ' + startSlots +
+                ' -> ' + endSlots + ', cap ' + startCap + ' -> ' + endCap);
+    check('both clears happened', clears === 2);
+    check('each clear adds a loadout slot', endSlots === startSlots + 2);
+    check('each clear raises the cost cap by 25', endCap === startCap + 50);
+
+    // After enough clears the most expensive card must become equippable.
+    let maxCost = 0;
+    let maxCostId = -1;
+    const cardTotal = module._th185_card_count();
+    for (let i = 0; i < cardTotal; ++i) {
+        const c = module._th185_card_cost(i);
+        if (c > maxCost) { maxCost = c; maxCostId = module._th185_card_id(i); }
+    }
+    check('the priciest card costs more than the starting cap', maxCost > 100);
+    check('progress eventually covers the priciest card', endCap >= maxCost);
 }
 // Boss opcode coverage.
 //
