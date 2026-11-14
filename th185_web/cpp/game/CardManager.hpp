@@ -76,7 +76,16 @@ struct CardEntry {
     u32 icon_right = 0;   // +0x3C, always icon_left + 1
     u32 reserved = 0;     // +0x40, always 0
 
-    // Price in market currency (fields[11]).
+    // COST, the equip budget this card consumes (fields[11], byte +0x2C).
+    //
+    // docs/CARDS.md guessed +0x30; that field is only 0/1 across all 87 cards,
+    // so it cannot be a cost. The real one is +0x2C, whose 11 distinct values
+    // are 0/10/25/30/50/60/75/100/125/150/200 -- exactly the tier ladder the
+    // original's `Equip Cost %d%%` / `Total Cost %d%%/%d%%` strings describe.
+    //
+    // The market price reuses the same number in this build; the original may
+    // scale it per shop (`Shop Cost %d(%d)`), which is not decoded.
+    u32 cost() const { return fields[11]; }
     u32 price() const { return fields[11]; }
     // True when the card has an active use (fields[0] == 1).
     bool is_active() const { return fields[0] == 1; }
@@ -134,7 +143,7 @@ std::vector<u32> scene_card_pool(u32 scene);
 // the cards; this class holds the player's state.
 class CardInventory {
 public:
-    static constexpr u32 LOADOUT_SIZE = 8;   // cards carried into a stage
+    // Default slot count; the live value is loadout_slots_ and grows with
 
     // Wallet.
     void add_currency(u32 amount);
@@ -175,6 +184,19 @@ public:
     // Collects the bullet money into funds (end of stage).
     u32 bank_bullet_money();
 
+    // --- Equip cost budget ---
+    //
+    // The loadout is limited by total COST, not by card count alone: the
+    // original shows `Total Cost %d%%/%d%%`. Slots and the cap both grow as
+    // the player clears scenes and defeats new bosses.
+    u32 cost_cap() const { return cost_cap_; }
+    u32 loadout_cost() const;
+    u32 loadout_slots() const { return loadout_slots_; }
+    void set_cost_cap(u32 cap) { cost_cap_ = cap; }
+    void set_loadout_slots(u32 slots) { loadout_slots_ = slots; }
+    // Grows both limits, as clearing a new scene does in the original.
+    void grant_progress(u32 extra_slots, u32 extra_cost);
+
     // --- Black market ---
     //
     // After each wave the market offers three purchases drawn from the cards
@@ -198,6 +220,11 @@ private:
 
     u32 funds_ = 0;
     i32 bullet_money_ = 0;
+
+    // Starting limits: 8 slots and 100%% cost, which is what the original
+    // shows on a fresh save.
+    u32 loadout_slots_ = 8;
+    u32 cost_cap_ = 100;
 
     std::vector<u32> offers_;
     u32 purchases_left_ = 0;

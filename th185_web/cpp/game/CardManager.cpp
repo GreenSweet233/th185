@@ -152,13 +152,29 @@ bool CardInventory::equip(u32 card_id) {
     for (const u32 existing : loadout_) {
         if (existing == card_id) return true;   // already carried
     }
-    if (loadout_.size() >= LOADOUT_SIZE) {
-        // Drop the oldest entry, matching a fixed-size belt where the newest
-        // card displaces the first.
-        loadout_.erase(loadout_.begin());
-    }
+
+    // The budget is what actually gates the loadout: `Total Cost %d%%/%d%%`.
+    const CardEntry* card = find_card(card_id);
+    if (card == nullptr) return false;
+    if (loadout_.size() >= loadout_slots_) return false;
+    if (loadout_cost() + card->cost() > cost_cap_) return false;
+
     loadout_.push_back(card_id);
     return true;
+}
+
+u32 CardInventory::loadout_cost() const {
+    u32 total = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr) total += card->cost();
+    }
+    return total;
+}
+
+void CardInventory::grant_progress(u32 extra_slots, u32 extra_cost) {
+    loadout_slots_ += extra_slots;
+    cost_cap_ += extra_cost;
 }
 
 bool CardInventory::unequip(u32 index) {
@@ -321,7 +337,11 @@ bool CardInventory::market_buy(u32 index) {
     // Market cards are TEMPORARY: they are not added to `owned_`, so they do
     // not survive the run.
     temporary_.push_back(id);
-    loadout_.push_back(id);
+    // Market cards still have to fit the budget.
+    if (loadout_.size() < loadout_slots_ &&
+        loadout_cost() + card->cost() <= cost_cap_) {
+        loadout_.push_back(id);
+    }
     --purchases_left_;
     return true;
 }

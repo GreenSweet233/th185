@@ -702,6 +702,57 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('a purchase consumes one of the three slots',
           module._th185_market_purchases_left() === 2);
 }
+// Equip cost budget: `Total Cost %d%%/%d%%` in the original.
+//
+// The loadout is limited by total COST, not just card count. Cost lives at
+// byte +0x2C (fields[11]); docs/CARDS.md guessed +0x30, but that field is
+// only 0/1 across all 87 cards. The real field's 11 distinct values
+// (0/10/25/30/50/60/75/100/125/150/200) are exactly the tier ladder the
+// original's cost strings describe.
+{
+    const cap = module._th185_cost_cap();
+    const slots = module._th185_loadout_slots();
+    console.log('cost budget : cap=' + cap + ' slots=' + slots);
+    check('the starting cost cap is 100', cap === 100);
+    check('the starting loadout has 8 slots', slots === 8);
+
+    // The table must carry the tier ladder.
+    const cardCount = module._th185_card_count();
+    const tiers = new Set();
+    for (let i = 0; i < cardCount; ++i) tiers.add(module._th185_card_cost(i));
+    const ladder = Array.from(tiers).sort((a, b) => a - b);
+    console.log('cost tiers  : ' + JSON.stringify(ladder));
+    check('the cost tiers match the documented ladder',
+          JSON.stringify(ladder) ===
+          JSON.stringify([0, 10, 25, 30, 50, 60, 75, 100, 125, 150, 200]));
+
+    // Equipping must respect the budget, not just the slot count.
+    module._th185_cards_clear_loadout();
+    module._th185_cards_add_currency(100000);
+    let equipped = 0;
+    let blocked = 0;
+    for (let i = 0; i < cardCount; ++i) {
+        const id = module._th185_card_id(i);
+        if (!module._th185_cards_buy(id)) continue;
+        if (module._th185_cards_equip(id)) ++equipped; else ++blocked;
+    }
+    const used = module._th185_loadout_cost();
+    const size = module._th185_cards_loadout_size();
+    console.log('equip       : ' + equipped + ' in, ' + blocked +
+                ' blocked, cost ' + used + '/' + cap + ', size ' + size);
+    check('the loadout never exceeds the cost cap', used <= cap);
+    check('the loadout never exceeds the slot count', size <= slots);
+    check('cards beyond the budget are rejected', blocked > 0);
+
+    // Progress raises both limits.
+    module._th185_grant_progress(4, 100);
+    const newSlots = module._th185_loadout_slots();
+    const newCap = module._th185_cost_cap();
+    console.log('progress    : slots ' + slots + ' -> ' + newSlots +
+                ', cap ' + cap + ' -> ' + newCap);
+    check('progress adds loadout slots', newSlots === slots + 4);
+    check('progress raises the cost cap', newCap === cap + 100);
+}
 // End-of-stage flow: clear -> bank -> market -> next stage.
 //
 // Before this link existed, `stage_clear` was set and nothing happened: the

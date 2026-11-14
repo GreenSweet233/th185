@@ -853,6 +853,28 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_card_price(unsigned index) {
     return index < table.size() ? table[index].price() : 0u;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_cost(unsigned index) {
+    const auto& table = th185::cards();
+    return index < table.size() ? table[index].cost() : 0u;
+}
+
+// Equip budget: `Total Cost %d%%/%d%%` in the original.
+EMSCRIPTEN_KEEPALIVE unsigned th185_cost_cap() {
+    return th185::app::instance().cards().cost_cap();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_loadout_cost() {
+    return th185::app::instance().cards().loadout_cost();
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_loadout_slots() {
+    return th185::app::instance().cards().loadout_slots();
+}
+
+EMSCRIPTEN_KEEPALIVE void th185_grant_progress(unsigned slots, unsigned cost) {
+    th185::app::instance().cards().grant_progress(slots, cost);
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_card_is_active(unsigned index) {
     const auto& table = th185::cards();
     return (index < table.size() && table[index].is_active()) ? 1u : 0u;
