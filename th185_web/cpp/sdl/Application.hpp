@@ -253,6 +253,8 @@ public:
     u32 ecl_first_masked_rank() const { return ecl_first_masked_rank_; }
     u32 ecl_rank_ff() const { return ecl_rank_ff_; }
     u32 ecl_rank_other() const { return ecl_rank_other_; }
+    // How many distinct bullet sprite indices are alive right now.
+    u32 bullet_sprite_kinds() const;
     // Card inventory: owned cards, equipped loadout and the market wallet.
     CardInventory& cards() { return cards_; }
     const CardInventory& cards() const { return cards_; }

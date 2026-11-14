@@ -992,9 +992,24 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.pending_bullet.submode = arg_u32(payload, 0);
             break;
         }
+        // Bullet appearance: sprite and colour.
+        //
+        // th15's BulletCommands.cpp: `case 602: shot.sprite = integer(1);
+        // shot.color = integer(2);`. Its arguments are 1-based over the payload
+        // words after the leading mode word, and arg_u32 already applies the
+        // same +4 bias, so arg(1) and arg(2) here are sprite and colour.
+        //
+        // Payload distribution over 208 occurrences confirms it:
+        //   (0,0,8,2) x15   (0,0,8,6) x11   (0,0,4,2) x8   (0,0,25,0) x4
+        // The third word is a small sprite index and the fourth a colour id --
+        // which is exactly what this case now reads. It previously stored
+        // words 0 and 1 (mode and sub) and ignored both.
         case EclOp::Op602BulletPair: {
             context.pending_bullet.mode = arg_u32(payload, 0);
             context.pending_bullet.submode = arg_u32(payload, 1);
+            context.pending_bullet.sprite = arg_u32(payload, 2);
+            context.pending_bullet.color = arg_u32(payload, 3);
+            ++context.bullet_appearance_sets;
             break;
         }
         case EclOp::Op606BulletCount: {

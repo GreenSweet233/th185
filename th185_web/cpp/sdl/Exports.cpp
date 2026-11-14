@@ -503,6 +503,16 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_family_calls() {
     return th185::app::instance().ecl().enemy_family_calls;
 }
 
+// How many times op602 set a bullet appearance (diagnostics only).
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_appearance_sets() {
+    return th185::app::instance().ecl().bullet_appearance_sets;
+}
+
+// Distinct bullet sprite indices currently alive (diagnostics only).
+EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_sprite_kinds() {
+    return th185::app::instance().bullet_sprite_kinds();
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_rank_ff() {
     return th185::app::instance().ecl_rank_ff();
 }

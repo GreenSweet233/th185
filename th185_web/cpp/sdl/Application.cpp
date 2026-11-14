@@ -7,6 +7,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
+#include <set>
 #include <vector>
 #include <cstring>
 
@@ -346,6 +347,26 @@ bool Application::load_animation_bank(const char* name, u32 script_limit) {
     animation_bank_ += name;
     return true;
 }
+// Colour for a bullet colour id (op602's fourth word).
+//
+// The ids observed in the data are 0/2/4/6/10/13. Touhou bullets are colour-
+// coded by function (the series convention: red/purple aimed, blue/cyan
+// unaimed, etc.), but which id maps to which hue is NOT decoded -- this table
+// is a readable spread that keeps the different ids visually distinct, which is
+// the property a player actually uses. Recorded as inferred.
+u32 bullet_color_for_id(u32 id) {
+    switch (id % 8u) {
+        case 0: return 0xFFFF4040u;   // red
+        case 1: return 0xFFFF8040u;   // orange
+        case 2: return 0xFFFFE040u;   // yellow
+        case 3: return 0xFF40FF40u;   // green
+        case 4: return 0xFF40E0FFu;   // cyan
+        case 5: return 0xFF4080FFu;   // blue
+        case 6: return 0xFFC040FFu;   // purple
+        default: return 0xFFFF40C0u;  // magenta
+    }
+}
+
 // Maps an enemy family name to a sprite in enemy.anm.
 //
 // enemy.anm's 120 sprites are laid out as five contiguous blocks, which is a
@@ -363,6 +384,14 @@ bool Application::load_animation_bank(const char* name, u32 script_limit) {
 // families get the largest blocks. That is a guess about five items instead of
 // 120, and it always yields a real enemy of a plausible size rather than an
 // arbitrary atlas cell.
+u32 Application::bullet_sprite_kinds() const {
+    std::set<u32> kinds;
+    for (const Bullet& bullet : bullets_.bullets()) {
+        if (bullet.alive) kinds.insert(bullet.sprite);
+    }
+    return u32(kinds.size());
+}
+
 u32 Application::enemy_sprite_for_family(const std::string& family,
                                          u32 variant) {
     struct Block { const char* name; u32 first; u32 count; };
@@ -706,7 +735,16 @@ void Application::consume_schedules() {
             // 380 ms per frame in the per-bullet passes. 64 is above every
             // observed single fan (16) and still bounds the worst case.
             if (i >= MAX_BULLETS_PER_REQUEST) break;
-            if (bullets_.spawn(sx, sy, vx, vy, 0, 0xFFFF8080u, true, delay)) {
+            // Appearance from op602: sprite index into bullet.anm and a colour
+            // id. Before this, every bullet used sprite 0 and one hard-coded
+            // pink, so the whole field looked like one bullet type.
+            //
+            // bullet.anm has 368 sprites; the recorded indices are small
+            // (4/5/6/7/8/10/12/25), so they index the bank directly.
+            const u32 bullet_sprite = request.sprite % 368u;
+            const u32 bullet_color = bullet_color_for_id(request.color);
+            if (bullets_.spawn(sx, sy, vx, vy, bullet_sprite, bullet_color,
+                               true, delay)) {
                 ++stats_.enemy_shots;
             }
         }

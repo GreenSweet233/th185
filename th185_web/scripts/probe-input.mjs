@@ -983,6 +983,24 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('the family is one of the five in the data',
           ['Girl', 'GirlA', 'GirlC', 'Phantom', 'Cir'].includes(name));
 }
+// Bullet appearance comes from op602.
+//
+// th15's BulletCommands.cpp: `case 602: shot.sprite = integer(1); shot.color =
+// integer(2);`. With this build's +4 argument bias those are payload words 2
+// and 3, which matches the observed payload distribution:
+//   (0,0,8,2) x15  (0,0,8,6) x11  (0,0,4,2) x8  (0,0,25,0) x4
+// Before this the case stored words 0 and 1 (mode and sub) and every bullet
+// was drawn with sprite 0 and one hard-coded pink.
+{
+    module._th185_load_stage(1);
+    module._th185_reset_scenario();
+    for (let f = 0; f < 900; ++f) module._th185_tick(0);
+    const sets = module._th185_bullet_appearance_sets();
+    const kinds = module._th185_bullet_sprite_kinds();
+    console.log('bullet look : appearanceSets=' + sets + ' spriteKinds=' + kinds);
+    check('op602 sets bullet appearances', sets > 0);
+    check('more than one bullet sprite is in use', kinds > 1);
+}
 // Boss opcode coverage.
 //
 // The boss scripts run in a chain: each opcode implemented moves

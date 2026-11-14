@@ -178,6 +178,12 @@ u32 difficulty = 0;
     struct BulletRequest {
         u32 mode = 0;
         u32 submode = 0;
+        // Appearance, set by op602: sprite index into bullet.anm and a colour
+        // id. th15 reads them as `shot.sprite = integer(1); shot.color =
+        // integer(2)`, which against this build's +4 argument bias are payload
+        // words 2 and 3.
+        u32 sprite = 0;
+        u32 color = 0;
         u32 count = 0;
         float speed = 0.0f;
         float angle_lo = 0.0f;
@@ -193,6 +199,8 @@ u32 difficulty = 0;
     // bullet_requests is drained by Application each frame.
     std::vector<std::array<u32, 8>> delays_seen;
     u32 requests_total = 0;
+    // How many times op602 set an appearance (diagnostics).
+    u32 bullet_appearance_sets = 0;
 
     // --- coroutine state ------------------------------------------------
     //
