@@ -186,8 +186,12 @@ const OpName kOpNames[] = {
     {545, "AttackPrepare"}, {445, "TimedValue"},
     {1013, "Op1013Schedule"},
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
-    {304, "Op304CallNamedVariant"}, {302, "Op302Set"},
-    {500, "Op500SetPosition"}, {1006, "Op1006Comment"},
+    {304, "Op304CallNamedVariant"}, {302, "Op302Field1c"},
+    {500, "Op500BoundsA"}, {1006, "Op1006Comment"},
+    {502, "Op502StateFlagsSet"}, {503, "Op503StateFlagsClear"},
+    {504, "Op504StateFlags2Set"}, {505, "Op505StateFlags2Clear"},
+    {525, "Op525EnemyClear"}, {616, "Op616BulletCancelCircle"},
+    {1002, "Op1002ControllerField"}, {1003, "Op1003ControllerField250"},
 };
 
 }  // namespace
@@ -262,8 +266,8 @@ const NetEffect kInferredNet[] = {
     // template was never recorded even though WorldWave01 ran 20000
     // instructions.
     // data-only opcodes already established (net 0)
-    {306, 0}, {502, 0}, {525, 0},
-    {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
+        {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
+        {306, 0}, {502, 0}, {525, 0},
     // op1004 closes the schedule block (always follows op1013, payload
     // [0][1][0][0]); without it the controller stops before its Calls.
     {1004, 0}, {1008, 0},
@@ -275,7 +279,7 @@ const NetEffect kInferredNet[] = {
     //   op511 [0][large int][0][0], always follows op502
     // They gate the controller's progress, so leaving them unsupported stops
     // the scene before its Call instructions run.
-    {511, 0}, {518, 0}, {519, 0}, {520, 0},
+        {511, 0}, {518, 0}, {519, 0}, {520, 0},
     // op1010/op1012 bracket the wave block the same way op1009/op1004 do:
     // every wave subroutine starts with 40, 1010, 1011, 1012 and op1010 always
     // carries 0 while op1012 carries 0/1/258/512. They mark the wave envelope,
@@ -1223,6 +1227,44 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
+        // --- Enemy state, ported from TH20's enemy_opcode_state.cpp ---
+        //
+        // TH185's entity opcodes are a subset of TH20's (93 of the 117 it uses
+        // have a TH20 handler), so these bodies are transcriptions rather than
+        // guesses. They touch only interpreter state, never the renderer.
+        case EclOp::Op502StateFlagsSet: {
+            // TH20: s.fields_2c8[0] |= integer(0) & 0x3fff;
+            //       if (flags & 32) hide every animation.
+            // The hide half needs the animation host; the flag word is what the
+            // rest of the script reads, so that part is modelled.
+            context.enemy_state_flags |= (arg_u32(payload, 0) & 0x3fffu);
+            ++context.enemy_flag_writes;
+            break;
+        }
+        case EclOp::Op525EnemyClear: {
+            // TH20: env.clear(controller, EnemyClearKind::ordinary, 0) --
+            // removes ordinary enemies from the field. This build has no such
+            // host call, so the request is counted; Application can act on it.
+            ++context.enemy_clear_ops;
+            break;
+        }
+        case EclOp::Op616BulletCancelCircle: {
+            // TH20: env.cancel_circle(context, position(), real(0), true) --
+            // deletes bullets inside a radius. Counted for the same reason.
+            ++context.enemy_bullet_cancels;
+            break;
+        }
+        case EclOp::Op1002ControllerField: {
+            // TH20: controller().field_e0 = integer(0);
+            context.controller_field_e0 = arg_u32(payload, 0);
+            break;
+        }
+        case EclOp::Op1003ControllerField250: {
+            // TH20: state.fields_250[10] = integer(0);
+            context.controller_field_250_10 = arg_u32(payload, 0);
+            break;
+        }
+
         case EclOp::Op1012WaveBlockEnd: {
             // Closes a WorldWaveNN template list. Hand the accumulated
             // templates to Application, which loads waveNN.ecl and runs it.
@@ -1547,7 +1589,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        case EclOp::Op504BossSpawnBox: {
+        case EclOp::Op504StateFlags2Set: {
             // Spawn area for a boss object: centre plus extents.
             //
             // Evidence: 85 occurrences across 49 files, size ALWAYS 32 so the
@@ -1627,7 +1669,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             ++context.boss_timer_values;
             break;
         }
-        case EclOp::Op501SetPositionPair: {
+        case EclOp::Op501BoundsB: {
             // Sets a position from two floats.
             //
             // Evidence: 120 occurrences across 105 files. Payload is
@@ -1641,7 +1683,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        case EclOp::Op503BossPhase: {
+        case EclOp::Op503StateFlagsClear: {
             // Sets the boss phase number.
             //
             // Evidence: 31 occurrences across 28 files, payload[0] is 3 in 29/31
@@ -1653,7 +1695,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        case EclOp::Op505BranchAction: {
+        case EclOp::Op505StateFlags2Clear: {
             // Action taken after a conditional jump.
             //
             // Evidence: 44 occurrences across 29 files, payload always zero,
@@ -1897,7 +1939,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        case EclOp::Op302Set: {
+        case EclOp::Op302Field1c: {
             // payload: u32 reserved(always 0), u32 a, u32 b.
             // Verified across all 268 occurrences: payload[0] is always 0,
             // a is a builtin reference (-9895 = slot 105) or a small int,
@@ -1908,7 +1950,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             break;
         }
 
-        case EclOp::Op500SetPosition: {
+        case EclOp::Op500BoundsA: {
             // payload: u32 reserved, f32 x, f32 y, u32 reserved (120 uses).
             // Does not touch the stack; stores the pair for later inspection.
             context.last_position_x = arg_float(payload, 0);

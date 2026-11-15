@@ -322,6 +322,25 @@ u32 difficulty = 0;
     float pattern_extra_scale = 0.0f;
     u32 pattern_extra_tail = 0;
     u32 pattern_extras = 0;
+
+    // --- Enemy state written by the TH20-referenced opcode block ---
+    //
+    // TH20 names these `s.fields_2c8[0]` (a 14-bit flag word), `fields_2c8[1]`
+    // (a second flag word) and `bounds_5c`/`bounds_64` (movement clamps). The
+    // meanings below come from TH20's handlers, not from TH185's binary --
+    // TH185's opcodes are a subset of TH20's, which is what makes this valid.
+    u32 enemy_state_flags = 0;      // op502 |= / op503 &= ~ (14 bits)
+    u32 enemy_state_flags2 = 0;     // op504 |= 2 / op505 &= ~2 / op424 bit 3
+    float enemy_bound_a_x = 0.0f;   // op500
+    float enemy_bound_a_y = 0.0f;
+    float enemy_bound_b_x = 0.0f;   // op501
+    float enemy_bound_b_y = 0.0f;
+    u32 enemy_field_1c0 = 0;        // op302
+    u32 controller_field_e0 = 0;    // op1002
+    u32 controller_field_250_10 = 0;// op1003
+    u32 enemy_clear_ops = 0;        // op525
+    u32 enemy_bullet_cancels = 0;   // op616
+    u32 enemy_flag_writes = 0;      // op511/518/519/520
     u32 pattern_aux_a = 0;
     u32 pattern_aux_b = 0;
     u32 pattern_aux_c = 0;

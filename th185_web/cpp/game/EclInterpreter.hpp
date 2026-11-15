@@ -73,6 +73,11 @@ enum class EclOp : u16 {
     Op607BulletVariant = 607,
     Op611BulletEmit = 611,
     Op535BulletDelays = 535,
+    Op502StateFlagsSet = 502,     // TH20: fields_2c8[0] |= arg & 0x3fff
+    Op525EnemyClear = 525,        // TH20: env.clear(ordinary)
+    Op616BulletCancelCircle = 616,// TH20: env.cancel_circle
+    Op1002ControllerField = 1002, // TH20: controller().field_e0 = arg
+    Op1003ControllerField250 = 1003, // TH20: state.fields_250[10] = arg
     Op1012WaveBlockEnd = 1012,
     Op1024BossIndex = 1024,
     Op512BossFrameEnter = 512,
@@ -94,15 +99,15 @@ enum class EclOp : u16 {
     Op614PatternCount = 614,
     Op629BossConfig = 629,
     Op632AttackSlot = 632,
-    Op504BossSpawnBox = 504,
+    Op504StateFlags2Set = 504,    // TH20: fields_2c8[1] |= 2
     Op507SpawnParams = 507,
     Op513ScriptMark = 513,
     Op514CallNamedExt = 514,
     Op521CallNamedEffect = 521,
     Op1026BossTimerValue = 1026,
-    Op501SetPositionPair = 501,
-    Op503BossPhase = 503,
-    Op505BranchAction = 505,
+    Op501BoundsB = 501,           // TH20: bounds_64
+    Op503StateFlagsClear = 503,   // TH20: fields_2c8[0] &= ~arg
+    Op505StateFlags2Clear = 505,  // TH20: fields_2c8[1] &= ~2
     Op545AttackPrepare = 545,
     Op445TimedValue = 445,
     Op404BulletPattern = 404,
@@ -117,8 +122,8 @@ enum class EclOp : u16 {
     Op1015Query = 1015,      // u32 reserved, u32 ref, u32 field, u32 reserved
     Op300CallNamed = 300,    // u32 flag, u32 name_len, char name[], args
     Op304CallNamedVariant = 304,  // same shape as op300
-    Op302Set = 302,               // u32 reserved, u32 a, u32 b
-    Op500SetPosition = 500,       // u32 reserved, f32 x, f32 y, u32 reserved
+    Op302Field1c = 302,           // u32 reserved, u32 value  (TH20: fields_1c[0])
+    Op500BoundsA = 500,           // u32 reserved, f32 x, f32 y  (TH20: bounds_5c)
     Op1006Comment = 1006,         // u32 reserved, u32 len, char text[]
     // Thread ops, now implementable because EclContext owns a thread table.
     // (15/16/17..21 already exist in EclOp as Spawn/SpawnNamed/CancelThread/...)
