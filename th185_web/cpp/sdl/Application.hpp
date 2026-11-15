@@ -7,6 +7,7 @@ namespace th185 {
 // Defined in game/Hud.hpp. Declared here because Application.hpp has no
 // includes of its own; Application.cpp pulls the definition in.
 class Hud;
+class MagicCircle;
 
 constexpr unsigned CLEAR_CONFIRM_FRAMES = 30;
 
@@ -144,6 +145,9 @@ struct FrameStats {
     u32 quads = 0;
     u32 background_quads = 0;
         u32 hud_quads = 0;
+        u32 magic_absorbed = 0;
+        u32 magic_active = 0;
+        u32 magic_ready = 0;
     u32 pixels_written = 0;
     u32 live_animations = 0;
     // Last button bitmask received from the shell.
@@ -249,6 +253,9 @@ public:
     Phase phase() const { return phase_; }
     const FrameStats& stats() const { return stats_; }
     bool hud_bound() const;
+    bool magic_active() const;
+    bool magic_ready() const;
+    float magic_radius() const;
     const GameSession& session() const { return session_; }
 
     // Names of the animation banks currently loaded, joined by '+'.
@@ -353,6 +360,8 @@ private:
     AnmManager animations_;
     // Owned through a pointer so this header needs no Hud definition.
     Hud* hud_ = nullptr;
+    // Owned through a pointer for the same reason as Hud.
+    MagicCircle* magic_ = nullptr;
     Player player_;
     BulletPool bullets_;
     EnemyPool enemies_;

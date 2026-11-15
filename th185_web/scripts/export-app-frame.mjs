@@ -56,7 +56,9 @@ module._th185_reset_scenario();
 // the frame was captured. Fire only in the last 20 frames: that puts player
 // bullets in flight while the enemies are still on screen.
 for (let i = 0; i < 600; ++i) {
-  const held = i >= 580 ? SHOOT : 0;
+  // Hold the magic-circle button from frame 580 so the exported frame shows it.
+const SPECIAL = 1 << 3;
+const held = i >= 580 ? (SHOOT | SPECIAL) : 0;
   if (!module._th185_tick(held)) {
     console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
     process.exit(1);

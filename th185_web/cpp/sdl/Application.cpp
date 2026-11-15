@@ -4,6 +4,7 @@
 
 #include "../game/EclInterpreter.hpp"
 #include "../game/Hud.hpp"
+#include "../game/MagicCircle.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -410,6 +411,18 @@ u32 Application::enemy_sprite_for_family(const std::string& family,
     return 108u + (variant % 12u);
 }
 
+bool Application::magic_active() const {
+    return magic_ != nullptr && magic_->active();
+}
+
+bool Application::magic_ready() const {
+    return magic_ != nullptr && magic_->ready();
+}
+
+float Application::magic_radius() const {
+    return (magic_ != nullptr) ? magic_->radius() : 0.0f;
+}
+
 bool Application::hud_bound() const {
     return hud_ != nullptr && hud_->bound();
 }
@@ -793,6 +806,9 @@ void Application::reset_scenario() {
     // sprites that still render (the frame showed 46 quads with 1 enemy).
     animations_.clear();
     player_ = Player{};
+    if (magic_ == nullptr) magic_ = new MagicCircle();
+    magic_->reset();
+
     // A fresh run starts with a small loadout, the way the original opens with
     // its "initial equipment" set. Without this the HUD's eight card slots are
     // all empty and the loadout path never runs.
@@ -834,6 +850,11 @@ void Application::reset_scenario() {
     stats_.card_extra_lives = cards_.extra_lives();
     stats_.card_extra_bombs = cards_.extra_bombs();
     stats_.card_shot_bonus = cards_.shot_power_bonus();
+    // The magic circle takes its two modifiers from the loadout.
+    if (magic_ != nullptr) {
+        magic_->apply_cards(cards_.magic_reload_percent(),
+                            cards_.magic_break_percent());
+    }
     scoring_.add(cards_.starting_currency_bonus());
     // Re-bind the player to its bank: the reset dropped the animation handle.
     for (const AnimationBank& bank : banks_) {
@@ -1195,6 +1216,42 @@ void Application::render() {
         ++quads;
     }
     stats_.quads = quads;
+    // Magic circle, drawn under the HUD but over the field.
+    if (magic_ != nullptr && magic_->active() && !banks_.empty()) {
+        // The circle art is in the player atlas (pl01.anm sprites 53..60).
+        const AnimationBank* player_bank = nullptr;
+        for (const AnimationBank& bank : banks_) {
+            if (bank.name == "pl01.anm") { player_bank = &bank; break; }
+        }
+        if (player_bank != nullptr && !player_bank->resource.sprites.empty() &&
+            !player_bank->textures.empty()) {
+            const u32 index = magic_->sprite();
+            if (index < player_bank->resource.sprites.size()) {
+                const AnmSprite& sprite = player_bank->resource.sprites[index];
+                AnmQuad quad;
+                const float w = sprite.w * 1.4f;
+                const float h = sprite.h * 1.4f;
+                const float half_w = float(raster_.width()) * 0.5f;
+                const float half_h = float(raster_.height()) * 0.5f;
+                const float x = half_w + player_.x() - w * 0.5f;
+                const float y = half_h + player_.y() - h * 0.5f;
+                quad.x[0] = x;     quad.y[0] = y;
+                quad.x[1] = x + w; quad.y[1] = y;
+                quad.x[2] = x + w; quad.y[2] = y + h;
+                quad.x[3] = x;     quad.y[3] = y + h;
+                quad.u[0] = sprite.u0; quad.v[0] = sprite.v0;
+                quad.u[1] = sprite.u1; quad.v[1] = sprite.v0;
+                quad.u[2] = sprite.u1; quad.v[2] = sprite.v1;
+                quad.u[3] = sprite.u0; quad.v[3] = sprite.v1;
+                quad.texture = &player_bank->textures[0];
+                quad.blend = AnmBlendMode::Additive;
+                quad.nearest = false;
+                raster_.draw(quad);
+                ++stats_.quads;
+            }
+        }
+    }
+
     // HUD last, so it covers anything that spilled out of the field.
     {
         HudState hud_state;
@@ -1484,6 +1541,34 @@ bool Application::tick(u32 held, bool do_render) {
             ++stats_.bombs_used;
         }
     }
+    // Magic circle: the special button expands it, and while it is up every
+    // hostile bullet inside the radius is consumed into bullet money.
+    if (magic_ != nullptr) {
+        if ((held & BUTTON_SPECIAL) != 0) {
+            magic_->activate();
+        }
+        magic_->update();
+        if (magic_->active()) {
+            u32 absorbed = 0;
+            for (const u32 i : bullets_.live_indices()) {
+                Bullet& bullet = bullets_.mutable_bullet(i);
+                if (!bullet.alive || !bullet.hostile) continue;
+                const float dx = bullet.x - player_.x();
+                const float dy = bullet.y - player_.y();
+                const float r = magic_->radius();
+                if (dx * dx + dy * dy > r * r) continue;
+                bullets_.release(i);
+                ++absorbed;
+            }
+            if (absorbed > 0) {
+                // Absorbed bullets become bullet money, which is what the
+                // black market accepts.
+                cards_.add_bullet_money(i32(absorbed));
+                stats_.magic_absorbed += absorbed;
+            }
+        }
+    }
+
     bullets_.update();
     enemies_.update();
     // Collision runs after both pools have moved, so a bullet and a target that

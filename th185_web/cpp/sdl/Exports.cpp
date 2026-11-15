@@ -1016,6 +1016,22 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_card_price(unsigned index) {
     return index < table.size() ? table[index].price() : 0u;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_magic_active() {
+    return th185::app::instance().magic_active() ? 1u : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_magic_ready() {
+    return th185::app::instance().magic_ready() ? 1u : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_magic_absorbed() {
+    return th185::app::instance().stats().magic_absorbed;
+}
+
+EMSCRIPTEN_KEEPALIVE float th185_magic_radius() {
+    return th185::app::instance().magic_radius();
+}
+
 EMSCRIPTEN_KEEPALIVE int th185_magic_reload_percent() {
     return th185::app::instance().cards().magic_reload_percent();
 }
