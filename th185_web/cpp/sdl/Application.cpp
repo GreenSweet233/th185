@@ -1384,7 +1384,11 @@ bool Application::tick(u32 held, bool do_render) {
                 ++cancelled;
             }
             if (cancelled > 0) scoring_.add_bullet_cancel(cancelled);
-            enemies_.damage_all(1);
+            // Damage scales with shot power, as the original does through its
+            // cap table (player_state.cpp clamps power to 100..400 and
+            // damage.cpp indexes the cap by power tier). Without this a
+            // 7000-HP boss needed 7000 hits and no stage could be cleared.
+            enemies_.damage_all(player_.shot_damage());
             ++stats_.bombs_used;
         }
     }
@@ -1394,7 +1398,7 @@ bool Application::tick(u32 held, bool do_render) {
     // crossed paths this frame are still tested against each other.
     // Accumulate: a per-frame value would read as 0 whenever the last frame had
     // no hit, which is what made the first collision test look like a failure.
-    stats_.collision_hits += enemies_.resolve_collisions(&bullets_);
+    stats_.collision_hits += enemies_.resolve_collisions(&bullets_, player_.shot_damage());
     stats_.enemies_alive = enemies_.stats().alive;
     stats_.enemies_killed = enemies_.stats().killed;
 

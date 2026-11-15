@@ -73,7 +73,7 @@ void EnemyPool::update() {
     }
 }
 
-u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
+u32 EnemyPool::resolve_collisions(BulletPool* bullets, i32 damage) {
     if (!bullets) return 0;
     u32 hits = 0;
 
@@ -140,7 +140,12 @@ u32 EnemyPool::resolve_collisions(BulletPool* bullets) {
             ++stats_.bullets_consumed;
             ++hits;
 
-            if (--enemy.hp <= 0) {
+            // Damage per hit comes from shot power, not a fixed 1. The
+            // original caps damage through a table indexed by power tier
+            // (damage.cpp player_damage_cap); this build uses a linear
+            // scaling, which is enough to make real boss health playable.
+            enemy.hp -= (damage > 0 ? damage : 1);
+            if (enemy.hp <= 0) {
                 enemy.alive = false;
                 free_slots_.push_back(e);
                 --stats_.alive;

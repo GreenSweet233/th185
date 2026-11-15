@@ -55,6 +55,11 @@ void Player::add_life() {
     ++lives_;
     ++lives_gained_;
 }
+void Player::add_power(i32 delta) {
+    power_ += delta;
+    if (power_ < PLAYER_POWER_MIN) power_ = PLAYER_POWER_MIN;
+    if (power_ > PLAYER_POWER_MAX) power_ = PLAYER_POWER_MAX;
+}
 void Player::add_bomb() {
     // Same cap as lives: the original's bomb stock tops out at 8.
     if (bombs_left_ < 8) {

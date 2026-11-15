@@ -58,6 +58,27 @@ constexpr u32 PLAYER_STARTING_LIVES = 3;
 // point of a danmaku game's "grazing" feel. TH uses roughly 2 units.
 constexpr float PLAYER_HITBOX_RADIUS = 2.0f;
 
+// Shot power, in the original's units.
+//
+// TH20's player_state.cpp clamps the power field at 0x38 to 100..400 and
+// loading.cpp quadruples the starting value on some stages
+// (`mode == 2 || (stage >= 2 && stage != 7) ? power*4 : power`). Damage is
+// capped by a table lookup that indexes on the power tier, so power is the
+// multiplier that makes a 7000-HP boss killable.
+constexpr i32 PLAYER_POWER_MIN = 100;
+constexpr i32 PLAYER_POWER_MAX = 400;
+constexpr i32 PLAYER_POWER_START = 100;
+// Per-hit damage at power 100.
+//
+// This is a CALIBRATION, not a recovered constant. TH20's damage.cpp reads the
+// cap from a parameter table indexed by power tier
+// (`parameters[0x28 + tier*12]`), and that table has not been decoded.
+//
+// What is known: a boss has 7000 HP (op511) and a player lands ~4000 hits
+// inside a 10000-frame stage. 7000/4000 = 1.75, so any value below 2 leaves the
+// boss unkillable; 4 gives a comfortable margin (16000 damage).
+constexpr i32 PLAYER_BASE_DAMAGE = 4;
+
 constexpr float PLAYER_SPEED = 4.0f;
 constexpr float PLAYER_FOCUS_SPEED = 2.0f;
 
@@ -106,6 +127,13 @@ public:
     u32 bombs_remaining() const { return bombs_left_; }
 
     u32 lives() const { return lives_; }
+    // Shot power, clamped like the original's 0x38 field.
+    i32 power() const { return power_; }
+    void add_power(i32 delta);
+    // Damage one hit does: base scaled by the power tier.
+    i32 shot_damage() const {
+        return PLAYER_BASE_DAMAGE * (power_ / PLAYER_POWER_START);
+    }
 
     // Grants one life. Capped so a fragment chain cannot overflow the HUD.
     void add_life();
@@ -137,6 +165,7 @@ private:
     u32 previous_held_ = 0;
     u32 shot_cooldown_ = 0;
     u32 lives_ = PLAYER_STARTING_LIVES;
+    i32 power_ = PLAYER_POWER_START;
     u32 lives_gained_ = 0;
     u32 invulnerable_ = 0;
     u32 bombs_left_ = 3;

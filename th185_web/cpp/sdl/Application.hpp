@@ -12,14 +12,11 @@ constexpr unsigned STAGE_CLEAR_SLOT = 104;
 // Frames the field must stay empty (with a boss live) before a kill counts.
 constexpr unsigned BOSS_DOWN_CONFIRM_FRAMES = 30;
 
-// Boss health for the entity pool.
+// Boss health fallback.
 //
-// op511 carries the ORIGINAL value (measured 7000, spell accumulator 49000),
-// but this build's player deals a fixed ~1 damage per hit while the original
-// scales with shot power and type. Using 7000 made every stage unclearable
-// (measured 0/9). The ECL value is still recorded and published; this is the
-// playable pool until shot power is modelled.
-constexpr int BOSS_STARTING_HP = 60;
+// The real value comes from op511 (measured 7000, spell accumulator 49000).
+// This constant is only used when a script never sets health.
+constexpr int BOSS_STARTING_HP = 7000;
 
 // Upper bound on one op611 emission. The recorded op605 counts are 0/8/16,
 // so this only clips pathological repeats.

@@ -75,7 +75,9 @@ public:
 
     // Tests every live bullet against every live enemy. A bullet that hits is
     // consumed; an enemy at zero HP dies. Returns the number of hits.
-    u32 resolve_collisions(BulletPool* bullets);
+    // `damage` is how much one player bullet takes off. It comes from the
+    // player's shot power, which is what makes a 7000-HP boss killable.
+    u32 resolve_collisions(BulletPool* bullets, i32 damage = 1);
 
     // Fires from every live enemy into `bullets` as HOSTILE shots, aimed at
     // (target_x, target_y). Returns the number of shots spawned.

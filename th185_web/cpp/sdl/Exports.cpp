@@ -230,6 +230,14 @@ EMSCRIPTEN_KEEPALIVE void th185_reset_scenario() {
     th185::app::instance().reset_scenario();
 }
 
+EMSCRIPTEN_KEEPALIVE int th185_player_power() {
+    return th185::app::instance().player().power();
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_player_shot_damage() {
+    return th185::app::instance().player().shot_damage();
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_player_lives() {
     return th185::app::instance().stats().player_lives;
 }
