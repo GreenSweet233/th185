@@ -3,6 +3,11 @@
 // How many consecutive enemy-free frames count as a cleared field. One empty
 // frame happens between waves, so a clear needs a sustained gap.
 namespace th185 {
+
+// Defined in game/Hud.hpp. Declared here because Application.hpp has no
+// includes of its own; Application.cpp pulls the definition in.
+class Hud;
+
 constexpr unsigned CLEAR_CONFIRM_FRAMES = 30;
 
 // Builtin slot that holds the stage-clear flag. op42 -9896 reads it, and
@@ -138,6 +143,7 @@ struct FrameStats {
     // Rendering.
     u32 quads = 0;
     u32 background_quads = 0;
+        u32 hud_quads = 0;
     u32 pixels_written = 0;
     u32 live_animations = 0;
     // Last button bitmask received from the shell.
@@ -242,6 +248,7 @@ public:
     const std::string& error() const { return error_; }
     Phase phase() const { return phase_; }
     const FrameStats& stats() const { return stats_; }
+    bool hud_bound() const;
     const GameSession& session() const { return session_; }
 
     // Names of the animation banks currently loaded, joined by '+'.
@@ -344,6 +351,8 @@ private:
     };
     std::vector<AnimationBank> banks_;
     AnmManager animations_;
+    // Owned through a pointer so this header needs no Hud definition.
+    Hud* hud_ = nullptr;
     Player player_;
     BulletPool bullets_;
     EnemyPool enemies_;

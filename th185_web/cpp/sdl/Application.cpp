@@ -3,6 +3,7 @@
 #include <algorithm>
 
 #include "../game/EclInterpreter.hpp"
+#include "../game/Hud.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -409,6 +410,10 @@ u32 Application::enemy_sprite_for_family(const std::string& family,
     return 108u + (variant % 12u);
 }
 
+bool Application::hud_bound() const {
+    return hud_ != nullptr && hud_->bound();
+}
+
 void Application::load_scene_banks() {
     banks_.clear();
     animations_ = AnmManager{};
@@ -424,6 +429,32 @@ void Application::load_scene_banks() {
     // The bullet atlas is needed for the shot sprites; no auto-spawn because
     // BulletPool owns the instances.
     load_animation_bank("bullet.anm", 0);
+    // HUD art. `front.anm` is the border and the counter cells; `ascii.anm`
+    // is the glyph sheet (320 sprites on a 14x14 grid).
+    load_animation_bank("front.anm", 0);
+    load_animation_bank("ascii.anm", 0);
+
+    // Bind the HUD to the two banks it draws from.
+    {
+        HudAtlas frame_atlas;
+        HudAtlas glyph_atlas;
+        for (const AnimationBank& bank : banks_) {
+            if (bank.name == "front.anm" && !bank.resource.sprites.empty()) {
+                frame_atlas.resource = &bank.resource;
+                frame_atlas.texture = bank.textures.empty() ? nullptr : &bank.textures[0];
+            } else if (bank.name == "ascii.anm" && !bank.resource.sprites.empty()) {
+                glyph_atlas.resource = &bank.resource;
+                glyph_atlas.texture = bank.textures.empty() ? nullptr : &bank.textures[0];
+            }
+        }
+        // Diagnostics: the HUD silently drew nothing when a texture failed
+        // to decode, so report what it actually got.
+        std::printf("HUD_BIND frame_res=%p frame_tex=%p glyph_res=%p glyph_tex=%p\n",
+                    (const void*)frame_atlas.resource, (const void*)frame_atlas.texture,
+                    (const void*)glyph_atlas.resource, (const void*)glyph_atlas.texture);
+        if (hud_ == nullptr) hud_ = new Hud();
+        hud_->bind(frame_atlas, glyph_atlas);
+    }
 
     // Bind the player to the bank that was just appended.
     if (!banks_.empty()) {
@@ -1132,6 +1163,19 @@ void Application::render() {
         ++quads;
     }
     stats_.quads = quads;
+    // HUD last, so it covers anything that spilled out of the field.
+    {
+        HudState hud_state;
+        hud_state.score = scoring_.score();
+        hud_state.lives = player_.lives();
+        hud_state.bombs = player_.stats().bombs;
+        hud_state.money = cards_.funds();
+        hud_state.bullet_money = cards_.bullet_money();
+        hud_state.power = player_.power();
+        hud_state.market_open = (phase_ == Phase::Cleared);
+        stats_.hud_quads = (hud_ != nullptr) ? hud_->draw(raster_, hud_state) : 0u;
+    }
+
     stats_.pixels_written = raster_.pixels_written;
     stats_.live_animations = animations_.live_count();
 }

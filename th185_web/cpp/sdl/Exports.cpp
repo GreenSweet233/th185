@@ -583,6 +583,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_overflow_depth() {
 }
 
 // Background quads drawn last frame (diagnostics only).
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_hud_quads() {
+    return th185::app::instance().stats().hud_quads;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_hud_bound() {
+    return th185::app::instance().hud_bound() ? 1u : 0u;
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_background_quads() {
     return th185::app::instance().stats().background_quads;
 }
