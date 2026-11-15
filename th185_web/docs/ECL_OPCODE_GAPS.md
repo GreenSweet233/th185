@@ -116,6 +116,36 @@ core_delegate_default 0x0053def5
 | 503 | `fields_2c8[0] &= ~(arg & 0x3fff)` | 已有 case，改名 |
 | 504 | `fields_2c8[1] |= 2` | 已有 case，改名 |
 | 505 | `fields_2c8[1] &= ~2` | 已有 case，改名 |
+| **502** | `fields_2c8[0] \|= arg & 0x3fff`；`& 32` 时隐藏所有动画 | **本轮新实现** |
+
+## 4.1 op502 的实测
+
+`op502` 是缺口里最高频的一个（418 次）。TH20 的语义：
+
+```cpp
+case 502: s.fields_2c8[0] |= integer(0) & 0x3fff;
+          if (fields_2c8[0] & 32) hide every animation;
+          break;
+```
+
+TH185 里它的 arg0 分布证实了这个语义：
+
+```
+0x0020 (32)  x334   ← 80%，正是「隐藏动画」那一位
+0x0003 (3)   x30
+0x0040 (64)  x28
+0x000C (12)  x18
+```
+
+实测（2000 帧）：
+
+```
+stage0: flagWrites=6  stateFlags=0x63
+stage1: flagWrites=5  stateFlags=0x63
+stage5: flagWrites=6  stateFlags=0x63
+```
+
+`0x63` = `0b01100011`，含 `0x20` 位。
 
 ## 5. ★ 一个失败的尝试
 
@@ -136,6 +166,23 @@ TH20 的 `body_excerpt` 只给出前者；后者要靠 `kInferredNet` 的 net �
 或者从循环体结构反推。只做前者会让栈失衡，比「只记录」更糟。
 
 已全部回退，`faults=2`（既有问题）恢复。
+
+### 后续发现：真正的根因是「表与 case 同时存在」
+
+继续排查时发现 `op502/525/616/1002/1003/306` **同时**出现在
+`kInferredNet` 和专用 case 里。因为 `inferred_net` 的提前 `continue`
+先执行，专用 case 永远不可达——和当年 op1011 的陷阱一模一样。
+
+所以上一轮的「失败」有两个独立原因：
+
+1. 表与 case 冲突（`continue` 吞掉 case）
+2. 专用 case 缺栈效果
+
+本轮把 `op502` 从表里移除并保留专用 case（它是纯状态操作、不碰栈），
+`faults` 保持 2，`stateFlags=0x63` 证明它真的在写。
+
+另外 5 个（525/616/1002/1003/306）因为需要宿主能力（清场、取消弹幕、
+动画重绑定），仍留在表里只记录——移出来会因为没有副作用实现而失衡。
 
 ## 6. 正确的移植顺序
 

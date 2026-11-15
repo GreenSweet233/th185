@@ -266,8 +266,8 @@ const NetEffect kInferredNet[] = {
     // template was never recorded even though WorldWave01 ran 20000
     // instructions.
     // data-only opcodes already established (net 0)
-        {616, 0}, {1002, 0}, {1003, 0}, {1023, 0},
-        {306, 0}, {502, 0}, {525, 0},
+        {1023, 0},
+        
     // op1004 closes the schedule block (always follows op1013, payload
     // [0][1][0][0]); without it the controller stops before its Calls.
     {1004, 0}, {1008, 0},
@@ -297,6 +297,8 @@ const NetEffect kInferredNet[] = {
     //   op1018 (76) always follows op1015, payload [0][-10008][0]
     //   op1005 (49) follows op23, payload all zero
     //   op1008 (49) between op1002/op1003, payload all zero
+    {616, 0}, {1002, 0}, {1003, 0},
+    {306, 0}, {525, 0},
     {1005, 0}, {1008, 0}, {1018, 0},
 
     // Scene-controller preamble. `main` starts with 40, 502, 23, 524, 1009 and
@@ -1239,29 +1241,6 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // rest of the script reads, so that part is modelled.
             context.enemy_state_flags |= (arg_u32(payload, 0) & 0x3fffu);
             ++context.enemy_flag_writes;
-            break;
-        }
-        case EclOp::Op525EnemyClear: {
-            // TH20: env.clear(controller, EnemyClearKind::ordinary, 0) --
-            // removes ordinary enemies from the field. This build has no such
-            // host call, so the request is counted; Application can act on it.
-            ++context.enemy_clear_ops;
-            break;
-        }
-        case EclOp::Op616BulletCancelCircle: {
-            // TH20: env.cancel_circle(context, position(), real(0), true) --
-            // deletes bullets inside a radius. Counted for the same reason.
-            ++context.enemy_bullet_cancels;
-            break;
-        }
-        case EclOp::Op1002ControllerField: {
-            // TH20: controller().field_e0 = integer(0);
-            context.controller_field_e0 = arg_u32(payload, 0);
-            break;
-        }
-        case EclOp::Op1003ControllerField250: {
-            // TH20: state.fields_250[10] = integer(0);
-            context.controller_field_250_10 = arg_u32(payload, 0);
             break;
         }
 

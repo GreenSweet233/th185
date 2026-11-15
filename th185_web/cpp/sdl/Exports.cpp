@@ -528,6 +528,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_div0_count() {
     return th185::app::instance().ecl().div0_count;
 }
 
+// Enemy state-flag writes from the TH20-referenced opcode block.
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_flag_writes() {
+    return th185::app::instance().ecl().enemy_flag_writes;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_state_flags() {
+    return th185::app::instance().ecl().enemy_state_flags;
+}
+
 EMSCRIPTEN_KEEPALIVE int th185_div0_left() {
     return th185::app::instance().ecl().div0_left;
 }
