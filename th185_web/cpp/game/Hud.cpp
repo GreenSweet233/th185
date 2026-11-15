@@ -32,9 +32,11 @@ Rgba8 magenta() { return Rgba8{255, 160, 220, 255}; }
 
 }  // namespace
 
-void Hud::bind(const HudAtlas& frame, const HudAtlas& glyphs) {
+void Hud::bind(const HudAtlas& frame, const HudAtlas& glyphs,
+               const HudAtlas& cards) {
     frame_ = frame;
     glyphs_ = glyphs;
+    cards_ = cards;
 }
 
 namespace {
@@ -224,9 +226,42 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
                      filled ? Rgba8{60, 48, 28, 220} : Rgba8{24, 24, 32, 200});
             ++quads_;
             if (filled) {
-                draw_number(raster, u64(state.slots[i]),
-                            slot_x + slot_w - 4.0f, slot_y + slot_h - 16.0f,
-                            0.8f, gold());
+                // The card's icon lives in ability.anm at `icon_left` (an odd
+                // atlas cell; `icon_right` is the neighbouring cell of the
+                // same 2-cell-wide picture). Falls back to the card id when the
+                // icon atlas was not loaded.
+                bool drew_icon = false;
+                if (cards_.resource != nullptr && cards_.texture != nullptr &&
+                    state.slots[i] < state.icon_count) {
+                    const u32 icon = state.icons[state.slots[i]];
+                    if (icon < cards_.resource->sprites.size()) {
+                        const AnmSprite& sprite = cards_.resource->sprites[icon];
+                        const float scale = 1.6f;
+                        const float iw = sprite.w * scale;
+                        const float ih = sprite.h * scale;
+                        AnmQuad quad;
+                        quad.x[0] = slot_x + (slot_w - iw) * 0.5f;
+                        quad.y[0] = slot_y + (slot_h - ih) * 0.5f;
+                        quad.x[1] = quad.x[0] + iw; quad.y[1] = quad.y[0];
+                        quad.x[2] = quad.x[0] + iw; quad.y[2] = quad.y[0] + ih;
+                        quad.x[3] = quad.x[0];     quad.y[3] = quad.y[0] + ih;
+                        quad.u[0] = sprite.u0; quad.v[0] = sprite.v0;
+                        quad.u[1] = sprite.u1; quad.v[1] = sprite.v0;
+                        quad.u[2] = sprite.u1; quad.v[2] = sprite.v1;
+                        quad.u[3] = sprite.u0; quad.v[3] = sprite.v1;
+                        quad.texture = cards_.texture;
+                        quad.blend = AnmBlendMode::Alpha;
+                        quad.nearest = true;
+                        raster.draw(quad);
+                        ++quads_;
+                        drew_icon = true;
+                    }
+                }
+                if (!drew_icon) {
+                    draw_number(raster, u64(state.slots[i]),
+                                slot_x + slot_w - 4.0f, slot_y + slot_h - 16.0f,
+                                0.8f, gold());
+                }
             }
         }
     }

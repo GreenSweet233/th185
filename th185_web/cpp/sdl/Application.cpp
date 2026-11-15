@@ -433,11 +433,15 @@ void Application::load_scene_banks() {
     // is the glyph sheet (320 sprites on a 14x14 grid).
     load_animation_bank("front.anm", 0);
     load_animation_bank("ascii.anm", 0);
+    // Card icons. ability.anm has 157 sprites and every CardEntry::icon_left
+    // is < 157, so it is the card art atlas.
+    load_animation_bank("ability.anm", 0);
 
     // Bind the HUD to the two banks it draws from.
     {
         HudAtlas frame_atlas;
         HudAtlas glyph_atlas;
+        HudAtlas card_atlas;
         for (const AnimationBank& bank : banks_) {
             if (bank.name == "front.anm" && !bank.resource.sprites.empty()) {
                 frame_atlas.resource = &bank.resource;
@@ -445,13 +449,13 @@ void Application::load_scene_banks() {
             } else if (bank.name == "ascii.anm" && !bank.resource.sprites.empty()) {
                 glyph_atlas.resource = &bank.resource;
                 glyph_atlas.texture = bank.textures.empty() ? nullptr : &bank.textures[0];
+            } else if (bank.name == "ability.anm" && !bank.resource.sprites.empty()) {
+                card_atlas.resource = &bank.resource;
+                card_atlas.texture = bank.textures.empty() ? nullptr : &bank.textures[0];
             }
         }
-        // Diagnostics: the HUD silently drew nothing when a texture failed
-        // to decode, so report what it actually got.
-
         if (hud_ == nullptr) hud_ = new Hud();
-        hud_->bind(frame_atlas, glyph_atlas);
+        hud_->bind(frame_atlas, glyph_atlas, card_atlas);
     }
 
     // Bind the player to the bank that was just appended.
@@ -1197,6 +1201,11 @@ void Application::render() {
         hud_state.bullet_money = cards_.bullet_money();
         hud_state.power = player_.power();
         hud_state.market_open = (phase_ == Phase::Cleared);
+        // Card icons, indexed by card id.
+        for (u32 id = 0; id < HudState::ICON_COUNT; ++id) {
+            const CardEntry* entry = find_card(id);
+            hud_state.icons[id] = (entry != nullptr) ? entry->icon_left : 0u;
+        }
         // Equipped loadout, so the HUD can show the eight slots.
         {
             const auto& loadout = cards_.loadout();

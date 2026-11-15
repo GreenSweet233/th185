@@ -56,12 +56,19 @@ struct HudState {
     static constexpr u32 SLOT_COUNT = 8;
     std::array<u32, SLOT_COUNT> slots{};
     u32 slot_count = 0;
+    // `icons[card_id]` is the ability.anm atlas cell for that card, taken from
+    // CardEntry::icon_left. Indexed by card id, so the array is sized to the
+    // card table.
+    static constexpr u32 ICON_COUNT = 87;
+    std::array<u32, ICON_COUNT> icons{};
+    u32 icon_count = ICON_COUNT;
 };
 
 class Hud {
 public:
-    // `frame` supplies the border art, `glyphs` the digits.
-    void bind(const HudAtlas& frame, const HudAtlas& glyphs);
+    // `frame` supplies the border art, `glyphs` the digits, `cards` the card
+    // icons (ability.anm, whose 157 sprites cover every card's icon_left).
+    void bind(const HudAtlas& frame, const HudAtlas& glyphs, const HudAtlas& cards);
     bool bound() const { return frame_.resource != nullptr; }
 
     // Draws the whole HUD into `raster`. Returns the number of quads drawn.
@@ -80,6 +87,7 @@ private:
 
     HudAtlas frame_;
     HudAtlas glyphs_;
+    HudAtlas cards_;
     u32 quads_ = 0;
     u32 glyph_quads_ = 0;
 };
