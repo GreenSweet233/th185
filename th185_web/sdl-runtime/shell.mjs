@@ -135,13 +135,28 @@ function ensureAudio() {
   if (audioContext || !core) return;
   const Ctor = window.AudioContext || window.webkitAudioContext;
   if (!Ctor) return;
+  // Audio is optional: a browser that rejects the context (or a size) must not
+  // stop the game. This used to throw on the first key press and kill the
+  // frame loop.
+  try {
 
   const framesPerTick = core._th185_audio_frames_per_tick();
   const rate = core._th185_audio_rate();
   if (!framesPerTick || !rate) return;
 
+  // ScriptProcessor only accepts 0 or a power of two between 256 and 16384.
+  // The mixer produces 367 frames per tick (22050 Hz / 60 Hz), which is NOT a
+  // power of two -- passing it threw
+  //   "buffer size (367) must be 0 or a power of two between 256 and 16384"
+  // and, because ensureAudio runs on the first input event, the exception
+  // killed the frame loop the moment the player pressed a key.
+  //
+  // The two numbers are independent: the mixer keeps writing 367-frame ticks,
+  // and this callback pulls whatever the buffer holds. 512 is the smallest
+  // legal size above one tick, so a callback never starves on a fresh tick.
+  const kAudioBufferFrames = 512;
   audioContext = new Ctor({ sampleRate: rate });
-  audioNode = audioContext.createScriptProcessor(framesPerTick, 0, 2);
+  audioNode = audioContext.createScriptProcessor(kAudioBufferFrames, 0, 2);
   audioNode.onaudioprocess = (event) => {
     const left = event.outputBuffer.getChannelData(0);
     const right = event.outputBuffer.getChannelData(1);
@@ -149,7 +164,12 @@ function ensureAudio() {
 
     const pointer = core._th185_audio_frame();
     const samples = core._th185_audio_frame_samples();
-    if (!pointer || samples < count * 2) {
+    // The callback buffer (512) is larger than one mixer tick (367), so the
+    // old `samples < count * 2` test would have been true forever and the
+    // game would have gone permanently silent. Play what is there and pad the
+    // rest with silence instead.
+    const available = (pointer && samples >= 2) ? Math.floor(samples / 2) : 0;
+    if (available === 0) {
       left.fill(0);
       right.fill(0);
       ++audioUnderruns;
@@ -159,14 +179,26 @@ function ensureAudio() {
     // HEAPF32 can be detached by a memory growth, so re-read it each call.
     const heap = core.HEAPF32;
     const base = pointer >> 2;
-    for (let i = 0; i < count; ++i) {
+    const playable = Math.min(count, available);
+    for (let i = 0; i < playable; ++i) {
       left[i] = heap[base + i * 2];
       right[i] = heap[base + i * 2 + 1];
+    }
+    if (playable < count) {
+      left.fill(0, playable);
+      right.fill(0, playable);
+      ++audioUnderruns;
     }
     ++audioTicks;
   };
   audioNode.connect(audioContext.destination);
   audioEnabled = true;
+  } catch (err) {
+    console.warn('audio disabled:', err && err.message ? err.message : err);
+    audioContext = null;
+    audioNode = null;
+    audioEnabled = false;
+  }
 }
 
 function resumeAudio() {

@@ -142,7 +142,34 @@ def selftest() -> int:
             print('       ' + item)
         failures += 1
 
-    # 6. Frame pacing must be bounded, or a stall becomes an infinite loop.
+    # 5.1 Audio must survive a browser that rejects the ScriptProcessor size.
+    #
+    # ScriptProcessorNode only accepts 0 or a power of two between 256 and 16384.
+    # The shell used to pass the mixer's per-tick frame count (367 at 22050 Hz),
+    # which threw on the first key press -- and because ensureAudio() runs from
+    # the input handler, that exception killed the frame loop. Two invariants
+    # keep it fixed: a literal power of two, and a try/catch around the init.
+    audio_sizes = re.findall(r'createScriptProcessor\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,', shell)
+    audio_ok = True
+    for name in audio_sizes:
+        match = re.search(r'(?:const|let|var)\s+' + re.escape(name) + r'\s*=\s*(\d+)', shell)
+        if not match:
+            continue
+        size = int(match.group(1))
+        if size < 256 or size > 16384 or (size & (size - 1)) != 0:
+            audio_ok = False
+    print('[%s] ScriptProcessor buffer sizes are legal powers of two (%s)'
+          % ('PASS' if audio_ok else 'FAIL', ','.join(audio_sizes) or 'none'))
+    if not audio_ok:
+        failures += 1
+
+    audio_guarded = 'catch (err)' in shell and 'audio disabled' in shell
+    print('[%s] audio initialisation is wrapped in try/catch'
+          % ('PASS' if audio_guarded else 'FAIL'))
+    if not audio_guarded:
+        failures += 1
+
+# 6. Frame pacing must be bounded, or a stall becomes an infinite loop.
     ok = 'MAX_STEPS_PER_FRAME' in shell
     print('[%s] the frame loop bounds its catch-up steps'
           % ('PASS' if ok else 'FAIL'))
