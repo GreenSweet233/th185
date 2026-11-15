@@ -757,19 +757,27 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             case EclOp::DivideInt:
             case EclOp::Remainder:
                 if (right == 0) {
+                    // Divide by zero yields 0 instead of aborting.
+                    //
+                    // TH20's enemy_vm.cpp throws `Original ECL IDIV exception`
+                    // here, but TH185 really does execute `0 % 0`:
+                    // Wave45_Girl_at and Wave65_Girl_at both open with
+                    //
+                    //   op42 -10000   push builtin slot 0
+                    //   op42 0        push 0
+                    //   op58          ModInt
+                    //
+                    // and no op43 anywhere in the corpus ever writes slot 0, so
+                    // it is still at its initial value. A fault here kills the
+                    // subroutine before it emits anything, which is why exactly
+                    // two faults appeared per run (one per wave bank).
+                    //
+                    // Returning 0 keeps the stack balanced and lets the wave run.
                     context.div0_left = left;
                     context.div0_had_left = had_left ? 1u : 0u;
                     context.div0_had_right = had_right ? 1u : 0u;
                     context.div0_builtin0 = context.builtins[0];
                     ++context.div0_count;
-                    if (had_right && had_left) {
-                        // Both operands were real, so this IS a divide by zero.
-                        TH185_FAULT_TRACE(opcode, pc, code_base);
-                        ++stats_.fault_count;
-                        return EclRunResult::Fault;
-                    }
-                    // Synthetic zero from a short stack: yield 0 instead of
-                    // aborting the subroutine.
                     value = 0;
                     break;
                 }
