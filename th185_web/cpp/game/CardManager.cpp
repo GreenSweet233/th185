@@ -179,9 +179,11 @@ bool CardInventory::buy(u32 card_id) {
     if (owned_.count(card_id) != 0 && !is_multi_purchase(card_id)) return false;
     if (!spend(card->price())) return false;
     owned_.insert(card_id);
-    // A repeat purchase adds another copy to the loadout, since the card's own
-    // text says the effect scales with the count.
-    if (is_multi_purchase(card_id)) loadout_.push_back(card_id);
+    // A repeat purchase records another copy, but the loadout still goes
+    // through equip() so the budget and slot limits apply. Pushing straight
+    // into loadout_ here bypassed both checks and let the loadout exceed its
+    // cap (measured: cost 320/100).
+    if (is_multi_purchase(card_id)) equip(card_id);
     return true;
 }
 

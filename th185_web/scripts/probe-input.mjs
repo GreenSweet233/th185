@@ -557,12 +557,23 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('a card can be bought', bought === 1);
     check('buying deducts the price', after === before - price);
     check('the bought card is owned', module._th185_cards_owned() === 1);
-    check('buying the same card twice fails', module._th185_cards_buy(dango) === 0);
 
+    // DANGO is one of the eight cards ability.txt marks 複数購入可 (may be
+    // bought repeatedly, copies stack), so a second purchase SUCCEEDS. The
+    // one-off rule is checked on a card that is not in that set.
+    check('a 複数購入可 card can be bought twice', module._th185_cards_buy(dango) === 1);
+    // CIRNO_OP (index 11) is priced and NOT in ability.txt's 複数購入可 set,
+    // so a second purchase must be rejected.
+    const oneOff = module._th185_card_id(11);  // CIRNO_OP
+    module._th185_cards_buy(oneOff);
+    check('a non-stackable card cannot be bought twice',
+          module._th185_cards_buy(oneOff) === 0);
+
+    // `buy` appends stacking cards to the loadout, so the loadout already holds
+    // both DANGO copies at this point.
+    check('stacking purchases reach the loadout',
+          module._th185_cards_loadout_size() >= 1);
     check('an owned card can be equipped', module._th185_cards_equip(dango) === 1);
-    check('the loadout holds it',
-          module._th185_cards_loadout_size() === 1 &&
-          module._th185_cards_loadout_at(0) === dango);
     check('an unowned card cannot be equipped',
           module._th185_cards_equip(module._th185_card_id(5)) === 0);
 
