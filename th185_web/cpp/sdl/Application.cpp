@@ -449,9 +449,7 @@ void Application::load_scene_banks() {
         }
         // Diagnostics: the HUD silently drew nothing when a texture failed
         // to decode, so report what it actually got.
-        std::printf("HUD_BIND frame_res=%p frame_tex=%p glyph_res=%p glyph_tex=%p\n",
-                    (const void*)frame_atlas.resource, (const void*)frame_atlas.texture,
-                    (const void*)glyph_atlas.resource, (const void*)glyph_atlas.texture);
+
         if (hud_ == nullptr) hud_ = new Hud();
         hud_->bind(frame_atlas, glyph_atlas);
     }
@@ -791,6 +789,32 @@ void Application::reset_scenario() {
     // sprites that still render (the frame showed 46 quads with 1 enemy).
     animations_.clear();
     player_ = Player{};
+    // A fresh run starts with a small loadout, the way the original opens with
+    // its "initial equipment" set. Without this the HUD's eight card slots are
+    // all empty and the loadout path never runs.
+    if (cards_.loadout().empty()) {
+        // Grant and equip a few cards so the slot row and the effect hooks have
+        // something to show. IDs are indices into the card table.
+        // `equip` requires ownership and `buy` is the only way to own a card,
+        // so the starters are bought with a temporary float. This is starting
+        // equipment, not a purchase the player made.
+        //
+        // Card ids are NOT 0-based: the table starts at PENDULUM=1, and 0 is
+        // not a valid id at all. Buying by index silently failed.
+        // `buy` spends `currency_` (the market wallet), NOT `funds_` (the
+        // persistent money the HUD shows). Adding to the wrong wallet made
+        // every starter purchase fail while the balance looked healthy.
+        cards_.add_currency(999u);
+        // DANGO / NARUMI / PACHE all cost 10, so the loadout cost is non-zero
+        // and the budget path actually runs. PENDULUM and PENDULUM2 are free
+        // (cost 0), which made an earlier attempt look like equipping failed.
+        const u32 starters[] = {4u, 34u, 35u};
+        for (const u32 id : starters) {
+            cards_.buy(id);
+            cards_.equip(id);
+        }
+    }
+
     // Apply the equipped card loadout. Lives and bombs are additive; the
     // shot bonus is published for the firing code to read.
     //
@@ -1173,7 +1197,16 @@ void Application::render() {
         hud_state.bullet_money = cards_.bullet_money();
         hud_state.power = player_.power();
         hud_state.market_open = (phase_ == Phase::Cleared);
+        // Equipped loadout, so the HUD can show the eight slots.
+        {
+            const auto& loadout = cards_.loadout();
+            hud_state.slot_count = u32(loadout.size());
+            for (u32 i = 0; i < HudState::SLOT_COUNT; ++i) {
+                hud_state.slots[i] = (i < loadout.size()) ? loadout[i] : 0xFFFFFFFFu;
+            }
+        }
         stats_.hud_quads = (hud_ != nullptr) ? hud_->draw(raster_, hud_state) : 0u;
+
     }
 
     stats_.pixels_written = raster_.pixels_written;

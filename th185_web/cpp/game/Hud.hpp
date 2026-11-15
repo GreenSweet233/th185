@@ -27,6 +27,7 @@
 #include "SoftwareRaster.hpp"
 #include "Types.hpp"
 
+#include <array>
 #include <string>
 
 namespace th185 {
@@ -50,6 +51,11 @@ struct HudState {
     i32 reload_percent = 0;
     i32 break_percent = 0;
     bool market_open = false;
+    // Equipped loadout: the card indices to draw in the bottom-left slots.
+    // Empty slots are UINT32_MAX.
+    static constexpr u32 SLOT_COUNT = 8;
+    std::array<u32, SLOT_COUNT> slots{};
+    u32 slot_count = 0;
 };
 
 class Hud {

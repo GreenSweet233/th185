@@ -205,12 +205,38 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
         draw_text(raster, buffer, label_x, row, small, magenta());
     }
 
-    // --- lives / bombs, bottom left ----------------------------------------
+    // --- card slots, bottom left -------------------------------------------
+    //
+    // The original shows the equipped loadout as eight cards along the
+    // bottom-left. The card art is composited by abcard.anm's 26 scripts
+    // (which this build does not run), so each slot is drawn as a frame with
+    // its card index printed inside. That keeps the slot count and the
+    // loadout order visible, which is what the HUD is for.
+    if (state.slot_count > 0 && frame_.resource != nullptr) {
+        const float slot_w = 34.0f;
+        const float slot_h = 44.0f;
+        const float slot_y = H - slot_h - 22.0f;
+        for (u32 i = 0; i < state.slot_count && i < HudState::SLOT_COUNT; ++i) {
+            const float slot_x = 8.0f + float(i) * (slot_w + 3.0f);
+            // A filled slot is brighter than an empty one.
+            const bool filled = state.slots[i] != 0xFFFFFFFFu;
+            draw_bar(raster, slot_x, slot_y, slot_w, slot_h,
+                     filled ? Rgba8{60, 48, 28, 220} : Rgba8{24, 24, 32, 200});
+            ++quads_;
+            if (filled) {
+                draw_number(raster, u64(state.slots[i]),
+                            slot_x + slot_w - 4.0f, slot_y + slot_h - 16.0f,
+                            0.8f, gold());
+            }
+        }
+    }
+
+    // --- lives / bombs, bottom right ---------------------------------------
     const float foot_y = H - 16.0f;
-    draw_text(raster, "LIFE", 8.0f, foot_y, small, white());
-    draw_number(raster, u64(state.lives), 56.0f, foot_y, small, white());
-    draw_text(raster, "BOMB", 76.0f, foot_y, small, white());
-    draw_number(raster, u64(state.bombs), 124.0f, foot_y, small, white());
+    draw_text(raster, "LIFE", W - 168.0f, foot_y, small, white());
+    draw_number(raster, u64(state.lives), W - 120.0f, foot_y, small, white());
+    draw_text(raster, "BOMB", W - 96.0f, foot_y, small, white());
+    draw_number(raster, u64(state.bombs), W - 44.0f, foot_y, small, white());
 
     return quads_;
 }
