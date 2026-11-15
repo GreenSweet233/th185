@@ -37,6 +37,23 @@ void Hud::bind(const HudAtlas& frame, const HudAtlas& glyphs) {
     glyphs_ = glyphs;
 }
 
+namespace {
+
+// A solid rectangle. No texture, so the rasteriser fills the tint directly.
+void draw_bar(SoftwareRaster& raster, float x, float y, float w, float h, Rgba8 color) {
+    AnmQuad quad;
+    quad.x[0] = x;     quad.y[0] = y;
+    quad.x[1] = x + w; quad.y[1] = y;
+    quad.x[2] = x + w; quad.y[2] = y + h;
+    quad.x[3] = x;     quad.y[3] = y + h;
+    quad.texture = nullptr;
+    quad.tint = color;
+    quad.blend = AnmBlendMode::Alpha;
+    raster.draw(quad);
+}
+
+}  // namespace
+
 bool Hud::draw_sprite(SoftwareRaster& raster, const HudAtlas& atlas,
                       u32 index, float x, float y, float scale) {
     if (atlas.resource == nullptr || atlas.texture == nullptr) return false;
@@ -71,11 +88,18 @@ u32 Hud::draw_text(SoftwareRaster& raster, const std::string& text,
     u32 drawn = 0;
     float cursor = x;
     for (const char ch : text) {
-        // The sheet is indexed by the ASCII code directly: sprite 33 is '!',
-        // sprite 65 is 'A'. Subtracting 32 (the printable-ASCII convention)
-        // shifted every glyph by one cell and drew the wrong characters --
-        // the frame appeared but no legible text did.
-        const u32 index = u32(u8(ch));
+        // `ascii.anm` is laid out as a 14x14 grid, 18 cells per row, starting
+        // at the space character: sprite 0 sits at (0,0) and is ' ', sprite 1
+        // at (14,0) is '!', sprite 33 at (210,14) is 'A'. So the index is
+        // `code - 32`.
+        //
+        // Using the raw code instead shifted every glyph by 32 cells: '0'
+        // (48) landed on sprite 48 = 'P' and 'A' (65) on sprite 65 = 'a',
+        // which is why the score rendered as "0R5NUP" and the labels came out
+        // as other words entirely.
+        const u32 code = u32(u8(ch));
+        if (code < 32u) continue;
+        const u32 index = code - 32u;
         if (ch == ' ') {
             cursor += GLYPH_SIZE * 0.55f * scale;
             continue;
@@ -132,13 +156,17 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
     const float W = float(raster.width());
     const float H = float(raster.height());
 
-    // --- frame: thin bars hugging the canvas edges --------------------------
-    const float bar_scale = W / 768.0f;
-    if (draw_sprite(raster, frame_, FRAME_TOP, 0.0f, 0.0f, bar_scale)) ++quads_;
-    if (draw_sprite(raster, frame_, FRAME_BOTTOM, 0.0f,
-                    H - 32.0f * bar_scale, bar_scale)) {
-        ++quads_;
-    }
+    // --- bars ---------------------------------------------------------------
+    //
+    // Drawn as solid quads rather than front.anm's 768x32 art. That art is a
+    // patterned border meant to sit outside the play field; stretched across
+    // the top and bottom of a 640x480 canvas it dominates the screen (measured:
+    // the first version made the field hard to read). Solid bars keep the HUD
+    // legible, which is what a counter strip is for.
+    draw_bar(raster, 0.0f, 0.0f, W, 18.0f, Rgba8{8, 8, 16, 200});
+    ++quads_;
+    draw_bar(raster, 0.0f, H - 18.0f, W, 18.0f, Rgba8{8, 8, 16, 200});
+    ++quads_;
 
     // --- score, centred at the top -----------------------------------------
     const float score_scale = 1.4f;
@@ -147,13 +175,13 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
                   static_cast<unsigned long long>(state.score / 100u),
                   static_cast<unsigned long long>(state.score % 100u));
     const float score_w = float(std::strlen(score_text)) * GLYPH_SIZE * score_scale;
-    draw_text(raster, score_text, W * 0.5f - score_w * 0.5f, 10.0f,
+    draw_text(raster, score_text, W * 0.5f - score_w * 0.5f, 2.0f,
               score_scale, white());
 
     // --- counters, right column --------------------------------------------
     const float small = 1.0f;
     const float line = GLYPH_SIZE * small + 3.0f;
-    float row = 26.0f;
+    float row = 24.0f;
     const float label_x = W - 168.0f;
     const float value_x = W - 56.0f;
 
@@ -178,7 +206,7 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
     }
 
     // --- lives / bombs, bottom left ----------------------------------------
-    const float foot_y = H - 24.0f;
+    const float foot_y = H - 16.0f;
     draw_text(raster, "LIFE", 8.0f, foot_y, small, white());
     draw_number(raster, u64(state.lives), 56.0f, foot_y, small, white());
     draw_text(raster, "BOMB", 76.0f, foot_y, small, white());
