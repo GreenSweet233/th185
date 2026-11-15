@@ -1935,7 +1935,14 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             const auto caller_coroutines = context.coroutines;
             context = nested.context;
             context.coroutines = caller_coroutines;
-            --context.call_depth;
+            // Set the depth from the interpreter's own nesting level, the same
+            // way op11 does. `--context.call_depth` looked right but was not:
+            // `context = nested.context` already carries the callee's depth
+            // (which is one deeper), so decrementing only undid that one step
+            // and the counter still climbed by one per call. Measured on
+            // Boss01ttest -> Boss01t recursion: 456 `ECL_FAULT op=300` lines
+            // once call_depth reached MAX_CALL_DEPTH.
+            context.call_depth = nesting_ + 1;
             stats_.instructions += nested.stats().instructions;
             stats_.unsupported_count += nested.stats().unsupported_count;
             stats_.fault_count += nested.stats().fault_count;
