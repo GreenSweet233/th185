@@ -74,6 +74,8 @@ enum class EclOp : u16 {
     Op611BulletEmit = 611,
     Op535BulletDelays = 535,
     Op502StateFlagsSet = 502,     // TH20: fields_2c8[0] |= arg & 0x3fff
+    Op511HealthSet = 511,         // TH20: health words [v,v,v,v*7]
+    Op510DropPatternWord = 510,   // TH20: pattern.fields_00[1] = arg
     Op525EnemyClear = 525,        // TH20: env.clear(ordinary)
     Op616BulletCancelCircle = 616,// TH20: env.cancel_circle
     Op1002ControllerField = 1002, // TH20: controller().field_e0 = arg

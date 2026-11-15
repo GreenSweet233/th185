@@ -189,6 +189,7 @@ const OpName kOpNames[] = {
     {304, "Op304CallNamedVariant"}, {302, "Op302Field1c"},
     {500, "Op500BoundsA"}, {1006, "Op1006Comment"},
     {502, "Op502StateFlagsSet"}, {503, "Op503StateFlagsClear"},
+    {511, "Op511HealthSet"}, {510, "Op510DropPatternWord"},
     {504, "Op504StateFlags2Set"}, {505, "Op505StateFlags2Clear"},
     {525, "Op525EnemyClear"}, {616, "Op616BulletCancelCircle"},
     {1002, "Op1002ControllerField"}, {1003, "Op1003ControllerField250"},
@@ -279,7 +280,7 @@ const NetEffect kInferredNet[] = {
     //   op511 [0][large int][0][0], always follows op502
     // They gate the controller's progress, so leaving them unsupported stops
     // the scene before its Call instructions run.
-        {511, 0}, {518, 0}, {519, 0}, {520, 0},
+        {518, 0}, {519, 0}, {520, 0},
     // op1010/op1012 bracket the wave block the same way op1009/op1004 do:
     // every wave subroutine starts with 40, 1010, 1011, 1012 and op1010 always
     // carries 0 while op1012 carries 0/1/258/512. They mark the wave envelope,
@@ -1659,6 +1660,34 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             context.position_x = arg_float(payload, 0);
             context.position_y = arg_float(payload, 1);
             ++context.position_pairs;
+            break;
+        }
+
+        // Enemy health, ported from TH20's enemy_opcode_state.cpp:
+        //
+        //   case 511: health.words[0] = integer(0);
+        //             health.words[1] = health.words[0];
+        //             health.words[2] = health.words[0];
+        //             if (fields_2c8[1] & 0x80) fields_2c8[1] |= 0x4000;
+        //             health.words[3] = health.words[0] * 7;
+        //
+        // The *7 is the spell-card accumulator: a card is tracked as seven
+        // sub-units so partial damage is visible. Pure state, no stack effect.
+        case EclOp::Op511HealthSet: {
+            const u32 value = arg_u32(payload, 0);
+            context.enemy_health_words[0] = value;
+            context.enemy_health_words[1] = value;
+            context.enemy_health_words[2] = value;
+            if ((context.enemy_state_flags2 & 0x80u) != 0) {
+                context.enemy_state_flags2 |= 0x4000u;
+            }
+            context.enemy_health_words[3] = value * 7u;
+            ++context.enemy_health_sets;
+            break;
+        }
+        case EclOp::Op510DropPatternWord: {
+            // TH20: pattern.fields_00[1] = integer(0);
+            context.enemy_drop_pattern_word = arg_u32(payload, 0);
             break;
         }
 

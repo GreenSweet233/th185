@@ -537,6 +537,15 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_state_flags() {
     return th185::app::instance().ecl().enemy_state_flags;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_health_sets() {
+    return th185::app::instance().ecl().enemy_health_sets;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_enemy_health_at(unsigned i) {
+    const auto& w = th185::app::instance().ecl().enemy_health_words;
+    return i < w.size() ? w[i] : 0u;
+}
+
 EMSCRIPTEN_KEEPALIVE int th185_div0_left() {
     return th185::app::instance().ecl().div0_left;
 }

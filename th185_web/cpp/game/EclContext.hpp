@@ -341,6 +341,14 @@ u32 difficulty = 0;
     u32 enemy_clear_ops = 0;        // op525
     u32 enemy_bullet_cancels = 0;   // op616
     u32 enemy_flag_writes = 0;      // op511/518/519/520
+
+    // Enemy health, written by op511. TH20 stores four words:
+    //   [0] the value, [1] and [2] copies of it, [3] value * 7.
+    // The *7 is the spell-card accumulator (a card has 7 health units per
+    // "hit point"), which is why TH20 writes it separately.
+    std::array<u32, 4> enemy_health_words{};
+    u32 enemy_health_sets = 0;
+    u32 enemy_drop_pattern_word = 0;  // op510: pattern.fields_00[1]
     u32 pattern_aux_a = 0;
     u32 pattern_aux_b = 0;
     u32 pattern_aux_c = 0;
