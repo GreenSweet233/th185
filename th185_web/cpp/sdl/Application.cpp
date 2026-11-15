@@ -806,6 +806,7 @@ void Application::reset_scenario() {
     // sprites that still render (the frame showed 46 quads with 1 enemy).
     animations_.clear();
     player_ = Player{};
+    market_cursor_ = 0;
     if (magic_ == nullptr) magic_ = new MagicCircle();
     magic_->reset();
 
@@ -1262,6 +1263,24 @@ void Application::render() {
         hud_state.bullet_money = cards_.bullet_money();
         hud_state.power = player_.power();
         hud_state.market_open = (phase_ == Phase::Cleared);
+        // Market offers, so the market screen can draw them. Without this the
+        // market opened with nothing on it.
+        if (phase_ == Phase::Cleared) {
+            const auto& offers = cards_.market_offers();
+            hud_state.market_offer_count = u32(offers.size());
+            for (u32 i = 0; i < HudState::MARKET_OFFERS; ++i) {
+                if (i < offers.size()) {
+                    hud_state.market_offers[i] = offers[i];
+                    const CardEntry* entry = find_card(offers[i]);
+                    hud_state.market_prices[i] = (entry != nullptr) ? entry->price() : 0u;
+                } else {
+                    hud_state.market_offers[i] = 0xFFFFFFFFu;
+                    hud_state.market_prices[i] = 0;
+                }
+            }
+            hud_state.market_cursor = market_cursor_;
+            hud_state.market_purchases_left = cards_.market_purchases_left();
+        }
         hud_state.reload_percent = cards_.magic_reload_percent();
         hud_state.break_percent = cards_.magic_break_percent();
         // Card icons, indexed by card id.
@@ -1416,8 +1435,28 @@ bool Application::tick(u32 held, bool do_render) {
     // already send it and wiring the player will not change this signature.
     stats_.held_buttons = held;
     if (phase_ == Phase::Failed) return false;
-    // Cleared keeps ticking (so the market can be used) but stops simulating.
+    // Cleared keeps ticking so the market can be used, but stops simulating.
+    //
+    // This branch used to do nothing at all, so the market opened and the
+    // player had no way to buy: the offers were drawn and unreachable. The
+    // original lets you pick one of the three with the movement keys and
+    // confirm with the shot button.
     if (phase_ == Phase::Cleared) {
+        const u32 pressed = held & ~stats_.held_buttons_prev;
+        const u32 offers = u32(cards_.market_offers().size());
+        if (offers > 0) {
+            if (pressed & BUTTON_LEFT) {
+                market_cursor_ = (market_cursor_ + offers - 1u) % offers;
+            }
+            if (pressed & BUTTON_RIGHT) {
+                market_cursor_ = (market_cursor_ + 1u) % offers;
+            }
+            if ((pressed & BUTTON_SHOT) != 0 && cards_.market_purchases_left() > 0) {
+                cards_.market_buy(market_cursor_);
+            }
+        }
+        stats_.held_buttons_prev = held;
+        stats_.market_cursor = market_cursor_;
         ++stats_.ticks;
         if (do_render) render();
         return true;

@@ -462,7 +462,11 @@ std::vector<u32> scene_card_pool(u32 scene) {
     u32 offset = 0;
     for (u32 i = 0; i < scene; ++i) offset += kScenes[i].boss_candidates;
 
-    const u32 want = kScenes[scene].boss_candidates;
+    // The market always shows three offers, so a scene whose boss count is
+    // below that needs its pool widened. Scene 0 has one boss candidate, which
+    // made the market open with a single card and no way to fill the row.
+    u32 want = kScenes[scene].boss_candidates;
+    if (want < CardInventory::MARKET_OFFERS) want = CardInventory::MARKET_OFFERS;
     for (u32 i = 0; i < want; ++i) {
         pool.push_back(priced[(offset + i) % priced.size()]);
     }

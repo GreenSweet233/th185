@@ -62,6 +62,14 @@ struct HudState {
     static constexpr u32 ICON_COUNT = 87;
     std::array<u32, ICON_COUNT> icons{};
     u32 icon_count = ICON_COUNT;
+    // Market offers shown while the stage-clear market is open. Each is a card
+    // id plus its price; UINT32_MAX means an empty slot.
+    static constexpr u32 MARKET_OFFERS = 3;
+    std::array<u32, MARKET_OFFERS> market_offers{};
+    std::array<u32, MARKET_OFFERS> market_prices{};
+    u32 market_offer_count = 0;
+    u32 market_cursor = 0;
+    u32 market_purchases_left = 0;
 };
 
 class Hud {

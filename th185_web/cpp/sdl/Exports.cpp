@@ -799,6 +799,17 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_banked() {
     return th185::app::instance().stats().banked;
 }
 
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_price(unsigned index) {
+    const auto& offers = th185::app::instance().cards().market_offers();
+    if (index >= offers.size()) return 0u;
+    const th185::CardEntry* card = th185::find_card(offers[index]);
+    return (card != nullptr) ? card->price() : 0u;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_market_cursor() {
+    return th185::app::instance().stats().market_cursor;
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_market_open_flag() {
     return th185::app::instance().stats().market_open;
 }

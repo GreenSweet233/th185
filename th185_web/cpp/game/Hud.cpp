@@ -210,6 +210,75 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
         draw_text(raster, buffer, label_x, row, small, magenta());
     }
 
+    // --- market, centred while the stage-clear market is open --------------
+    //
+    // The original shows three cards with their prices and a cursor. Without
+    // this the market opened invisibly: the offers existed and the player had
+    // no way to see what they were.
+    if (state.market_offer_count > 0) {
+        const float box_w = 150.0f;
+        const float box_h = 78.0f;
+        const float gap = 12.0f;
+        const float total = float(state.market_offer_count) * box_w +
+                            float(state.market_offer_count - 1u) * gap;
+        const float start_x = W * 0.5f - total * 0.5f;
+        const float box_y = H * 0.5f - box_h * 0.5f;
+
+        // Dim the field so the market reads as a separate screen.
+        draw_bar(raster, 0.0f, 0.0f, W, H, Rgba8{0, 0, 0, 150});
+        ++quads_;
+        draw_text(raster, "MARKET", W * 0.5f - 22.0f, box_y - 26.0f, 1.2f, gold());
+
+        for (u32 i = 0; i < state.market_offer_count && i < HudState::MARKET_OFFERS; ++i) {
+            const float bx = start_x + float(i) * (box_w + gap);
+            const bool selected = (i == state.market_cursor);
+            draw_bar(raster, bx, box_y, box_w, box_h,
+                     selected ? Rgba8{80, 64, 32, 235} : Rgba8{32, 32, 44, 225});
+            ++quads_;
+
+            // Card icon, if the atlas is loaded.
+            const u32 card_id = state.market_offers[i];
+            if (cards_.resource != nullptr && cards_.texture != nullptr &&
+                card_id < state.icon_count) {
+                const u32 icon = state.icons[card_id];
+                if (icon < cards_.resource->sprites.size()) {
+                    const AnmSprite& sprite = cards_.resource->sprites[icon];
+                    const float scale = 2.0f;
+                    const float iw = sprite.w * scale;
+                    const float ih = sprite.h * scale;
+                    AnmQuad quad;
+                    const float ix = bx + (box_w - iw) * 0.5f;
+                    const float iy = box_y + 8.0f;
+                    quad.x[0] = ix;     quad.y[0] = iy;
+                    quad.x[1] = ix + iw; quad.y[1] = iy;
+                    quad.x[2] = ix + iw; quad.y[2] = iy + ih;
+                    quad.x[3] = ix;     quad.y[3] = iy + ih;
+                    quad.u[0] = sprite.u0; quad.v[0] = sprite.v0;
+                    quad.u[1] = sprite.u1; quad.v[1] = sprite.v0;
+                    quad.u[2] = sprite.u1; quad.v[2] = sprite.v1;
+                    quad.u[3] = sprite.u0; quad.v[3] = sprite.v1;
+                    quad.texture = cards_.texture;
+                    quad.blend = AnmBlendMode::Alpha;
+                    quad.nearest = true;
+                    raster.draw(quad);
+                    ++quads_;
+                }
+            }
+
+            // Price under the icon.
+            draw_number(raster, u64(state.market_prices[i]),
+                        bx + box_w - 8.0f, box_y + box_h - 18.0f, 1.0f,
+                        selected ? gold() : white());
+        }
+
+        // Purchases left, below the row.
+        char left_text[32];
+        std::snprintf(left_text, sizeof(left_text), "LEFT %u",
+                      unsigned(state.market_purchases_left));
+        draw_text(raster, left_text, W * 0.5f - 26.0f, box_y + box_h + 10.0f,
+                  1.0f, cyan());
+    }
+
     // --- card slots, bottom left -------------------------------------------
     //
     // The original shows the equipped loadout as eight cards along the

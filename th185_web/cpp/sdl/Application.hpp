@@ -187,6 +187,7 @@ struct FrameStats {
     u32 clear_frame = 0;
     u32 banked = 0;
     u32 market_open = 0;
+        u32 market_cursor = 0;
     u32 progress_slots = 0;
     u32 progress_cost_cap = 0;
     u32 boss_kill_frames = 0;
@@ -339,6 +340,8 @@ private:
     GameSession session_;
     EclContext ecl_;
     PauseItem pause_item_ = PauseItem::Resume;
+    // Which market offer the cursor is on while Phase::Cleared.
+    u32 market_cursor_ = 0;
     u32 ecl_difficulty_skipped_ = 0;
     u32 ecl_first_masked_opcode_ = 0;
     u32 ecl_first_masked_rank_ = 0;
