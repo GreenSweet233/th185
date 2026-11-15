@@ -1063,6 +1063,10 @@ EMSCRIPTEN_KEEPALIVE int th185_cards_equip(unsigned card_id) {
     return th185::app::instance().cards().equip(card_id) ? 1 : 0;
 }
 
+EMSCRIPTEN_KEEPALIVE void th185_cards_reset_all() {
+    th185::app::instance().cards().reset_all();
+}
+
 EMSCRIPTEN_KEEPALIVE void th185_cards_clear_loadout() {
     th185::app::instance().cards().clear_loadout();
 }

@@ -166,6 +166,17 @@ public:
     bool unequip(u32 index);
     const std::vector<u32>& loadout() const { return loadout_; }
     void clear_loadout() { loadout_.clear(); }
+    // Wipes ownership, loadout and both wallets. Used by tests that need a
+    // known-empty inventory; gameplay resets use reset_run() instead, which
+    // keeps the wallet because a stage restart does not refund purchases.
+    void reset_all() {
+        owned_.clear();
+        loadout_.clear();
+        currency_ = 0;
+        funds_ = 0;
+        bullet_money_ = 0;
+        temporary_.clear();
+    }
 
     // Aggregate effects the run reads. Each is the sum over equipped cards,
     // which is how the original stacks card bonuses.

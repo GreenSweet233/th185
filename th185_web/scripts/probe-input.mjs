@@ -542,6 +542,10 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('82 cards have a market price', priced === 82);
     check('the first card is PENDULUM', cardName(0) === 'PENDULUM');
 
+    // Start from a known-empty inventory. The app now grants a small starting
+    // loadout, so without this the assertions below would measure those cards
+    // instead of the ones the probe buys.
+    module._th185_cards_reset_all();
     module._th185_cards_add_currency(100);
     const before = module._th185_cards_currency();
     const dango = module._th185_card_id(2);
