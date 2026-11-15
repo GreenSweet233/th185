@@ -143,9 +143,19 @@ public:
     bool push(EclValue::Type type, u32 bits);
     bool pop_raw(u32& out);
     bool pop(u32& out, EclValue::Type& type);
+    // Reads/writes a slot relative to the current frame base, matching the
+    // original's `stack.local(bytes)` where bytes = slot * 4.
+    bool local_read(u32 slot, u32& out) const;
+    bool local_write(u32 slot, u32 bits);
+    // Reads the value `slots` below the top without popping it.
+    bool peek(i32 relative_slots, u32& out) const;
+    bool peek_write(i32 relative_slots, u32 bits);
+
     bool enter_frame(u32 slots);
     bool leave_frame();
     u32 depth() const { return depth_; }
+    // Slot index that frame-local addressing starts from.
+    u32 frame_base() const { return frames_.empty() ? 0u : frames_.back(); }
     bool empty() const { return depth_ == 0; }
 
     // Snapshot/restore for coroutine suspension. Only the live slots are

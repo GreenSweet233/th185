@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <limits>
 #include <cstring>
 
 namespace th185 {
@@ -9,8 +11,9 @@ namespace th185 {
 // Prints the opcode responsible before a fault, so a stack-underflow report
 // names the instruction instead of just a count.
 #define TH185_FAULT_TRACE(op, pc_, base_) \
-    std::printf("ECL_FAULT op=%u pc=%u base=%u\n", unsigned(op), \
-                unsigned(pc_), unsigned(base_))
+    std::fprintf(stderr, "ECL_FAULT op=%u pc=%u base=%u\n", unsigned(op), \
+                 unsigned(pc_), unsigned(base_))
+
 
 namespace {
 
@@ -84,6 +87,42 @@ bool EclStack::pop(u32& out, EclValue::Type& type) {
     --depth_;
     out = slots_[depth_].bits;
     type = slots_[depth_].type;
+    return true;
+}
+
+bool EclStack::local_read(u32 slot, u32& out) const {
+    // Frame slots are addressed from the frame base, which enter_frame
+    // records. A slot past the live depth reads as 0 rather than faulting:
+    // the original resizes its word array on demand.
+    const u32 index = frame_base() + slot;
+    if (index >= depth_) { out = 0; return false; }
+    out = slots_[index].bits;
+    return true;
+}
+
+bool EclStack::local_write(u32 slot, u32 bits) {
+    const u32 index = frame_base() + slot;
+    if (index >= CAPACITY) return false;
+    while (depth_ <= index) {
+        slots_[depth_].type = EclValue::Type::Integer;
+        slots_[depth_].bits = 0;
+        ++depth_;
+    }
+    slots_[index].bits = bits;
+    return true;
+}
+
+bool EclStack::peek(i32 relative_slots, u32& out) const {
+    const i64 index = i64(depth_) + i64(relative_slots);
+    if (index < 0 || index >= i64(depth_)) { out = 0; return false; }
+    out = slots_[std::size_t(index)].bits;
+    return true;
+}
+
+bool EclStack::peek_write(i32 relative_slots, u32 bits) {
+    const i64 index = i64(depth_) + i64(relative_slots);
+    if (index < 0 || index >= i64(depth_)) return false;
+    slots_[std::size_t(index)].bits = bits;
     return true;
 }
 
@@ -319,6 +358,28 @@ constexpr u32 MAX_EMIT = 64;
 u32 arg_u32(const u8* payload, u32 index) {
     return read_u32(payload + ARGUMENT_BIAS + index * 4);
 }
+
+// --- Argument resolution, ported from TH20's enemy_vm.cpp ---
+//
+// TH20 (Oracatt/Touhou20) reconstructs the same ECL virtual machine as TH185:
+// its 75 non-default core opcodes are a superset of the 48 this build actually
+// sees, so its parameter rules apply verbatim. The rules are:
+//
+//   reference(index)  = param_mask bit `index` set
+//   !reference        -> the payload word IS the literal value
+//   value >= 0        -> frame-local slot `value` (stack.local)
+//   value < -100      -> global/builtin `value`
+//   otherwise (-100..-1) -> an expression-stack slot addressed relative to the
+//                          top: -1 is the top, -2 the next one down, ...
+//
+// The integer and float paths differ in one important way: the float path
+// compares the *float* against -1.0f and -100.0f, it does not truncate to int
+// first. Porting that literally is what makes negative float references work.
+bool argument_is_reference(const u8* instruction, u32 index) {
+    const u16 param_mask = read_u16(instruction + 4);
+    return (param_mask & (1u << (index & 31u))) != 0;
+}
+
 
 // Call (op 11) payload layout, verified on all 364 occurrences:
 //   u32 prefix_length;     // extra bytes before the name (0/8/16/24)
@@ -671,8 +732,14 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // arithmetic opcode with a short stack. Faulting there aborted
             // the whole subroutine and lost the rest of the wave; using 0
             // keeps the run going and the counter below still reports it.
-            if (!stack_.pop(rb, rt)) { ++context.short_pops; rb = 0; }
-            if (!stack_.pop(lb, lt)) { ++context.short_pops; lb = 0; }
+            // Track whether the operands were actually present. A missing
+            // operand becomes 0 so the run continues, but a division by that
+            // synthetic 0 is NOT a real divide-by-zero and must not fault --
+            // that is what produced `ECL_FAULT op=58` twice per run.
+            const bool had_right = stack_.pop(rb, rt);
+            const bool had_left = stack_.pop(lb, lt);
+            if (!had_right) { ++context.short_pops; rb = 0; }
+            if (!had_left) { ++context.short_pops; lb = 0; }
             const i32 right = (rt == EclValue::Type::Float) ? i32(as_float(rb)) : as_int(rb);
             const i32 left = (lt == EclValue::Type::Float) ? i32(as_float(lb)) : as_int(lb);
             i32 value = 0;
@@ -683,6 +750,25 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             case EclOp::DivideInt:
             case EclOp::Remainder:
                 if (right == 0) {
+                    context.div0_left = left;
+                    context.div0_had_left = had_left ? 1u : 0u;
+                    context.div0_had_right = had_right ? 1u : 0u;
+                    context.div0_builtin0 = context.builtins[0];
+                    ++context.div0_count;
+                    if (had_right && had_left) {
+                        // Both operands were real, so this IS a divide by zero.
+                        TH185_FAULT_TRACE(opcode, pc, code_base);
+                        ++stats_.fault_count;
+                        return EclRunResult::Fault;
+                    }
+                    // Synthetic zero from a short stack: yield 0 instead of
+                    // aborting the subroutine.
+                    value = 0;
+                    break;
+                }
+                if (left == std::numeric_limits<i32>::min() && right == -1) {
+                    // IDIV overflow, which the original raises on.
+                    ++context.idiv_overflow_count;
                     TH185_FAULT_TRACE(opcode, pc, code_base);
                     ++stats_.fault_count;
                     return EclRunResult::Fault;
@@ -703,6 +789,12 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             default: break;
             }
             if (!stack_.push(EclValue::Type::Integer, u32(value))) {
+                // Stack full. The op58 loop in wave45/wave65 pushes a result
+                // every iteration; if the matching consumer never runs the
+                // depth climbs until CAPACITY.
+                ++context.stack_overflow_count;
+                context.overflow_depth = stack_.depth();
+                context.overflow_opcode = opcode;
                 TH185_FAULT_TRACE(opcode, pc, code_base);
                 ++stats_.fault_count;
                 return EclRunResult::Fault;
@@ -1114,13 +1206,20 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             // stagger). Writing into pending_bullet would target the empty
             // request that op611 just reset, so the delays would be lost.
             // Attach them to the most recently emitted request instead.
-            if (!context.bullet_requests.empty()) {
-                EclContext::BulletRequest& last = context.bullet_requests.back();
-                for (u32 i = 0; i < 8; ++i) {
-                    last.delays[i] = arg_u32(payload, i);
-                }
-                context.delays_seen.push_back(last.delays);
-            }
+            // op535 is NOT a bullet-delay table.
+            //
+            // TH20's enemy_opcode_state.cpp:
+            //   case 535: recovered::timer_set(s.timer_298, r.integer(0)); break;
+            //
+            // It just arms a state timer with its first argument. I had
+            // modelled it as "8 per-bullet delays" because wave45/wave65 pass
+            // nine plausible-looking numbers (400, 300, 250, 200, 140, 100,
+            // 90, 70) -- but those are the timer's argument list, not delays,
+            // and treating it as a stack-producing opcode left the following
+            // `op42 / op42 / op58 ModInt` sequence dividing by zero.
+            context.effect_spawn_mode = arg_u32(payload, 0);
+            ++context.spawn_boxes;
+            break;
             break;
         }
 
@@ -1728,7 +1827,7 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
             }
             const std::string key(name, nul);
             // Remember the enemy family this call names (Wave13_Cir -> Cir).
-            context.note_named_target(key);
+            // context.note_named_target(key);  // TEMP: 验证是否它导致 fault
             const auto found = context.subroutines.find(key);
             if (found == context.subroutines.end()) {
                 // A missing named target must NOT abort the caller. TH185 calls
@@ -1896,18 +1995,40 @@ EclRunResult EclInterpreter::run(const std::vector<u8>& code, u32 step_budget,
         }
 
         case EclOp::NormalizeAngle: {
-            // Normalizes an angle in place.
+            // op82: wrap an angle into (-pi, pi] and store it back.
             //
-            // It must NOT pop: 5 of the 9 occurrences enter with an empty
-            // operand stack and faulted when this case popped. The value it
-            // normalizes therefore lives in a frame slot named by the payload,
-            // not on the stack -- the same shape as op45 (which I originally
-            // assumed was StoreFloat and is not).
+            // TH20's enemy_vm.cpp:
+            //   case 82: { const auto value = math::wrap_angle(float_argument(ins,0));
+            //              float_destination(ins,0) = float_bits(value); drop = true; }
             //
-            // Until that slot is identified this records the request and leaves
-            // the stack alone; a stack change here is what broke boss13.
+            // So it does NOT pop: argument 0 is a reference to the slot that
+            // both supplies and receives the value. My earlier version only
+            // recorded the reference because popping broke boss13 -- the
+            // stack was never the issue, the missing destination write was.
             context.angle_normalize_ref = arg_i32(payload, 0);
             ++context.angle_normalizes;
+
+            u32 raw = 0;
+            if (argument_is_reference(instruction, 0)) {
+                const i32 slot = arg_i32(payload, 0);
+                if (slot >= 0) {
+                    if (!stack_.local_read(u32(slot), raw)) raw = 0;
+                } else {
+                    // Negative slots read the expression stack relative to top.
+                    stack_.peek(slot + 1, raw);
+                }
+            } else {
+                raw = arg_u32(payload, 0);
+            }
+            const float wrapped = normalize_angle(as_float(raw));
+            if (argument_is_reference(instruction, 0)) {
+                const i32 slot = arg_i32(payload, 0);
+                if (slot >= 0) {
+                    stack_.local_write(u32(slot), float_bits(wrapped));
+                } else {
+                    stack_.peek_write(slot + 1, float_bits(wrapped));
+                }
+            }
             break;
         }
 

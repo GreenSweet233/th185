@@ -47,9 +47,13 @@ const DOWN = 1 << 5;
 const LEFT = 1 << 6;
 const RIGHT = 1 << 7;
 
+// The probe only reads game state, so it advances the simulation without
+// rendering. With rendering the 9-stage clear test took ~27 minutes (each
+// frame costs 4-20 ms in the software rasteriser); without it, seconds.
+// The few places that need a real frame call render explicitly.
 function tick(held, count) {
   for (let i = 0; i < count; ++i) {
-    if (!module._th185_tick(held)) {
+    if (!module._th185_tick_no_render(held)) {
       console.error('FAIL tick: ' + module.UTF8ToString(module._th185_error()));
       process.exit(1);
     }

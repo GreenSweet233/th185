@@ -57,6 +57,15 @@ EMSCRIPTEN_KEEPALIVE int th185_initialize() {
 }
 
 // Advances one tick. Returns 0 on fatal error, 1 otherwise.
+// Advances one frame WITHOUT rendering (diagnostics only).
+//
+// The 9-stage clear test runs up to 10000 frames per stage; with rendering
+// that is ~27 minutes because the software rasteriser costs 4-20 ms a frame.
+// Simulation does not depend on the framebuffer, so the test can skip it.
+EMSCRIPTEN_KEEPALIVE int th185_tick_no_render(unsigned held) {
+    return th185::app::instance().tick(held, false) ? 1 : 0;
+}
+
 EMSCRIPTEN_KEEPALIVE int th185_tick(unsigned held) {
     return th185::app::instance().tick(held) ? 1 : 0;
 }
@@ -468,6 +477,7 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_score_kills() {
     return th185::app::instance().scoring().stats().kills;
 }
 
+
 // --- difficulty ---
 EMSCRIPTEN_KEEPALIVE void th185_set_difficulty(unsigned difficulty) {
     th185::app::instance().set_difficulty(difficulty);
@@ -511,6 +521,39 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_appearance_sets() {
 // Distinct bullet sprite indices currently alive (diagnostics only).
 EMSCRIPTEN_KEEPALIVE unsigned th185_bullet_sprite_kinds() {
     return th185::app::instance().bullet_sprite_kinds();
+}
+
+// Diagnostics for the op58 divide-by-zero in wave45/wave65.
+EMSCRIPTEN_KEEPALIVE unsigned th185_div0_count() {
+    return th185::app::instance().ecl().div0_count;
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_div0_left() {
+    return th185::app::instance().ecl().div0_left;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_div0_had_left() {
+    return th185::app::instance().ecl().div0_had_left;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_div0_had_right() {
+    return th185::app::instance().ecl().div0_had_right;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_div0_builtin0() {
+    return th185::app::instance().ecl().div0_builtin0;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_idiv_overflow() {
+    return th185::app::instance().ecl().idiv_overflow_count;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_stack_overflow() {
+    return th185::app::instance().ecl().stack_overflow_count;
+}
+
+EMSCRIPTEN_KEEPALIVE unsigned th185_overflow_depth() {
+    return th185::app::instance().ecl().overflow_depth;
 }
 
 // Background quads drawn last frame (diagnostics only).

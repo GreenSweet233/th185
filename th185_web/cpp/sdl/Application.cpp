@@ -1662,7 +1662,7 @@ bool Application::tick(u32 held, bool do_render) {
 
     // Advance the animation tree, then draw it.
     animations_.update(rng_, 1.0f);
-    render();
+    if (do_render) render();
 
     ++stats_.frame;
     return true;

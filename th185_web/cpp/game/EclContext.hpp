@@ -76,7 +76,27 @@ struct EclContext {
     EclOwner owner;
 
     // Engine builtin slots, addressed by (value + ECL_BUILTIN_BASE).
+    //
+    // Slot 0 is by far the most referenced one (194 `op42 -10000` pushes vs 89
+    // for the next slot). It is a counter the wave loops read, decrement and
+    // test: `op42 (slot0) / op42 0 / op58 ModInt` appears in wave45/wave65, and
+    // a zero there makes ModInt divide by zero. Starting it at 1 keeps that
+    // sequence well-defined. The original's exact meaning for slot 0 is NOT
+    // decoded, so this is an initialisation choice, not a recovered constant.
     std::array<u32, ECL_BUILTIN_COUNT> builtins{};
+
+    EclContext() { builtins[0] = 1u; }
+
+    // Diagnostics for the `op58 ModInt` divide-by-zero seen in wave45/wave65.
+    u32 div0_count = 0;
+    i32 div0_left = 0;
+    u32 div0_had_left = 0;
+    u32 div0_had_right = 0;
+    u32 div0_builtin0 = 0;
+    u32 idiv_overflow_count = 0;
+    u32 stack_overflow_count = 0;
+    u32 overflow_depth = 0;
+    u32 overflow_opcode = 0;
 
     // Frame-local storage. Frames are pushed/popped by op 40/41.
     std::vector<std::array<u8, ECL_FRAME_BYTES>> frames;
