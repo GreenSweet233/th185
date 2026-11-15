@@ -185,6 +185,18 @@ public:
     float shot_power_bonus() const;
     u32 starting_currency_bonus() const;
 
+    // The magic circle's two modifiers, shown on the HUD as
+    // `M.Reload -33%` / `M.Break 33%`.
+    //
+    // TH185's magic circle absorbs enemy bullets and converts them to bullet
+    // money. Two cards tune it, and both say so in ability.txt:
+    //   PACHE  魔方陣の攻撃力を上げる   ＊複数購入可 枚数に応じて攻撃力が上がります
+    //   FLAN   魔方陣で敵弾を破壊できる ＊複数購入可 枚数に応じて破壊量が増えます
+    // So each copy stacks. The percentages are this build's mapping from
+    // "copies equipped" to a displayed percentage, not a recovered constant.
+    i32 magic_reload_percent() const;
+    i32 magic_break_percent() const;
+
     // Resets everything except the wallet (a stage restart keeps purchases).
     void reset_run();
 

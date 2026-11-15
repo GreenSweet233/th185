@@ -114,6 +114,45 @@ const CardEntry* find_card(u32 id) {
     return nullptr;
 }
 
+namespace {
+
+// Names taken verbatim from ability.txt's 複数購入可 / 初期装備不可 /
+// 初期装備のみ markers. Listed by name because the card table has no field
+// that encodes them (checked all 15 dwords).
+const char* const kMultiPurchase[] = {
+    "DANGO", "MAGICSCROLL", "SPEEDQUEEN", "PACHE",
+    "NARUMI", "FLAN", "FUTO", "AUN",
+};
+const char* const kNotInitial[] = {
+    "EXTEND", "PENDULUM2", "PENDULUM", "SHION", "KEIKI", "DREMII",
+};
+const char* const kInitialOnly[] = { "BLANK" };
+
+bool name_in(const CardEntry* card, const char* const* names, std::size_t count) {
+    if (card == nullptr) return false;
+    for (std::size_t i = 0; i < count; ++i) {
+        if (std::strcmp(card->name, names[i]) == 0) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+bool is_multi_purchase(u32 id) {
+    return name_in(find_card(id), kMultiPurchase,
+                   sizeof(kMultiPurchase) / sizeof(kMultiPurchase[0]));
+}
+
+bool is_not_initial(u32 id) {
+    return name_in(find_card(id), kNotInitial,
+                   sizeof(kNotInitial) / sizeof(kNotInitial[0]));
+}
+
+bool is_initial_only(u32 id) {
+    return name_in(find_card(id), kInitialOnly,
+                   sizeof(kInitialOnly) / sizeof(kInitialOnly[0]));
+}
+
 bool is_special_card(u32 id) {
     return id == CARD_ID_BLANK || id == CARD_ID_NITORI;
 }
@@ -133,9 +172,16 @@ bool CardInventory::spend(u32 amount) {
 bool CardInventory::buy(u32 card_id) {
     const CardEntry* card = find_card(card_id);
     if (card == nullptr) return false;
-    if (owned_.count(card_id) != 0) return false;
+    // ability.txt's 初期装備のみ cards never appear in the market.
+    if (is_initial_only(card_id)) return false;
+    // 複数購入可 cards may be bought repeatedly; the copies stack. Everything
+    // else is a one-off.
+    if (owned_.count(card_id) != 0 && !is_multi_purchase(card_id)) return false;
     if (!spend(card->price())) return false;
     owned_.insert(card_id);
+    // A repeat purchase adds another copy to the loadout, since the card's own
+    // text says the effect scales with the count.
+    if (is_multi_purchase(card_id)) loadout_.push_back(card_id);
     return true;
 }
 
@@ -149,8 +195,12 @@ u32 CardInventory::owned_count() const {
 
 bool CardInventory::equip(u32 card_id) {
     if (!owns(card_id)) return false;
-    for (const u32 existing : loadout_) {
-        if (existing == card_id) return true;   // already carried
+    // 複数購入可 cards stack, so duplicates are meaningful for them. For every
+    // other card a second copy is a no-op.
+    if (!is_multi_purchase(card_id)) {
+        for (const u32 existing : loadout_) {
+            if (existing == card_id) return true;   // already carried
+        }
     }
 
     // The budget is what actually gates the loadout: `Total Cost %d%%/%d%%`.
@@ -260,6 +310,34 @@ u32 CardInventory::starting_currency_bonus() const {
         if (card != nullptr && grants_money(*card)) total += 10;
     }
     return total;
+}
+
+// Per-copy effect of the two magic-circle cards.
+//
+// ability.txt says both stack (＊複数購入可 枚数に応じて…), so the value is
+// copies * step. -33% reload / +33% break is what the original's HUD shows
+// with one copy of each, which is the only calibration point available.
+namespace {
+constexpr i32 MAGIC_RELOAD_STEP = -33;   // percent per PACHE copy
+constexpr i32 MAGIC_BREAK_STEP = 33;     // percent per FLAN copy
+}
+
+i32 CardInventory::magic_reload_percent() const {
+    i32 copies = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && std::strcmp(card->name, "PACHE") == 0) ++copies;
+    }
+    return copies * MAGIC_RELOAD_STEP;
+}
+
+i32 CardInventory::magic_break_percent() const {
+    i32 copies = 0;
+    for (const u32 id : loadout_) {
+        const CardEntry* card = find_card(id);
+        if (card != nullptr && std::strcmp(card->name, "FLAN") == 0) ++copies;
+    }
+    return copies * MAGIC_BREAK_STEP;
 }
 
 void CardInventory::reset_run() {

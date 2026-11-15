@@ -1016,6 +1016,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_card_price(unsigned index) {
     return index < table.size() ? table[index].price() : 0u;
 }
 
+EMSCRIPTEN_KEEPALIVE int th185_magic_reload_percent() {
+    return th185::app::instance().cards().magic_reload_percent();
+}
+
+EMSCRIPTEN_KEEPALIVE int th185_magic_break_percent() {
+    return th185::app::instance().cards().magic_break_percent();
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_card_cost(unsigned index) {
     const auto& table = th185::cards();
     return index < table.size() ? table[index].cost() : 0u;

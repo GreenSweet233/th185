@@ -198,7 +198,10 @@ u32 Hud::draw(SoftwareRaster& raster, const HudState& state) {
     draw_number(raster, u64(state.power), value_x + 40.0f, row, small, white());
     row += line;
 
-    if (state.market_open) {
+    // The original shows both modifiers permanently, not only while the market
+    // is open: they describe the magic circle the player carries, and the HUD
+    // screenshot of the retail build has them on during play.
+    {
         char buffer[32];
         std::snprintf(buffer, sizeof(buffer), "M.Reload %+d%%", int(state.reload_percent));
         draw_text(raster, buffer, label_x, row, small, cyan());

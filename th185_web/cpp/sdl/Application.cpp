@@ -812,10 +812,14 @@ void Application::reset_scenario() {
         // DANGO / NARUMI / PACHE all cost 10, so the loadout cost is non-zero
         // and the budget path actually runs. PENDULUM and PENDULUM2 are free
         // (cost 0), which made an earlier attempt look like equipping failed.
-        const u32 starters[] = {4u, 34u, 35u};
+        // DANGO (life), PACHE (magic reload) and FLAN (magic break) so the HUD
+        // shows both market modifiers from the first frame. PACHE and FLAN are
+        // the two cards ability.txt says tune the magic circle.
+        const u32 starters[] = {4u, 35u, 57u};
         for (const u32 id : starters) {
+            // `buy` already appends to the loadout; equipping again would add a
+            // duplicate slot for the stacking cards.
             cards_.buy(id);
-            cards_.equip(id);
         }
     }
 
@@ -1201,6 +1205,8 @@ void Application::render() {
         hud_state.bullet_money = cards_.bullet_money();
         hud_state.power = player_.power();
         hud_state.market_open = (phase_ == Phase::Cleared);
+        hud_state.reload_percent = cards_.magic_reload_percent();
+        hud_state.break_percent = cards_.magic_break_percent();
         // Card icons, indexed by card id.
         for (u32 id = 0; id < HudState::ICON_COUNT; ++id) {
             const CardEntry* entry = find_card(id);
