@@ -1,8 +1,7 @@
 #include "Trivial.hpp"
 
 // 用编译器内建函数，避免 <cmath> 依赖（P1 只编译单函数，不带头文件）
-extern "C" double sin(double);
-extern "C" double cos(double);
+#include <cmath>
 
 namespace th185 {
 

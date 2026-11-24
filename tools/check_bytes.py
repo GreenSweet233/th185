@@ -143,6 +143,12 @@ def main():
         ("0x00406720", 0x00406720, "Trivial.cpp", "set_first_field", True),
         ("0x00417750", 0x00417750, "Trivial.cpp", "polar_to_vec2_scaled", True),
         ("0x0049DC88", 0x0049DC88, "Trivial.cpp", "encode_value", False),
+        ("0x00404D10", 0x00404D10, "FieldAccess.cpp", "first_of_three", False),
+        ("0x00407E40", 0x00407E40, "FieldAccess.cpp", "is_field_2A0_set", True),
+        ("0x0040A050", 0x0040A050, "FieldAccess.cpp", "clear_first_and_return_this", True),
+        ("0x00409F60", 0x00409F60, "FieldAccess.cpp", "set_field_20", True),
+        ("0x00433BC0", 0x00433BC0, "FieldAccess.cpp", "set_first_field", True),
+        ("0x004063C0", 0x004063C0, "FieldAccess.cpp", "copy_vec3_to_5F0", True),
     ]
 
     for label, va, src_name, fn_name, need_this in targets:
