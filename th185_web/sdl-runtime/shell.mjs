@@ -362,6 +362,58 @@ function setPaused(value) {
   paused = value;
   clearInput();
   document.querySelector('#pause-panel').hidden = !paused;
+  refreshPauseSelection();
+  lastTime = performance.now();
+  accumulator = 0;
+}
+
+// The pause menu lives in the module (PauseItem: Resume / Restart / Quit), but
+// while paused the frame loop stops calling tick(), so the module never sees the
+// arrow keys and the menu was unreachable from the web shell: the panel appeared
+// and its selection could never change.
+//
+// The three exports exist and the probe drives them directly; only the shell
+// wiring was missing. Frame-by-frame input is not possible here (no tick), so
+// navigation is driven from the key handler as discrete presses.
+const PAUSE_ITEMS = ['继续游戏', '重新开始', '返回标题'];
+
+function refreshPauseSelection() {
+  if (!core || !paused) return;
+  const index = core._th185_pause_item();
+  const label = PAUSE_ITEMS[index] || ('#' + index);
+  const hint = document.querySelector('#pause-selection');
+  if (hint) hint.textContent = '当前：' + label + '（↑↓ 选择，Z 确认）';
+}
+
+function pauseNavigate(delta) {
+  if (!core || !paused) return;
+  core._th185_pause_move(delta);
+  refreshPauseSelection();
+}
+
+function pauseActivate() {
+  if (!core || !paused) return;
+  core._th185_pause_confirm();
+  // pause_confirm decides: Resume/Restart put the module back in Running,
+  // Quit puts it in Idle. Read the module's own phase instead of assuming the
+  // item, because the two agreed today but a menu change would silently break
+  // a hard-coded guess. Phase: Idle=0 Running=1 Paused=2 Failed=3 Cleared=4.
+  const phase = core._th185_phase();
+  if (phase === 2) {
+    refreshPauseSelection();     // still paused (should not happen today)
+    return;
+  }
+  paused = false;
+  clearInput();
+  document.querySelector('#pause-panel').hidden = true;
+  if (phase === 0) {
+    // Quit: back to the title panel, same as the #return-title button.
+    running = false;
+    document.querySelector('#welcome').hidden = false;
+    const start = document.querySelector('#start');
+    start.disabled = false;
+    return;
+  }
   lastTime = performance.now();
   accumulator = 0;
 }
@@ -380,7 +432,18 @@ window.addEventListener('keydown', (event) => {
   }
   if (!RECOGNISED.has(event.code)) return;
   event.preventDefault();
-  if (!paused) keys.add(event.code);
+
+  // While paused the frame loop does not tick, so the module never receives a
+  // bitmask. Drive the menu from discrete presses instead: that is the only
+  // path that works, and it is also what the original does (edge-triggered).
+  if (paused) {
+    if (event.repeat) return;                 // holding a key must not scroll
+    if (event.code === 'ArrowUp') { pauseNavigate(-1); return; }
+    if (event.code === 'ArrowDown') { pauseNavigate(1); return; }
+    if (event.code === 'KeyZ' || event.code === 'Enter') { pauseActivate(); return; }
+    return;
+  }
+  keys.add(event.code);
 });
 
 window.addEventListener('keyup', (event) => keys.delete(event.code));

@@ -234,6 +234,36 @@ def selftest() -> int:
     if leak:
         failures += 1
 
+    # 9. The pause menu must be driven while paused.
+    #
+    # While paused, frame() does not tick, so the module cannot receive a button
+    # bitmask -- the menu had to be driven from discrete key presses. Without
+    # that, the pause panel appeared and its selection could never move, even
+    # though three exports (pause_item / pause_move / pause_confirm) existed and
+    # the probe drove them directly. The gap was purely in the shell.
+    for name in ('_th185_pause_move', '_th185_pause_confirm', '_th185_pause_item'):
+        ok = name in shell
+        print('[%s] the shell drives the pause menu (%s)'
+              % ('PASS' if ok else 'FAIL', name))
+        if not ok:
+            failures += 1
+
+    # The selection label the shell writes must exist in the HTML, or the user
+    # sees no feedback at all.
+    ok = 'pause-selection' in html
+    print('[%s] the pause panel has a selection label'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
+    # 10. pause_confirm must read the module's phase rather than assume which
+    #     item was picked: Resume/Restart keep Playing, Quit goes to Idle.
+    ok = re.search(r'function pauseActivate\(\)[\s\S]{0,600}?_th185_phase\(\)', shell) is not None
+    print('[%s] pause_confirm result is taken from the module phase'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
     # Pausing must drop the touch bits too, or a held direction stays stuck on
     # after resume (the pointerup is lost while the game is paused).
     ok = ('function clearInput' in shell
