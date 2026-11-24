@@ -39,46 +39,63 @@
     }
   },
   "compiler": {
-    "_status": "BLOCKED",
-    "_blocker": "Rich Header 显示三档 build 并存（27412 / 31328 / 31332）。复现 .text 需要同时提供三套工具链，或证明其中两档对结果无影响。未解决前禁止 Phase B。",
+    "_status": "PARTIALLY_RESOLVED",
+    "_correction": "★ 修正（本轮）：此前把 27412 / 31328 / 31332 当作三个 VS2019 build 号，这是错的。\n\nRich Header 每个条目是 (comp_id, count)，comp_id 高 16 位 = build，低 16 位 = prodId。\n此前的解析把两个字段读反了，于是把 prodId 当成了 build。\n\n正确的表（build, prodId, count）：\n    261  27412  164      27412 = prodId，对应 VS2017 15.x 的 C++ 编译器 (2712)\n    265  31332   79      31332 = prodId，对应 VS2019 16.x\n    261  31328   47      31328 同为 VS2019 16.x\n    259  27412   33\n    260  27412   27\n    259  31328   23\n    260  31328   18\n    257  27412   12\n    ...\n\n按 prodId 归组：\n    prodId 27412  count=237  (VS2017 15.x 编译器)\n    prodId 31328  count= 89  (VS2019 16.x 编译器)\n    prodId 31332  count= 81  (VS2019 16.x 编译器)\n\n所以真实结论是：**两个 VS 世代共存（VS2017 + VS2019），不是三个 VS2019 补丁级**。\n31328 与 31332 是同一产品线的两个 prodId（可能分别是工具集与 CRT/库），\n而非两个不同编译器版本。",
+    "_consequence": "原先标为 BLOCKED 的理由（需要三套并存工具链）不成立。\n真实需求：VS2017 15.x 的 MSVC + VS2019 16.x 的 MSVC（两套，不是三套）。\n仍需验证：31328 与 31332 是否来自同一套工具集（若同源，则只需两套）。",
     "rich_header_key": "0x0D2865FF",
-    "builds": {
+    "by_prod_id": {
+      "0": {
+        "unit_count": 202,
+        "interpretation": "未标记 / 链接器自身条目"
+      },
+      "21202": {
+        "unit_count": 2,
+        "interpretation": "SDK / import lib"
+      },
       "27412": {
-        "approx_vs": "VS2019 16.0.x",
-        "products": [
-          "Prod259",
-          "Prod261",
-          "Prod260",
-          "Prod257",
-          "Prod262"
+        "unit_count": 237,
+        "minibuilds": [
+          257,
+          259,
+          260,
+          261,
+          262
         ],
-        "unit_count": 237
+        "interpretation": "VS2017 15.x MSVC (productId 2712)",
+        "confidence": "inferred — prodId 2712 对应 VS2017，需实测确认"
+      },
+      "30319": {
+        "unit_count": 3,
+        "interpretation": "SDK / import lib"
+      },
+      "30729": {
+        "unit_count": 7,
+        "interpretation": "SDK / import lib"
       },
       "31328": {
-        "approx_vs": "VS2019 16.8",
-        "products": [
-          "Prod253",
-          "Prod260",
-          "Prod259",
-          "Prod261"
+        "unit_count": 89,
+        "minibuilds": [
+          253,
+          259,
+          260,
+          261
         ],
-        "unit_count": 89
+        "interpretation": "VS2019 16.x MSVC",
+        "confidence": "inferred"
       },
       "31332": {
-        "approx_vs": "VS2019 16.9",
-        "products": [
-          "Prod265",
-          "Prod255",
-          "Prod258"
+        "unit_count": 81,
+        "minibuilds": [
+          255,
+          258,
+          265
         ],
-        "unit_count": 81
+        "interpretation": "VS2019 16.x MSVC（可能与 31328 同源）",
+        "confidence": "inferred — 需确认 31328/31332 是否同一工具集"
       },
-      "other": {
-        "21202": 2,
-        "30319": 3,
-        "30729": 7,
-        "50727": 2,
-        "_note": "SDK / ASM / import lib 版本，非 C++ 编译器"
+      "50727": {
+        "unit_count": 2,
+        "interpretation": "SDK / import lib"
       }
     },
     "flags": null,

@@ -341,6 +341,17 @@ def find_function_start(insns, addr, by_va):
         # 我却在源码里把它们写进了同一个函数。
         if prev["mnemonic"] == "jmp":
             return cur
+        # ★ 前一条是 mov edi, edi -> MSVC 的 hotpatch 占位符（2 字节 nop）
+        #
+        # 实测本二进制有 424 处 `mov edi,edi / push ebp` 作为函数开头，
+        # 其中 401 个是精确的 call 目标。这是 MSVC /hotpatch 或增量链接的产物。
+        #
+        # 当前没有实际错位（call 目标落在序言内部的案例为 0），
+        # 因为编译器不会把 call 目标放进 2 字节 nop 之后。
+        # 但规则里显式保留这一条，避免依赖编译器的这种「善意」。
+        if (prev["mnemonic"] == "mov"
+                and prev["op_str"].replace(" ", "") == "edi,edi"):
+            return cur
         # 前一条是 push ebp（函数序言）-> 从它起
         if prev["mnemonic"] == "push" and prev["op_str"].strip() == "ebp":
             return prev_va
