@@ -401,13 +401,43 @@ def infer_signature(body, mode=""):
 
 
 def function_extent(label, insns):
-    """给定 func 声明的标签（0xNNN 或 0xNNN+N），返回 (lo, hi)。
+    """给定 func 声明的标签，返回 (lo, hi)。
 
     标签形式：
-      0x00402A50         -> 从该地址到下一个 ret（含）
-      0x00402A50+0x2C    -> 显式长度
+      0x00402A50         -> 跟随控制流直到所有出口
+      0x00402A50+0x53    -> 显式长度
 
-    会对起点做序言回溯（见 find_function_start 的说明）。
+    ## ★ 第 4 次修正：函数可以有多个 ret，不能遇到第一个就停
+
+    实测反例（0x00402A50）：
+
+        0x00402A50  mov edx, [ecx+0x8C]
+        0x00402A56  sub edx, 1
+        0x00402A59  mov [ecx+0x8C], edx
+        0x00402A5F  jns 0x00402A7C        <- 非负分支跳到 L2
+        0x00402A61  ...清零...
+        0x00402A7B  ret                    <- ★ 旧逻辑在这里结束函数
+        0x00402A7C  L2:                    <- 但这里还有一半函数体
+        0x00402A7C  mov eax, [ecx+edx*4+0x0C]
+        0x00402A80  mov [ecx], eax
+        0x00402A82  mov eax, [ecx+edx*4+0x4C]
+        0x00402A86  mov [ecx+8], eax
+        0x00402A89  mov [ecx+0xD4], 0
+        0x00402A93  ret
+
+    旧逻辑返回 hi = 0x00402A7C，于是：
+      - G2 判 `disp 0x0C` / `disp 0x4C` 不在函数内（它们确实在 0x00402A7C 之后）
+      - G3 的循环/分支统计只算半个函数
+
+    **证据**：call 0x00402A50 有 6 个调用方，call 0x00402A7C 有 0 个，
+    指向 0x00402A7C 的跳转只有 0x00402A5F 的 jns。
+    从不被 call、只被函数内跳转引用的地址是**内部基本块**。
+
+    ## 新算法
+
+    从 lo 开始沿指令顺序走，同时收集跳转目标（记在 worklist）；
+    hi = 所有可达指令的最大结束地址。遇到 ret 不停，除非所有分支都已汇合。
+    简化实现：走到「连续 int3 之后」或「下一个已知的 call 目标」为止。
     """
     if "+" in label:
         addr_s, len_s = label.split("+", 1)
@@ -421,19 +451,78 @@ def function_extent(label, insns):
         lo = int(label, 16)
     except ValueError:
         return None, None
-    # 起点回溯：call 目标可能落在函数中部（见 find_function_start）
+
     by_va = {i["va"]: i for i in insns if not i.get("is_data")}
     lo = find_function_start(insns, lo, by_va)
-    # 从 lo 往后找第一条 ret
+
+    ordered = sorted(by_va)
+    pos_of = {va: k for k, va in enumerate(ordered)}
+    if lo not in pos_of:
+        return lo, lo + 0x400
+
+    # 收集所有 call 目标，用于识别「下一个函数起点」
+    call_targets = set()
     for ins in insns:
-        if ins["va"] < lo:
-            continue
         if ins.get("is_data"):
             continue
-        if ins["mnemonic"].startswith("ret"):
-            return lo, ins["va"] + ins["size"]
-    return lo, lo + 0x400   # 找不到 ret 就给一个上界
+        if ins["mnemonic"] == "call" and ins["op_str"].startswith("0x"):
+            try:
+                call_targets.add(int(ins["op_str"], 16))
+            except ValueError:
+                pass
 
+    idx = pos_of[lo]
+    hi = lo
+    branch_targets = set()
+    seen_ret = False
+    guard = 0
+    while idx < len(ordered) and guard < 4000:
+        guard += 1
+        va = ordered[idx]
+        ins = by_va[va]
+        # 遇到「别的函数的 call 目标」就停（但要允许本函数内部的跳转目标）
+        if va != lo and va in call_targets and seen_ret and va not in branch_targets:
+            break
+        hi = va + ins["size"]
+        mn = ins["mnemonic"]
+        if mn == "jmp" or (mn.startswith("j") and mn != "jmp"):
+            if ins["op_str"].startswith("0x"):
+                try:
+                    branch_targets.add(int(ins["op_str"], 16))
+                except ValueError:
+                    pass
+            if mn == "jmp":
+                # 无条件跳出 -> 后续可能是别的分支体，继续扫（保守）
+                pass
+        if mn.startswith("ret"):
+            seen_ret = True
+        # 以下三个停止条件只在「已经见过 ret」之后生效，
+        # 避免把同函数内 ret 之后的分支体误判为下一个函数。
+        if seen_ret:
+            nxt = ordered[idx + 1] if idx + 1 < len(ordered) else None
+            if nxt is not None:
+                nins = by_va[nxt]
+                # 条件 1：连续 int3 说明函数体结束
+                if nins["mnemonic"] == "int3":
+                    break
+                # 条件 2：下一条是 push ebp —— 极强的函数序言信号
+                #
+                # 实测反例（0x004587B0）：
+                #   0x004587B0 ... 0x004587CD  ret 8     <- 完整函数（30 字节）
+                #   0x004587D0  push ebp                <- 下一个函数起点
+                # 旧逻辑没有这个条件，把后面 800 多字节的下一个函数也吞了。
+                if (nins["mnemonic"] == "push"
+                        and nins["op_str"].strip() == "ebp"):
+                    break
+                # 条件 3：下一条是 mov edi,edi（hotpatch 序言）
+                if (nins["mnemonic"] == "mov"
+                        and nins["op_str"].replace(" ", "") == "edi,edi"):
+                    break
+                # 条件 4：下一条是别的函数的 call 目标，且不在本函数分支目标里
+                if nxt in call_targets and nxt not in branch_targets:
+                    break
+        idx += 1
+    return lo, hi
 
 def main():
     ap = argparse.ArgumentParser(description="G2 binary witness check")
