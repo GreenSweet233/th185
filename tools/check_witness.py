@@ -280,12 +280,68 @@ def facts_for_range(sections, image_base, md, lo, hi):
     }
 
 
+def find_function_start(insns, addr, by_va):
+    """从 addr 往前找函数真正起点。
+
+    ## 为什么需要这个
+
+    我原先假设「call 的目标地址就是函数起点」。**这个假设是错的。**
+
+    实测反例（0x0044DA15）：
+
+        0x0044D9F0  push ebp            <- 函数真正起点
+        0x0044D9F3  movss xmm0, [ebp+8]
+        0x0044D9FD  mov ecx, [ebp+0xC]
+        0x0044DA10  call 0x4587B0
+        0x0044DA15  movss xmm0, [ecx]   <- 我的代码当成函数起点
+        0x0044DA41  ret 8               <- 函数真正终点
+
+    `0x0044DA15` 只是 call 之后的下一条指令。从它开始切，
+    切到的是函数中部——于是「4 个函数共享一段代码」的假象出现了，
+    实际是同一个函数的 4 个不同入口偏移。
+
+    判定规则：往前找最近的「函数序言」特征——
+      push ebp / mov ebp, esp        （标准帧）
+      或前一条指令是 ret / int3      （前一函数结束）
+    """
+    if not insns:
+        return addr
+    # 建立有序地址表，用二分查找而不是每次线性扫（1678 个目标 × 每次都全扫是 O(n²)）
+    ordered = sorted(i["va"] for i in insns if not i.get("is_data"))
+    import bisect
+    pos = bisect.bisect_left(ordered, addr)
+    if pos >= len(ordered) or ordered[pos] != addr:
+        # 该地址不是已知指令边界（可能是数据或 thunk 目标），不回溯
+        return addr
+
+    text_lo = ordered[0]
+    for _ in range(64):          # 最多回溯 64 条指令
+        if pos <= 0:
+            return ordered[0]
+        prev_va = ordered[pos - 1]
+        prev = by_va[prev_va]
+        # ★ 边界：回溯不得越过 .text 起点
+        if prev_va < text_lo:
+            return ordered[pos]
+        cur = ordered[pos]
+        # 前一条是 ret / int3 -> 当前位置就是函数起点
+        if prev["mnemonic"].startswith("ret") or prev["mnemonic"] == "int3":
+            return cur
+        # 前一条是 push ebp（函数序言）-> 从它起
+        if prev["mnemonic"] == "push" and prev["op_str"].strip() == "ebp":
+            return prev_va
+        pos -= 1
+    return ordered[pos]
+
+
 def function_extent(label, insns):
     """给定 func 声明的标签（0xNNN 或 0xNNN+N），返回 (lo, hi)。
 
     标签形式：
       0x00402A50         -> 从该地址到下一个 ret（含）
       0x00402A50+0x2C    -> 显式长度
+
+    会对起点做序言回溯（见 find_function_start 的说明）。
     """
     if "+" in label:
         addr_s, len_s = label.split("+", 1)
@@ -299,6 +355,9 @@ def function_extent(label, insns):
         lo = int(label, 16)
     except ValueError:
         return None, None
+    # 起点回溯：call 目标可能落在函数中部（见 find_function_start）
+    by_va = {i["va"]: i for i in insns if not i.get("is_data")}
+    lo = find_function_start(insns, lo, by_va)
     # 从 lo 往后找第一条 ret
     for ins in insns:
         if ins["va"] < lo:
