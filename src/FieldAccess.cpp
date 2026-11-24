@@ -181,4 +181,50 @@ void __fastcall clear_low_nibble_at_40(void* self, void* unused_edx) {
     *reinterpret_cast<unsigned*>(INT_AT(self, kField40Offset)) &= 0xFFFFFFF0u;
 }
 
+// ===========================================================================
+// 第四批：极简访问器（大偏移量与前几个字节）
+// ===========================================================================
+
+//@witness func=0x0040A090 kind=thiscall
+int* __fastcall addr_of_1274(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kField1274Offset);
+}
+
+//@witness func=0x00417770 kind=thiscall
+int __fastcall get_field_34(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField34Offset);
+}
+
+//@witness func=0x00433B90 kind=thiscall
+int __fastcall get_field_04(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField04Offset);
+}
+
+//@witness func=0x00433DC0 kind=thiscall
+int* __fastcall addr_of_44(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kSseField44Offset);
+}
+
+//@witness func=0x00431300 kind=thiscall
+int __fastcall get_field_50(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField50Offset);
+}
+
+//@witness func=0x00431260 kind=thiscall
+int __fastcall get_field_19260(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField19260Offset);
+}
+
+//@witness func=0x0040A0E0 kind=thiscall
+int __fastcall get_field_47FAC(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField47FACOffset);
+}
+
 }  // namespace th185

@@ -23,6 +23,12 @@ constexpr unsigned kField1COffset = 0x1C;
 constexpr unsigned kField28Offset = 0x28;
 constexpr unsigned kField40Offset = 0x40;
 constexpr unsigned kField620Offset = 0x620;
+constexpr unsigned kField1274Offset = 0x1274;
+constexpr unsigned kField34Offset = 0x34;
+constexpr unsigned kField04Offset = 0x04;
+constexpr unsigned kField50Offset = 0x50;
+constexpr unsigned kField19260Offset = 0x19260;
+constexpr unsigned kField47FACOffset = 0x47FAC;
 
 // --- 0x00404D10：stdcall，3 参数，只返回第一个 ---
 // 字节: 55 8bec 8b4508 5d c20c00
@@ -66,5 +72,14 @@ int* __fastcall addr_of_620(void* self, void* unused_edx);
 void __fastcall clear_field_28(void* self, void* unused_edx);
 void* __fastcall return_const_addr(void* self, void* unused_edx);
 void __fastcall clear_low_nibble_at_40(void* self, void* unused_edx);
+
+// --- 第四批 ---
+int* __fastcall addr_of_1274(void* self, void* unused_edx);
+int __fastcall get_field_34(void* self, void* unused_edx);
+int __fastcall get_field_04(void* self, void* unused_edx);
+int* __fastcall addr_of_44(void* self, void* unused_edx);
+int __fastcall get_field_50(void* self, void* unused_edx);
+int __fastcall get_field_19260(void* self, void* unused_edx);
+int __fastcall get_field_47FAC(void* self, void* unused_edx);
 
 }  // namespace th185

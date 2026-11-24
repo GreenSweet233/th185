@@ -168,6 +168,13 @@ def main():
         ("0x00424480", 0x00424480, "FieldAccess.cpp", "clear_field_28", True),
         ("0x00404BD0", 0x00404BD0, "FieldAccess.cpp", "return_const_addr", True),
         ("0x00429AB0", 0x00429AB0, "FieldAccess.cpp", "clear_low_nibble_at_40", True),
+        ("0x0040A090", 0x0040A090, "FieldAccess.cpp", "addr_of_1274", True),
+        ("0x00417770", 0x00417770, "FieldAccess.cpp", "get_field_34", True),
+        ("0x00433B90", 0x00433B90, "FieldAccess.cpp", "get_field_04", True),
+        ("0x00433DC0", 0x00433DC0, "FieldAccess.cpp", "addr_of_44", True),
+        ("0x00431300", 0x00431300, "FieldAccess.cpp", "get_field_50", True),
+        ("0x00431260", 0x00431260, "FieldAccess.cpp", "get_field_19260", True),
+        ("0x0040A0E0", 0x0040A0E0, "FieldAccess.cpp", "get_field_47FAC", True),
     ]
 
     for label, va, src_name, fn_name, need_this in targets:
