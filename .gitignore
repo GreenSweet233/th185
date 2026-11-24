@@ -44,6 +44,9 @@ th185_web/*.cmd
 score*.dat
 *.cfg
 *.log
+# CI 输出重定向的临时文件（曾误入库一次）
+ci-out.txt
+ci-out*.txt
 .env
 .npmrc
 
