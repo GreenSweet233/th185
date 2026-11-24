@@ -40,6 +40,10 @@ let healthAt = 0;
 let imageData = null;
 
 const keys = new Set();
+// Bits contributed by the on-screen touch pad. Kept separate from `keys`
+// because the keyboard map is code -> bit while the touch pad is id -> bit;
+// merging them into one set would compare apples to oranges.
+const touchButtons = new Set();
 
 // Button bitmask, matching th185::PlayerButton in cpp/game/Player.hpp.
 const BUTTON = {
@@ -72,7 +76,17 @@ function heldMask() {
     const button = KEY_TO_BUTTON[code];
     if (button) mask |= button;
   }
+  for (const button of touchButtons) mask |= button;
   return mask;
+}
+
+// Drops every held input. Pausing, blur and tab-hide all need this: a key that
+// was down when focus left never delivers its keyup, so without a sweep the
+// player would resume mid-move with the button stuck on. The touch bits need the
+// same sweep for the same reason (a pointerup outside the window is lost).
+function clearInput() {
+  keys.clear();
+  touchButtons.clear();
 }
 
 function fail(error) {
@@ -339,7 +353,7 @@ function setPaused(value) {
     if (!core._th185_resume()) return;
   }
   paused = value;
-  keys.clear();
+  clearInput();
   document.querySelector('#pause-panel').hidden = !paused;
   lastTime = performance.now();
   accumulator = 0;
@@ -365,13 +379,13 @@ window.addEventListener('keydown', (event) => {
 window.addEventListener('keyup', (event) => keys.delete(event.code));
 
 window.addEventListener('blur', () => {
-  keys.clear();
+  clearInput();
   setPaused(true);
 });
 
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    keys.clear();
+    clearInput();
     setPaused(true);
   }
 });
@@ -392,7 +406,7 @@ document.querySelector('#resume').addEventListener('click', () => {
 document.querySelector('#return-title').addEventListener('click', () => {
   running = false;
   paused = false;
-  keys.clear();
+  clearInput();
   document.querySelector('#pause-panel').hidden = true;
   document.querySelector('#welcome').hidden = false;
   document.querySelector('#start').disabled = false;
@@ -405,12 +419,48 @@ document.querySelector('#touch-toggle').addEventListener('click', () => {
   panel.hidden = !panel.hidden;
 });
 
-for (const id of ['shoot', 'focus', 'bomb', 'card']) {
+// On-screen pad -> button bits. These used to be placeholders that only called
+// preventDefault(), so on a touch device the game was unplayable: the pad was
+// drawn, pressable, and did nothing. The module's tick() already accepts a
+// bitmask, so the whole fix is to fold these into heldMask().
+//
+// The mapping uses the same BUTTON table as the keyboard. #card is mapped to
+// `special` because that is the button the market/pause confirm and the active
+// card share in this build; there is no separate card key yet.
+const TOUCH_TO_BUTTON = {
+  shoot: BUTTON.shoot,
+  focus: BUTTON.focus,
+  bomb: BUTTON.bomb,
+  card: BUTTON.special,
+};
+
+for (const [id, bit] of Object.entries(TOUCH_TO_BUTTON)) {
   const button = document.querySelector('#' + id);
   if (!button) continue;
-  // Touch buttons are placeholders until the input layer maps them to the
-  // module's key bitmask; pressing them currently does nothing.
-  button.addEventListener('pointerdown', (event) => event.preventDefault());
+  // pointerdown/up rather than click: click fires on release, which would make
+  // a held touch behave like a tap and break continuous fire and focus.
+  button.addEventListener('pointerdown', (event) => {
+    event.preventDefault();
+    touchButtons.add(bit);
+    // Capture so a finger that slides off the button still delivers pointerup;
+    // without this the bit would stay stuck on and the player would keep firing.
+    if (button.setPointerCapture) {
+      try { button.setPointerCapture(event.pointerId); } catch (_) {}
+    }
+    resumeAudio();
+  });
+  const release = (event) => {
+    if (event) event.preventDefault();
+    touchButtons.delete(bit);
+  };
+  button.addEventListener('pointerup', release);
+  button.addEventListener('pointercancel', release);
+  button.addEventListener('pointerleave', (event) => {
+    // Only release when the pointer that left is not captured (mouse hover-off
+    // should not cancel a drag; a genuinely left touch should).
+    if (!button.hasPointerCapture || !button.hasPointerCapture(event.pointerId)) release(event);
+  });
+  button.addEventListener('contextmenu', (event) => event.preventDefault());
 }
 
 document.querySelector('#pause').addEventListener('click', () => setPaused(true));

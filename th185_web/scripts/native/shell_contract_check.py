@@ -176,6 +176,54 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # 7. Every button on the on-screen pad must actually contribute a bit.
+    #
+    # The pad used to be drawn and pressable while doing nothing but
+    # preventDefault(), which makes the game unplayable on a touch device and is
+    # invisible to any check that only asks 'does the element exist'. Checking
+    # that each id maps to a BUTTON bit AND reaches heldMask() is the difference
+    # between 'the button is there' and 'the button works'.
+    touch_ids = re.findall(r'<button id="([a-z]+)"', html)
+    # Buttons that are NOT part of the movement/shoot bitmask: menu actions that
+    # have their own handlers (setPaused, fullscreen, start/...). #pause is one
+    # of these -- it calls setPaused() directly, which sends the module a
+    # _th185_pause() call rather than a held bit, so it is correctly absent from
+    # TOUCH_TO_BUTTON. Listing it as "missing" was a bug in this check, not in
+    # the shell.
+    NON_BITMASK = {'start', 'resume', 'fullscreen', 'touch-toggle',
+                   'return-title', 'pause'}
+    pad_ids = [i for i in touch_ids if i not in NON_BITMASK]
+    mapping = re.search(r'const TOUCH_TO_BUTTON = \{([^}]*)\}', shell)
+    mapped = {}
+    if mapping:
+        for key, value in re.findall(r'(\w+)\s*:\s*(BUTTON\.\w+)', mapping.group(1)):
+            mapped[key] = value
+    missing = [i for i in pad_ids if i not in mapped]
+    ok = bool(pad_ids) and not missing
+    print('[%s] every touch-pad button maps to a BUTTON bit (%d pad, %d missing)'
+          % ('PASS' if ok else 'FAIL', len(pad_ids), len(missing)))
+    if not ok:
+        for item in missing:
+            print('       #' + item)
+        failures += 1
+
+    # The bits must be OR-ed into the mask the module receives, not just stored.
+    ok = re.search(r'for \(const button of touchButtons\)\s*mask \|= button', shell) is not None
+    print('[%s] touch bits are folded into heldMask()'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
+    # Pausing must drop the touch bits too, or a held direction stays stuck on
+    # after resume (the pointerup is lost while the game is paused).
+    ok = ('function clearInput' in shell
+          and 'touchButtons.clear()' in shell
+          and re.search(r'function clearInput\(\)[\s\S]{0,200}?touchButtons\.clear\(\)', shell) is not None)
+    print('[%s] clearInput() releases touch bits as well as keys'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
     print()
     if failures:
         print('selftest failed: %d item(s)' % failures)
