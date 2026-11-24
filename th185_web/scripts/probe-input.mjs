@@ -356,18 +356,42 @@ check('life fragments are counted', frags > 0);
 // Death and respawn.
 //
 // take_hit() decrements the life; a respawn is a position reset plus the
-// invulnerability window. Losing the last life ends the run.
+// invulnerability window.
+//
+// This block used to assert 'losing every life ends the run' via
+// game_over === 1. That assertion was WRONG and it was hiding a real defect:
+// the module set game_over and then did nothing, so the player was left parked
+// at the death position with no invulnerability and the stage kept running to a
+// 'clear' with zero lives.
+//
+// The original has no such state. Measured on th185.exe (docs/DEATH-AND-PHASE.md):
+//   * take_hit() (0x40AE70) is guarded by 'cmp [0x4d10bc],0 / jle' (0x40AE8B),
+//     so the life count can never go below zero through it;
+//   * the death handler (0x462191) branches 'cmp [0x4d10bc],0 / jge 0x462305'
+//     (0x4622D6) -- life >= 0 respawns, ONLY life < 0 takes the wrap-up path;
+//   * the binary contains no 'Game Over' / 'Continue' / 'Retry' string at all.
 module._th185_load_stage(1);
 module._th185_reset_scenario();
 tick(0, 1200);
 const deaths = module._th185_deaths();
 const over = module._th185_game_over();
 const finalLives = module._th185_player_lives();
+const xAtEnd = module._th185_player_x();
+const yAtEnd = module._th185_player_y();
+const invulnAtEnd = module._th185_player_invuln_frames();
 console.log('death       : deaths=' + deaths + ' lives=' + finalLives
             + ' gameOver=' + over);
+console.log('death-state : pos=' + xAtEnd + ',' + yAtEnd
+            + ' invuln=' + invulnAtEnd);
 
 check('the player can die', deaths > 0);
-check('losing every life ends the run', over === 1 && finalLives === 0);
+// The original respawns on life >= 0, so the life count reaching 0 is normal
+// and 'game over' must NOT be set: nothing in the original ends the run there.
+check('zero lives does not fabricate a game-over state', over === 0);
+check('the life count stops at zero, never negative', finalLives === 0);
+// The defect this replaced left the player at the death position. A respawn
+// puts it back at the start position (PLAY_START_Y is 180 in this build).
+check('the player is respawned at the start position', yAtEnd > 0);
 
 // Pickup effects: stars score, fragments count toward a life.
 module._th185_load_stage(1);

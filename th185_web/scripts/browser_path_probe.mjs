@@ -133,3 +133,49 @@ console.log('schedules_fired: ' + core._th185_schedules_fired());
 console.log('schedules_expected: ' + core._th185_schedules_expected());
 console.log('phase_after_play: ' + core._th185_phase());
 console.log('score_after_play: ' + core._th185_score());
+
+// --- death state -------------------------------------------------------
+//
+// The shell's call sequence is also where the 'zero lives' defect lived: the
+// module set a game_over flag and then did nothing, so the player sat at the
+// death position without an invulnerability window while the stage ran on to a
+// 'clear' at zero lives.
+//
+// What the original does, measured on th185.exe (docs/DEATH-AND-PHASE.md):
+//   take_hit() 0x40AE70 is guarded by 'cmp [0x4d10bc],0 / jle' (0x40AE8B), so
+//   the count never goes below 0; the death handler 0x462191 branches
+//   'cmp [0x4d10bc],0 / jge 0x462305' (0x4622D6) -- life >= 0 respawns, only
+//   life < 0 wraps up. There is no 'Game Over' string in the binary at all.
+//
+// So: reaching zero lives is a NORMAL event that must respawn the player, must
+// not fabricate a game-over state, and must never leave the life count negative.
+core._th185_load_stage(1);
+core._th185_reset_scenario();
+core._th185_start();
+let zeroAt = -1;
+for (let f = 0; f < 1500; ++f) {
+  if (!core._th185_tick(0)) break;
+  if (core._th185_player_lives() === 0) { zeroAt = f; break; }
+}
+const livesAfter = core._th185_player_lives();
+const overFlag = core._th185_game_over();
+const yAfter = core._th185_player_y();
+const invulnAfter = core._th185_player_invuln_frames();
+console.log('zero_lives_at_frame: ' + zeroAt);
+console.log('lives_after_zero: ' + livesAfter);
+console.log('game_over_flag_at_zero: ' + overFlag);
+console.log('player_y_at_zero: ' + yAfter);
+console.log('player_invuln_at_zero: ' + invulnAfter);
+
+let deathFailures = 0;
+function deathCheck(name, ok, detail) {
+  console.log((ok ? 'ok   ' : 'FAIL ') + name + (detail === undefined ? '' : '  (' + detail + ')'));
+  if (!ok) ++deathFailures;
+}
+deathCheck('the run actually reached zero lives', zeroAt >= 0, String(zeroAt));
+deathCheck('zero lives is not reported as game over', overFlag === 0, String(overFlag));
+deathCheck('the life count never goes negative', livesAfter === 0, String(livesAfter));
+deathCheck('the player was respawned (y back at the start)', yAfter > 0, String(yAfter));
+deathCheck('respawn restores the invulnerability window', invulnAfter > 0, String(invulnAfter));
+console.log('death_state_failures: ' + deathFailures);
+if (deathFailures > 0) process.exitCode = 1;

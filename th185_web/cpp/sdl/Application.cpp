@@ -1837,11 +1837,27 @@ bool Application::tick(u32 held, bool do_render) {
     if (lives_now < last_lives_) {
         ++stats_.deaths;
         sounds_.play("se_pldead00.wav", 0.8f, 30);
-        if (lives_now == 0) {
-            stats_.game_over = 1;
-        } else {
-            player_.respawn();
-        }
+        // Losing the LAST life still respawns.
+        //
+        // The original's death handler (phase-2 processor 0x462191) branches on
+        //   cmp dword [0x4d10bc], 0   /   jge 0x462305      (0x4622D6)
+        // so the normal respawn path covers life >= 0 and ONLY life < 0 takes
+        // the wrap-up path (call 0x45F050 -> state change 2). take_hit() itself
+        // is guarded by "cmp [0x4d10bc],0 / jle" (0x40AE8B), so through that
+        // path the count can never reach -1 and the respawn branch is the only
+        // reachable one.
+        //
+        // The old code special-cased lives == 0 and did NOT respawn, leaving the
+        // player parked at the death position with no invulnerability window and
+        // no state change at all. That matches neither the original nor itself.
+        // Measured evidence, including that the original binary contains no
+        // "Game Over" / "Continue" / "Retry" string whatsoever:
+        //   docs/DEATH-AND-PHASE.md
+        player_.respawn();
+        // `game_over` is NOT an original field. It is kept as a diagnostic that
+        // only fires if the count ever goes negative (unreachable via take_hit),
+        // so nothing may read it as "the run has ended".
+        if (i32(lives_now) < 0) stats_.game_over = 1;
     }
     last_lives_ = lives_now;
     stats_.player_lives = player_.lives();

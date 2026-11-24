@@ -91,6 +91,14 @@ checks.push(
   // The cards panel's data path: two different card keys, budget/slot gates,
   // slot-index removal, and whether the equipped set actually changes the run.
   { name: "loadout", args: [resolve(here, "native", "loadout_check.py")], python: true, timeoutMs: 600000 },
+  // The browser's own call sequence, end to end. Two P0s in a row were 'the
+  // export and the call site each look right, the seam between them is broken',
+  // and every probe missed them because each probe builds its own state first.
+  // This check performs ONLY the calls shell.mjs performs, in the same order.
+  // It existed for a whole round before this gate: written, run by hand,
+  // and never wired into CI -- the same 'a one-off script proves nothing'
+  // mistake that let the death defect through.
+  { name: "browser-path", args: [resolve(here, "native", "browser_path_check.py")], python: true, timeoutMs: 900000 },
   // Rendering a frame and moving a character are different claims; this proves
   // the bitmask the shell sends actually reaches an entity.
   { name: "player-input", args: [resolve(here, "native", "player_input_check.py")], python: true, timeoutMs: 1800000 },

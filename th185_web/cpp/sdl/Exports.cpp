@@ -244,6 +244,14 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_player_lives() {
     return th185::app::instance().stats().player_lives;
 }
 
+// Remaining invulnerability frames. The original's death handler hands the
+// player a fresh window on respawn (the 90-frame constant is this build's
+// measured value); a probe that asserts 'the player was respawned' needs to
+// see that window rather than infer it from a position alone.
+EMSCRIPTEN_KEEPALIVE unsigned th185_player_invuln_frames() {
+    return th185::app::instance().player().invulnerable_frames();
+}
+
 EMSCRIPTEN_KEEPALIVE unsigned th185_player_hits_taken() {
     return th185::app::instance().stats().player_hits_taken;
 }
