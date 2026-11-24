@@ -181,12 +181,33 @@ def source_structure(clang, path, include_dirs, func_label, marker_line=None,
     if body:
         counts["scope"] = "function (lines %d..%d)" % (lo_line, hi_line)
 
-    def in_body(node):
+    def node_line(node):
+        """取节点行号。clang AST 有两套位置信息，必须依次回退。
+
+        ★ 踩过的坑：IfStmt 的 `loc.line` 是 None，行号实际在
+        `range.begin.line`。我第一版只看 loc.line，于是所有 IfStmt /
+        WhileStmt 都被判为「无行号」而排除 —— 结果源码 branch 恒为 0，
+        与二进制的条件跳转对不上。
+
+        取法优先级：loc.line -> range.begin.line -> range.begin.expansionLoc.line
+        """
         loc = node.get("loc") or {}
         ln = loc.get("line")
+        if ln is not None:
+            return ln
+        rng = (node.get("range") or {}).get("begin") or {}
+        ln = rng.get("line")
+        if ln is not None:
+            return ln
+        exp = rng.get("expansionLoc") or {}
+        return exp.get("line")
+
+    def in_body(node):
+        ln = node_line(node)
         if ln is None:
-            # 没有行号信息的节点（隐式节点）算在内，避免漏计
-            return True
+            # 三处都拿不到行号才排除。这类节点通常是编译器隐式生成的
+            # （ImplicitCastExpr 等），无法判断归属，计入会污染统计。
+            return False
         return lo_line <= ln <= hi_line
 
     def walk(node):

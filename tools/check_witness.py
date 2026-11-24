@@ -101,14 +101,23 @@ def parse_witnesses(sources_root):
                     rest = parts[1].strip() if len(parts) > 1 else ""
                 if kind == "func":
                     # 声明写法：//@witness func=0x00402A50 kind=thiscall
-                    current = kv.get("func")
-                    if not current:
+                    raw_funcs = kv.get("func")
+                    if not raw_funcs:
                         continue
-                    decls.setdefault(current, []).append({
-                        "kind": "func", "value": current,
-                        "mode": kv.get("kind", ""),
-                        "file": path, "line": idx, "raw": raw.strip(),
-                    })
+                    # 支持「一个源码实现对应多个相同形状的二进制地址」：
+                    #   //@witness func=0x00404C20+0x00441640 kind=thiscall
+                    # 这是批量匹配的关键——同一段源码被多个类实例化时，
+                    # 二进制里会有 N 个形状完全相同的函数。
+                    for one in raw_funcs.split("+"):
+                        one = one.strip()
+                        if not one:
+                            continue
+                        current = one
+                        decls.setdefault(current, []).append({
+                            "kind": "func", "value": one,
+                            "mode": kv.get("kind", ""),
+                            "file": path, "line": idx, "raw": raw.strip(),
+                        })
                 else:
                     if not kv:
                         pass  # rest 已在上面的位置参数分支里赋值
@@ -372,16 +381,42 @@ def main():
             "sample": missing_items[:15],
         })
 
-    # 反向覆盖：源码声明了哪些 artifact，二进制有多少 artifact 被解释
+    # 反向覆盖：源码解释了二进制的多少。
+    #
+    # ★ 口径修正（重要）：
+    #   旧版只统计 `call` 见证，得到 (已声明的 call 目标) / (全部 call 目标)。
+    #   但叶子函数（如 `mov eax, ecx; ret`）**内部没有任何 call**，
+    #   所以匹配了 3 个叶子函数后覆盖率仍是 0.0000% —— 指标看起来毫无进展，
+    #   实际是口径选错了：它衡量的是「call 图的边被解释了多少」，
+    #   而不是「函数被匹配了多少」。
+    #
+    #   改为同时报告两个口径：
+    #     function_coverage = 已声明并验证的函数数 / 二进制可识别函数数
+    #     call_coverage     = 已解释的 call 目标 / 全部 call 目标
+    #   判定用 function_coverage（更贴合「匹配了多少函数」这个目标）。
     declared_calls = {norm_value(i["kind"], i["value"]) for items in decls.values()
                       for i in items if i["kind"] == "call"}
     declared_calls = {v for v in declared_calls if isinstance(v, int)}
     binary_calls = facts["call_targets"]
-    reverse_ratio = (len(declared_calls & binary_calls) / len(binary_calls)) if binary_calls else 0.0
+    call_coverage = (len(declared_calls & binary_calls) / len(binary_calls)) \
+                    if binary_calls else 0.0
 
-    # 覆盖率口径要在报告里说清楚：分母是二进制的 call 目标数，
-    # 分子是源码已解释的 call 目标数。源码为空时分子为 0。
-    coverage = reverse_ratio
+    # 已声明的函数（不含 <file:> 桶）
+    declared_funcs = {k for k in decls if not k.startswith("<file:")}
+    # 二进制里可识别的函数 = 所有直接 call 目标（这是可枚举的下界）
+    binary_funcs = facts["call_targets"]
+    matched_funcs = set()
+    for label in declared_funcs:
+        try:
+            va = int(label.split("+")[0], 16)
+        except ValueError:
+            continue
+        if va in binary_funcs:
+            matched_funcs.add(va)
+    function_coverage = (len(matched_funcs) / len(binary_funcs)) \
+                    if binary_funcs else 0.0
+
+    coverage = function_coverage
 
     # 判定口径（重要，避免「什么都没查却报 PASS」）：
     #   FAIL       = 声明了见证但目标二进制里找不到
@@ -392,7 +427,7 @@ def main():
     # 也被标成 PASS —— 那会让 §11 仪表盘骗人。
     if failures:
         status = "FAIL"
-    elif binary_calls and len(declared_calls & binary_calls) < len(binary_calls):
+    elif binary_funcs and len(matched_funcs) < len(binary_funcs):
         status = "INCOMPLETE"
     elif not binary_calls:
         status = "INCOMPLETE"
@@ -415,10 +450,13 @@ def main():
             "items": checked_items,
         },
         "reverse_coverage": {
+            "function_coverage": round(function_coverage, 6),
+            "matched_functions": len(matched_funcs),
+            "binary_functions": len(binary_funcs),
+            "call_coverage": round(call_coverage, 6),
             "declared_call_targets": len(declared_calls),
             "binary_call_targets": len(binary_calls),
-            "ratio": round(coverage, 6),
-            "_denominator": "binary call targets; numerator = those explained by source",
+            "_denominator": "function_coverage = matched funcs / binary call targets（call 目标作为可枚举函数下界）",
         },
         "witnessless_elements": len(missing_items),
         "failures": failures,
@@ -456,8 +494,11 @@ def main():
                  len(facts["displacements"]), len(facts["stack_slots"])))
         print("  witness declarations: %d item(s) in %d function(s)"
               % (checked_items, result["witness_declarations"]["functions"]))
-        print("  reverse coverage    : %.4f%% (%d / %d call targets explained)"
-              % (coverage * 100, len(declared_calls & binary_calls), len(binary_calls)))
+        print("  function coverage   : %.4f%% (%d / %d functions matched)"
+              % (function_coverage * 100, len(matched_funcs), len(binary_funcs)))
+        print("  call coverage       : %.4f%% (%d / %d call targets explained)"
+              % (call_coverage * 100, len(declared_calls & binary_calls),
+                 len(binary_calls)))
         print("  witnessless         : %d" % len(missing_items))
         if failures:
             print()
@@ -472,9 +513,9 @@ def main():
             print("[FAIL] G2")
         elif status == "INCOMPLETE":
             print("[INCOMPLETE] G2")
-            print("             %d / %d call targets explained (%.4f%%)."
-                  % (len(declared_calls & binary_calls), len(binary_calls),
-                     coverage * 100))
+            print("             %d / %d functions matched (%.4f%%)."
+                  % (len(matched_funcs), len(binary_funcs),
+                     function_coverage * 100))
             print("             这不是 PASS：源码尚未解释目标二进制。")
             print("             按 AGENTS.md §11，反向覆盖率 < 100% 不算完成。")
         else:
@@ -503,7 +544,8 @@ def write_dashboard(root, result):
         "instruction_count": result["instruction_count"],
         "binary_call_targets": result["binary_artifacts"]["call_targets"],
         "witness_items": result["witness_declarations"]["items"],
-        "reverse_coverage": result["reverse_coverage"]["ratio"],
+        "function_coverage": result["reverse_coverage"]["function_coverage"],
+        "matched_functions": result["reverse_coverage"]["matched_functions"],
     }
     m["updated_at"] = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     try:
