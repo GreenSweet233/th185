@@ -6,9 +6,13 @@
 // 所以两个维度分开报告。
 //
 // 用法：
-//   node th185_web/scripts/progress.mjs
-//   node th185_web/scripts/progress.mjs --stdout
-//   node th185_web/scripts/progress.mjs --output docs/PROGRESS.md
+//   node th185_web/scripts/progress.mjs                     # write docs/PROGRESS.md
+//   node th185_web/scripts/progress.mjs --stdout            # print, do not write
+//   node th185_web/scripts/progress.mjs --output <path>     # write elsewhere
+//   node th185_web/scripts/progress.mjs --check             # fail if the
+//                                                           # committed file is stale
+//
+// Exit codes: 0 ok / up to date; 1 stale or missing (only with --check).
 
 import {readFileSync, writeFileSync, existsSync, mkdirSync} from 'node:fs';
 import {resolve, dirname, join} from 'node:path';
@@ -140,6 +144,42 @@ const text = lines.join("\n");
 const args = process.argv.slice(2);
 if (args.includes("--stdout")) {
   process.stdout.write(text);
+} else if (args.includes("--check")) {
+  // Fail-closed freshness check.
+  //
+  // The committed docs/PROGRESS.md had drifted 155 commits behind the ledgers
+  // (it still said "2 complete / 87 behaviors" while the CSV said
+  // "6 complete / 370 behaviors"). Nothing caught it, because CI only ran
+  // "--stdout", which proves the generator works but not that its output was
+  // ever committed. A stale snapshot is worse than no snapshot: it is a
+  // document that looks authoritative and is wrong.
+  const committed = join(webRoot, "docs", "PROGRESS.md");
+  if (!existsSync(committed)) {
+    console.error("error: docs/PROGRESS.md is missing; run 'node th185_web/scripts/progress.mjs'");
+    process.exit(1);
+  }
+  const actual = readFileSync(committed, "utf8").replace(/\r\n/g, "\n");
+  const expected = text.replace(/\r\n/g, "\n");
+  if (actual !== expected) {
+    const a = actual.split("\n");
+    const b = expected.split("\n");
+    const width = Math.max(a.length, b.length);
+    let shown = 0;
+    console.error("docs/PROGRESS.md is stale (differs from the ledgers).");
+    console.error("Regenerate with: node th185_web/scripts/progress.mjs");
+    console.error("");
+    for (let i = 0; i < width && shown < 12; ++i) {
+      if (a[i] !== b[i]) {
+        console.error("  line " + (i + 1));
+        console.error("    committed  : " + (a[i] ?? "(missing)"));
+        console.error("    regenerated: " + (b[i] ?? "(missing)"));
+        ++shown;
+      }
+    }
+    if (shown === 12) console.error("  ... (more differences not shown)");
+    process.exit(1);
+  }
+  console.log("docs/PROGRESS.md is up to date (" + expected.length + " bytes)");
 } else {
   const index = args.indexOf("--output");
   const output = index >= 0 && args[index + 1]

@@ -35,6 +35,12 @@ if (!skipTarget) {
 checks.push(
   { name: "ledgers", args: [resolve(here, "validate-ledgers.mjs")] },
   { name: "progress", args: [resolve(here, "progress.mjs"), "--stdout"] },
+  // "--stdout" only proves the generator runs. It does not prove the snapshot
+  // was ever committed -- docs/PROGRESS.md had silently drifted 155 commits
+  // behind, still claiming "2 complete / 87 behaviors" against a ledger that
+  // said "6 complete / 370". A stale progress file is worse than none: it reads
+  // as authoritative and is wrong.
+  { name: "progress-fresh", args: [resolve(here, "progress.mjs"), "--check"] },
   // 探针自检需要 unicorn + capstone。缺依赖时跳过而不是判失败，
   // 但会在输出里明确提示，避免"CI 全绿"被误解为"探针可用"。
   { name: "probe", args: [resolve(here, "native", "probe.py"), "--selftest"], python: true },
