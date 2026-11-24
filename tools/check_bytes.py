@@ -146,7 +146,6 @@ def main():
         ("0x00404AA0", 0x00404AA0, "Trivial.cpp", "return_this", True),
         ("0x00404C20", 0x00404C20, "Trivial.cpp", "do_nothing", False),
         ("0x0041FA20", 0x0041FA20, "Trivial.cpp", "read_first_field", True),
-        ("0x00404B60", 0x00404B60, "Trivial.cpp", "read_first_float", True),
         ("0x00404B70", 0x00404B70, "Trivial.cpp", "polar_to_vec2", True),
         ("0x004903B9", 0x004903B9, "Trivial.cpp", "return_zero", False),
         ("0x00405830", 0x00405830, "Trivial.cpp", "copy_vec3", True),
@@ -159,6 +158,9 @@ def main():
         ("0x00409F60", 0x00409F60, "FieldAccess.cpp", "set_field_20", True),
         ("0x00433BC0", 0x00433BC0, "FieldAccess.cpp", "set_first_field", True),
         ("0x004063C0", 0x004063C0, "FieldAccess.cpp", "copy_vec3_to_5F0", True),
+        ("0x00404B60", 0x00404B60, "FieldAccess.cpp", "read_first_as_m128", True),
+        ("0x00405A60", 0x00405A60, "FieldAccess.cpp", "read_44_as_m128", True),
+        ("0x0041C710", 0x0041C710, "FieldAccess.cpp", "mul_74_x_54", True),
     ]
 
     for label, va, src_name, fn_name, need_this in targets:

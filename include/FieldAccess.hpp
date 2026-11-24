@@ -1,4 +1,6 @@
 #pragma once
+
+#include <xmmintrin.h>
 // 字段访问器族 —— 第二批匹配（P1 已验证字节相等）。
 //
 // 这批函数全部来自对 .text 的重新扫描，特点是：
@@ -13,6 +15,9 @@ namespace th185 {
 constexpr unsigned kField2A0Offset = 0x2A0;
 constexpr unsigned kField20Offset = 0x20;
 constexpr unsigned kVec3At5F0Offset = 0x5F0;
+constexpr unsigned kSseField44Offset = 0x44;
+constexpr unsigned kSseField74Offset = 0x74;
+constexpr unsigned kSseField54Offset = 0x54;
 
 // --- 0x00404D10：stdcall，3 参数，只返回第一个 ---
 // 字节: 55 8bec 8b4508 5d c20c00
@@ -42,5 +47,10 @@ void __fastcall set_first_field(void* self, void* unused_edx, int value);
 // --- 0x004063C0：thiscall，12 字节 struct 拷贝到 +0x5F0 ---
 // 字节: 55 8bec 8b4508 f30f7e00 660fd681f0050000 8b4008 8981f8050000 5d c20400
 void __fastcall copy_vec3_to_5F0(void* self, void* unused_edx, const void* src);
+
+// --- SSE 标量访问（返回 __m128 而非 float）---
+__m128 __fastcall read_first_as_m128(void* self, void* unused_edx);
+__m128 __fastcall read_44_as_m128(void* self, void* unused_edx);
+__m128 __fastcall mul_74_x_54(void* self, void* unused_edx);
 
 }  // namespace th185
