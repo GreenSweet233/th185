@@ -39,7 +39,7 @@
     }
   },
   "compiler": {
-    "_status": "PARTIALLY_RESOLVED",
+    "_status": "VERIFIED_FOR_ONE_FUNCTION",
     "_correction": "★ 修正（本轮）：此前把 27412 / 31328 / 31332 当作三个 VS2019 build 号，这是错的。\n\nRich Header 每个条目是 (comp_id, count)，comp_id 高 16 位 = build，低 16 位 = prodId。\n此前的解析把两个字段读反了，于是把 prodId 当成了 build。\n\n正确的表（build, prodId, count）：\n    261  27412  164      27412 = prodId，对应 VS2017 15.x 的 C++ 编译器 (2712)\n    265  31332   79      31332 = prodId，对应 VS2019 16.x\n    261  31328   47      31328 同为 VS2019 16.x\n    259  27412   33\n    260  27412   27\n    259  31328   23\n    260  31328   18\n    257  27412   12\n    ...\n\n按 prodId 归组：\n    prodId 27412  count=237  (VS2017 15.x 编译器)\n    prodId 31328  count= 89  (VS2019 16.x 编译器)\n    prodId 31332  count= 81  (VS2019 16.x 编译器)\n\n所以真实结论是：**两个 VS 世代共存（VS2017 + VS2019），不是三个 VS2019 补丁级**。\n31328 与 31332 是同一产品线的两个 prodId（可能分别是工具集与 CRT/库），\n而非两个不同编译器版本。",
     "_consequence": "原先标为 BLOCKED 的理由（需要三套并存工具链）不成立。\n真实需求：VS2017 15.x 的 MSVC + VS2019 16.x 的 MSVC（两套，不是三套）。\n仍需验证：31328 与 31332 是否来自同一套工具集（若同源，则只需两套）。",
     "rich_header_key": "0x0D2865FF",
@@ -98,9 +98,29 @@
         "interpretation": "SDK / import lib"
       }
     },
-    "flags": null,
+    "flags": {
+      "verified_for_0x00402A50": "/c /MT /O2 /GS-",
+      "_note": [
+        "/O2 必需 —— 默认优化生成完整栈帧（139 字节 vs 68 字节）",
+        "/O1 不行 —— 过优化，用 and [mem],0 代替 mov [mem],0",
+        "/MT 静态 CRT（与 /GS- 一起测的，未单独验证哪个必需）",
+        "/GS- 是在这个函数上关掉的；但原版引用了 __security_cookie (0x4C8A4C)，说明原版开了 /GS，需要单独确认这个函数是否真的不需要 cookie"
+      ]
+    },
     "linker": null,
-    "sdk_headers_hash": null
+    "sdk_headers_hash": null,
+    "_verified": "★ 2026-11-24：MSVC v142 (19.29.30159) + /O2 + /MT + /GS- 对 0x00402A50 产出逐字节相同的 68 字节代码。\n工具集来源：从 C:\\ProgramData\\Microsoft\\VisualStudio\\Packages 的 .vsix 包直接解压到 D:\\MSVC142\\14.29.30133，不需要安装器和管理员权限。\n这解决了此前「UAC 无法提权」的阻塞。\n边界：只验证了 1 个函数，不能据此推断全部。原版 Rich Header 仍显示 prodId 27412（VS2017）+ 3132（VS2019）两代并存。",
+    "local": {
+      "path": "D:\\MSVC142\\14.29.30133",
+      "compiler": "cl.exe 19.29.30159 (x86)",
+      "include": "D:\\MSVC142\\14.29.30133\\include",
+      "lib": "D:\\MSVC142\\14.29.30133\\lib\\x86",
+      "bin": "D:\\MSVC142\\14.29.30133\\bin\\Hostx86\\x86",
+      "_setup": [
+        "从 C:\\ProgramData\\Microsoft\\VisualStudio\\Packages 解包 7 个 vsix（见 evidence/P1-first-byte-match.json 的 packages_needed）",
+        "每个 payload.vsix 是 zip，内容为 Contents/VC/Tools/MSVC/14.29.30133/ 目录树，全部展开合并即可"
+      ]
+    }
   },
   "reproducibility": {
     "forbid": [
