@@ -115,8 +115,13 @@ console.log('bullets_fired: ' + core._th185_bullets_fired());
 // failure here means the page would fail too.
 let clearedAt = -1;
 let peakEnemies = 0;
-for (let f = 0; f < 6000; ++f) {
-  const held = (f % 3 === 0) ? (SHOOT | FOCUS) : SHOOT;
+// 12000 frames: the slowest measured clear is stage 3 at 8302. An earlier
+// version of this probe used 6000 and reported "did not clear" -- that was the
+// budget, not a defect, which is exactly the kind of false signal this file is
+// supposed to avoid. Use the same input the other probes use (plain SHOOT) so a
+// difference here means a real difference in the call path.
+for (let f = 0; f < 12000; ++f) {
+  const held = SHOOT;
   if (!core._th185_tick(held)) break;
   const alive = core._th185_enemies_alive();
   if (alive > peakEnemies) peakEnemies = alive;
