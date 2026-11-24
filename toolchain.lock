@@ -99,13 +99,19 @@
       }
     },
     "flags": {
-      "verified_for_0x00402A50": "/c /MT /O2 /GS-",
-      "_note": [
-        "/O2 必需 —— 默认优化生成完整栈帧（139 字节 vs 68 字节）",
-        "/O1 不行 —— 过优化，用 and [mem],0 代替 mov [mem],0",
-        "/MT 静态 CRT（与 /GS- 一起测的，未单独验证哪个必需）",
-        "/GS- 是在这个函数上关掉的；但原版引用了 __security_cookie (0x4C8A4C)，说明原版开了 /GS，需要单独确认这个函数是否真的不需要 cookie"
-      ]
+      "verified": "/c /MT /O2 /GS- /Oy-",
+      "_rationale": {
+        "/O2": "默认优化生成完整栈帧与局部变量，与原版不符（同一函数 139 字节 vs 68 字节）",
+        "/Oy-": "★ 关键 —— 禁用帧指针省略，恢复 push ebp/mov ebp,esp/pop ebp。原版多数函数有栈帧。",
+        "/Ot /Ob0 /Od": "都试过，无效。只有 /Oy- 精确恢复栈帧且不引入额外局部变量",
+        "/GS-": "逐个函数验证过：0x00402A50 函数体内 0 处引用 __security_cookie、0 处 xor eax,ebp",
+        "/MT": "静态 CRT（与 /GS- 一起测的，未单独验证哪个必需）"
+      },
+      "_call_conventions": {
+        "thiscall": "__fastcall + 哑 edx 参数（MSVC 不允许自由函数用 __thiscall）",
+        "stdcall": "直接 __stdcall，编译器自动生成 ret N",
+        "cdecl": "不用于本项目（多出 4 字节 mov ecx,[esp+4]）"
+      }
     },
     "linker": null,
     "sdk_headers_hash": null,
@@ -113,14 +119,52 @@
     "local": {
       "path": "D:\\MSVC142\\14.29.30133",
       "compiler": "cl.exe 19.29.30159 (x86)",
-      "include": "D:\\MSVC142\\14.29.30133\\include",
+      "include": [
+        "D:\\MSVC142\\14.29.30133\\include",
+        "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\ucrt",
+        "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\shared",
+        "C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.19041.0\\um"
+      ],
       "lib": "D:\\MSVC142\\14.29.30133\\lib\\x86",
       "bin": "D:\\MSVC142\\14.29.30133\\bin\\Hostx86\\x86",
-      "_setup": [
-        "从 C:\\ProgramData\\Microsoft\\VisualStudio\\Packages 解包 7 个 vsix（见 evidence/P1-first-byte-match.json 的 packages_needed）",
-        "每个 payload.vsix 是 zip，内容为 Contents/VC/Tools/MSVC/14.29.30133/ 目录树，全部展开合并即可"
+      "_notes": [
+        "UCRT 的 math.h 在 Windows SDK（Kits\\10\\Include\\10.0.19041.0\\ucrt），不在 MSVC 工具集里。",
+        "只用 MSVC 的 include 会在 <math.h> 上失败 —— 这是 P1 验证脚本必须加 UCRT 路径的原因。"
       ]
-    }
+    },
+    "_codegen_rules": [
+      "12 字节聚合类型必须用 struct 整体赋值 —— 触发 SSE2 movq+mov；逐字段赋值生成 3 条普通 mov",
+      "返回 int 用 xor eax,eax + cmp [mem],eax；返回 bool 用 cmp [mem],0。判据：原版有无 33c0 前缀",
+      "原版有栈帧不等于没优化 —— /Oy 单独控制帧指针，与优化级正交"
+    ],
+    "_unresolved": [
+      {
+        "func": "0x00404B60",
+        "symptom": "原版 movss xmm0,[ecx]（SSE 返回 float），MSVC 只生成 fld dword [ecx]（x87）",
+        "tested": "14 种选项组合，全部 fld",
+        "status": "UNRESOLVED"
+      },
+      {
+        "func": "0x0049DC88",
+        "symptom": "原版有 mov edi,edi（hotpatch 序言）+ push 0x20/pop ecx",
+        "tested": "25 种选项组合，0 匹配",
+        "status": "UNRESOLVED"
+      },
+      {
+        "funcs": [
+          "0x00404B70",
+          "0x00417750"
+        ],
+        "symptom": "原版用 x87 fsincos 复合指令；MSVC 前端不合成 fsincos",
+        "tested": [
+          "_fsincos — 不存在该标识符",
+          "sinf+cosf — 67 字节，生成两次函数调用",
+          "__asm fsincos — 'fsincos' 是保留字"
+        ],
+        "note": "写 __asm 会违反 AGENTS.md §6 G4 的 inline-asm 禁令，不采用",
+        "status": "UNRESOLVED"
+      }
+    ]
   },
   "reproducibility": {
     "forbid": [

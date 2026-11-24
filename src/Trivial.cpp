@@ -48,8 +48,8 @@ float __fastcall read_first_float(void* self, void* unused_edx) {
 void __fastcall polar_to_vec2(void* self, void* unused_edx, float angle, float length) {
     (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
-    out[0] = ::cos(angle) * length;
-    out[1] = ::sin(angle) * length;
+    out[0] = std::cos(angle) * length;
+    out[1] = std::sin(angle) * length;
 }
 
 // --- 形状 F：返回 0 ---
@@ -120,8 +120,8 @@ void __fastcall polar_to_vec2_scaled(void* self, void* unused_edx,
     (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
     // ★ 实测修正：x 用 cos*length_x，y 用 sin*length_y
-    out[0] = ::cos(angle) * length_x;
-    out[1] = ::sin(angle) * length_y;
+    out[0] = std::cos(angle) * length_x;
+    out[1] = std::sin(angle) * length_y;
 }
 
 // --- 形状 I：指针编码 ---

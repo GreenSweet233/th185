@@ -33,7 +33,17 @@ import check_witness as cw
 
 MSVC_ROOT = r"D:\MSVC142\14.29.30133"
 CL = os.path.join(MSVC_ROOT, "bin", "Hostx86", "x86", "cl.exe")
-INCLUDE = os.path.join(MSVC_ROOT, "include")
+# INCLUDE 路径：MSVC 的头 + Windows SDK 的 UCRT/shared/um
+#
+# ★ 只用 MSVC 的 include 会在 <math.h> 上失败 ——
+#   math.h 在 Windows SDK 的 ucrt 目录里，不在 MSVC 工具集里。
+WINSDK = r"C:\Program Files (x86)\Windows Kits\10\Include\10.0.19041.0"
+INCLUDE_DIRS = [
+    os.path.join(MSVC_ROOT, "include"),
+    os.path.join(WINSDK, "ucrt"),
+    os.path.join(WINSDK, "shared"),
+    os.path.join(WINSDK, "um"),
+]
 LIB = os.path.join(MSVC_ROOT, "lib", "x86")
 BIN = os.path.join(MSVC_ROOT, "bin", "Hostx86", "x86")
 
@@ -72,7 +82,7 @@ def compile_cpp(source_text, flags, workdir):
     with open(cpp, "w", encoding="utf-8") as fh:
         fh.write(source_text)
     env = dict(os.environ)
-    env["INCLUDE"] = INCLUDE
+    env["INCLUDE"] = os.pathsep.join(INCLUDE_DIRS)
     env["LIB"] = LIB
     env["PATH"] = BIN + os.pathsep + env.get("PATH", "")
     cmd = [CL, "/nologo", "/c"] + flags + ["/Fo" + obj, cpp]
@@ -252,6 +262,16 @@ def main():
                           if not ln.strip().startswith("#include")
                           and not ln.strip().startswith("#pragma")
                           and "//@witness" not in ln)
+
+        # ★ 只补标准库头（不补工程头，那会引入完整依赖链）
+        #
+        # 之前完全滤掉 #include 导致 std::sin/std::cos 找不到；
+        # 但全保留又会把 "Trivial.hpp" 带进来从而导致 0/17 全崩。
+        # 折中：只保留 <...> 形式的系统头。
+        sys_includes = [ln for ln in lines
+                        if ln.strip().startswith("#include <")]
+        if sys_includes:
+            body = "\n".join(sys_includes) + "\n" + body
 
         with tempfile.TemporaryDirectory() as td:
             obj, err = compile_cpp(body, flags, td)

@@ -107,13 +107,43 @@
 | 50727 | 2 | 123 | SDK / import lib |
 | 0 | 202 | 0 / 1 / 151 | 未标记 / 链接器自身 |
 
-**修正后的结论**：
+**修正后的结论（已由实测确认，见下方「工具链实测」）**：
 
-- 真实情况是 **两个 VS 世代共存**（VS2017 15.x + VS2019 16.x），**不是三个 VS2019 补丁级**。
-- `31328` 与 `31332` 是同一产品线的两个 prodId，可能是工具集与 CRT/库之分，
-  **是否同源尚未验证** —— 若同源，则只需各装一套 VS2017 + VS2019。
-- `toolchain.lock` 的 `compiler._status` 已从 `BLOCKED` 改为 `PARTIALLY_RESOLVED`。
-- **P1 从「不可能」变成「需要装两个 VS 世代，可行」。**
+- `toolchain.lock` 的 `compiler._status` 从 `BLOCKED` 改为 `VERIFIED_FOR_ONE_FUNCTION`。
+- **P1 已可执行**：用 MSVC v142 (`19.29.30159`) + `/MT /O2 /GS- /Oy-` 对 17 个函数验证，
+  13 个字节完全相等（76.5%）。
+- `prodId` 的真实含义**仍未确定**：`27412=0x6B14`、`31328=0x7A60`、`31332=0x7A64` 的高字节
+  `0x6B`/`0x7A` **不符合已知 MSVC 编译器编码**（`0xD1`–`0xDC` 系列 = VS2005–VS2022）。
+  这些更可能是**工具类别**（链接器 / CVT / 资源编译器）的 prodId，而不是编译器版本。
+- **「需要两个 VS 世代」这个推论已失效** —— 本机缓存里只有 `14.29` 和 `14.44`，**没有 VS2017 的 `14.16`**，
+  而 v142 已经能匹配大部分函数。
+
+### 工具链实测（2026-11-24）
+
+```
+编译器 : MSVC v142 19.29.30159 (x86)
+来源   : 从 C:\ProgramData\Microsoft\VisualStudio\Packages 的 .vsix 解压
+         到 D:\MSVC142\14.29.30133，**不需要安装器和管理员权限**
+选项   : /MT /O2 /GS- /Oy-
+验证器 : tools/check_bytes.py
+结果   : 13 / 17 字节相等
+```
+
+### 三条从实测中得到的代码生成规则
+
+| 规则 | 证据 |
+|---|---|
+| **`/Oy-` 保留栈帧** | 原版多数函数有 `push ebp / mov ebp,esp`，而 `/O2` 默认省略。`/Od` 会引入多余局部变量，`/Ob0` 无效，只有 `/Oy-` 精确命中 |
+| **12 字节聚合类型必须 struct 整体赋值** | 逐字段赋值得 3 条 `mov`（18 字节）；`*(V3*)dst = *(const V3*)src` 得 SSE2 `movq`+`mov`，与原版一致 |
+| **返回 `int` 与 `bool` 走不同路径** | `int` 用 `xor eax,eax` + `cmp [mem],eax`；`bool` 用 `cmp [mem],0`。判据：原版有无 `33c0` 前缀 |
+
+### 两个未解（已标 UNRESOLVED）
+
+| 函数 | 现象 | 已排查 |
+|---|---|---|
+| `0x00404B60` `read_first_float` | 原版 `movss xmm0,[ecx]`，MSVC 只生成 `fld dword [ecx]` | 14 种选项组合全部 `fld` |
+| `0x00409C88` `encode_value` | 原版有 `mov edi,edi`（hotpatch 序言）+ `push 0x20/pop ecx` | 25 种组合 0 匹配 |
+| `0x00404B70` 等 `fsincos` | 原版用 x87 `fsincos` 复合指令 | MSVC 前端不合成 `fsincos`；3 种写法均生成函数调用 |
 
 证据：`evidence/rich-header-correction.json`
 
