@@ -12,6 +12,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <iterator>   // std::advance
 #include <vector>
 
 #ifdef __EMSCRIPTEN__
@@ -1020,6 +1021,11 @@ EMSCRIPTEN_KEEPALIVE void th185_render_only() {
 }
 
 // --- Cards ---------------------------------------------------------------
+//
+// WARNING: these take a TABLE INDEX, not a card id. The two differ for 84 of
+// the 87 rows. The state-changing exports (cards_buy / cards_equip /
+// cards_owns) take IDs. Use th185_card_index_of() / th185_card_id() to
+// convert; do not assume index == id.
 
 EMSCRIPTEN_KEEPALIVE unsigned th185_card_count() {
     return th185::CARD_COUNT;
@@ -1109,6 +1115,61 @@ EMSCRIPTEN_KEEPALIVE unsigned th185_cards_owned() {
 
 EMSCRIPTEN_KEEPALIVE int th185_cards_equip(unsigned card_id) {
     return th185::app::instance().cards().equip(card_id) ? 1 : 0;
+}
+
+// Whether one specific card is owned.
+//
+// CardInventory::owns() existed from the start but was never exported, so a
+// loadout screen could not tell "you own this" from "you do not" without
+// walking the whole loadout -- and that only lists EQUIPPED cards, which is a
+// different question. Without this export the only possible UI was a blind
+// "equip card #N" button.
+EMSCRIPTEN_KEEPALIVE int th185_cards_owns(unsigned card_id) {
+    return th185::app::instance().cards().owns(card_id) ? 1 : 0;
+}
+
+// Table index of the entry whose id is `card_id`, or 0xFFFFFFFF when absent.
+//
+// There are TWO different card keys and they are NOT interchangeable:
+//   th185_card_name / card_cost / card_price / card_is_active  take a TABLE
+//                                                              INDEX
+//   th185_cards_buy / cards_equip / cards_owns                 take a CARD ID
+// Measured across the shipped 87-entry table: only 3 rows have index == id
+// (ids 1, 2, 3 sit at index 0, 1, 9), so mixing them silently reads the wrong
+// card. Index 0 is PENDULUM whose id is 1, not card 1.
+//
+// Converting index -> id is already possible (th185_card_id); this is the
+// other direction, which a loadout screen needs because the owned set is a set
+// of IDs.
+EMSCRIPTEN_KEEPALIVE unsigned th185_card_index_of(unsigned card_id) {
+    const auto& table = th185::cards();
+    for (unsigned i = 0; i < table.size(); ++i) {
+        if (table[i].id == card_id) return i;
+    }
+    return 0xFFFFFFFFu;
+}
+
+// The card id at position `index` of the OWNED set, in ascending id order,
+// or 0xFFFFFFFF past the end.
+//
+// owned_ is a std::set<u32>, so "how many" (cards_owned) and "which ones" are
+// different questions. A loadout screen needs the latter: without it the only
+// way to offer a card was to walk all 87 table entries and probe each with
+// cards_owns(), which also cannot distinguish owned-but-not-equippable.
+EMSCRIPTEN_KEEPALIVE unsigned th185_cards_owned_at(unsigned index) {
+    const auto& owned = th185::app::instance().cards().owned_ids();
+    if (index >= owned.size()) return 0xFFFFFFFFu;
+    auto it = owned.begin();
+    std::advance(it, index);
+    return *it;
+}
+
+// Removes the card in loadout slot `index`. Returns 1 on success.
+//
+// The counterpart of equip() was also unexported, so a player who equipped the
+// wrong card had no way back short of clearing the entire loadout.
+EMSCRIPTEN_KEEPALIVE int th185_cards_unequip(unsigned index) {
+    return th185::app::instance().cards().unequip(index) ? 1 : 0;
 }
 
 EMSCRIPTEN_KEEPALIVE void th185_cards_reset_all() {

@@ -329,6 +329,141 @@ function populatePickers() {
   }
 }
 
+// --- loadout editor ------------------------------------------------------
+//
+// "Buy a card -> build a loadout -> enter a stage" is the original's core
+// loop, and the last third of it was missing from the web shell:
+// _th185_cards_equip, _th185_cards_loadout_* and _th185_cards_buy were all
+// exported and the probe drove them, but the shell had zero references, so a
+// browser player could never change what they carried.
+//
+// ## Two different card keys
+//
+// Name / cost / price / is_active take a TABLE INDEX; buy / equip / owns /
+// unequip take a CARD ID. They differ for 84 of the 87 rows (index 0 is
+// PENDULUM, whose id is 1). Mixing them silently reads the wrong card, which
+// is why every lookup below goes through card_index_of() instead of assuming
+// index == id.
+//
+// ## Why the panel is rebuilt rather than patched
+//
+// The budget rule spans the whole set: equipping one card can make another
+// unaffordable, and removing one can make several affordable again. Rebuilding
+// from the module's own state after every click keeps the buttons and the
+// truth from drifting apart.
+
+function cardTableEntry(cardId) {
+  const index = core._th185_card_index_of(cardId);
+  if (index === 0xFFFFFFFF) return null;
+  return {
+    id: cardId,
+    name: core.UTF8ToString(core._th185_card_name(index)) || ('# ' + cardId),
+    cost: core._th185_card_cost(index),
+  };
+}
+
+function loadoutSnapshot() {
+  const equipped = [];
+  const count = core._th185_cards_loadout_size();
+  for (let i = 0; i < count; ++i) equipped.push(core._th185_cards_loadout_at(i));
+  return {
+    equipped,
+    ownedCount: core._th185_cards_owned(),
+    cost: core._th185_loadout_cost(),
+    cap: core._th185_cost_cap(),
+    slots: core._th185_loadout_slots(),
+  };
+}
+
+function makeChip(entry, options) {
+  const chip = document.createElement('button');
+  chip.type = 'button';
+  chip.className = 'card-chip';
+  chip.dataset.equipped = options.equipped ? '1' : '0';
+  chip.dataset.affordable = options.affordable ? '1' : '0';
+  chip.disabled = !options.enabled;
+  chip.title = options.title || '';
+  chip.textContent = entry.name;
+  const cost = document.createElement('span');
+  cost.className = 'cost';
+  cost.textContent = String(entry.cost);
+  chip.appendChild(cost);
+  chip.addEventListener('click', options.onClick);
+  return chip;
+}
+
+function refreshLoadout() {
+  if (!core || !core._th185_cards_loadout_size) return;
+  const budget = document.querySelector('#loadout-budget');
+  const ownedList = document.querySelector('#owned-list');
+  const equippedList = document.querySelector('#equipped-list');
+  if (!ownedList || !equippedList) return;
+
+  const snap = loadoutSnapshot();
+  if (budget) {
+    budget.textContent =
+      '已装备 ' + snap.equipped.length + '/' + snap.slots + ' 槽' +
+      ' · Cost ' + snap.cost + '/' + snap.cap +
+      ' · 已拥有 ' + snap.ownedCount + ' 张';
+  }
+
+  // Equipped row: click to remove. The SLOT INDEX identifies the row, not the
+  // card id -- a stacking card can legitimately occupy two slots at once.
+  equippedList.replaceChildren();
+  if (snap.equipped.length === 0) {
+    const empty = document.createElement('p');
+    empty.textContent = '卡组为空 —— 点击下方的卡加入。';
+    empty.style.cssText = 'margin:0;font-size:0.78rem;color:var(--muted)';
+    equippedList.appendChild(empty);
+  }
+  snap.equipped.forEach(function (cardId, slot) {
+    const entry = cardTableEntry(cardId);
+    if (!entry) return;
+    equippedList.appendChild(makeChip(entry, {
+      equipped: true,
+      affordable: true,
+      enabled: true,
+      title: '点击卸下（槽位 ' + (slot + 1) + '）',
+      onClick: function () { core._th185_cards_unequip(slot); refreshLoadout(); },
+    }));
+  });
+
+  // Owned row: click to add. Rebuilt from scratch because one equip can push
+  // another card out of budget.
+  ownedList.replaceChildren();
+  const equippedCounts = new Map();
+  for (const cardId of snap.equipped) {
+    equippedCounts.set(cardId, (equippedCounts.get(cardId) || 0) + 1);
+  }
+  for (let i = 0; i < snap.ownedCount; ++i) {
+    const cardId = core._th185_cards_owned_at(i);
+    if (cardId === 0xFFFFFFFF) break;
+    const entry = cardTableEntry(cardId);
+    if (!entry) continue;
+    const already = (equippedCounts.get(cardId) || 0) > 0;
+    const fitsCost = snap.cost + entry.cost <= snap.cap;
+    const fitsSlot = snap.equipped.length < snap.slots;
+    const affordable = fitsCost && fitsSlot;
+    // A card already in the loadout stays clickable: whether a second copy is
+    // allowed is the module's call (equip() returns false for non-stacking
+    // cards), so let it decide and only explain the budget half here.
+    ownedList.appendChild(makeChip(entry, {
+      equipped: already,
+      affordable: affordable,
+      enabled: already || affordable,
+      title: already ? (affordable ? '已在卡组中，可再叠一张' : '已在卡组中（Cost 已满）')
+                     : (affordable ? '点击装备' : (fitsSlot ? 'Cost 不足' : '卡槽已满')),
+      onClick: function () { core._th185_cards_equip(cardId); refreshLoadout(); },
+    }));
+  }
+}
+
+document.querySelector('#loadout-clear').addEventListener('click', function () {
+  if (!core) return;
+  core._th185_cards_clear_loadout();
+  refreshLoadout();
+});
+
 // Applies the picker selection to the module. Called on start and on restart.
 function applySelection() {
   const sceneSelect = document.querySelector('#scene');
@@ -394,6 +529,10 @@ async function prepare() {
   // whatever the user selected (no-op on the very first start).
   populatePickers();
   applySelection();
+  // The loadout editor reads the module's owned set, which exists as soon as the
+  // archive is loaded; reset_scenario() inside applySelection() has already
+  // equipped the starter cards, so the panel opens showing them.
+  refreshLoadout();
   if (!core._th185_start()) {
     throw new Error(moduleError());
   }
@@ -418,6 +557,7 @@ document.querySelector('#start').addEventListener('click', async () => {
         core._th185_set_difficulty(Number(document.querySelector('#difficulty').value) || 0);
       }
       applySelection();
+      refreshLoadout();
     }
 
     document.querySelector('#welcome').hidden = true;

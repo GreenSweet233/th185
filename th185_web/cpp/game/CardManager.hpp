@@ -159,6 +159,9 @@ public:
     bool buy(u32 card_id);
     bool owns(u32 card_id) const;
     u32 owned_count() const;
+    // The owned ids in ascending order. A loadout screen has to enumerate what
+    // the player owns; owned_count() alone can only say how many.
+    const std::set<u32>& owned_ids() const { return owned_; }
 
     // Loadout. A card must be owned; equipping a full loadout replaces slot
     // `index` when it is in range, otherwise the oldest entry is dropped.

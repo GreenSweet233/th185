@@ -63,6 +63,76 @@ html, body {
   display: none;
 }
 
+.loadout {
+  width: min(560px, 92vw);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 10px 12px;
+  border: 1px solid rgba(122, 156, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(30, 30, 58, 0.7);
+}
+
+.loadout h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+#loadout-budget {
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.card-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.card-chip {
+  appearance: none;
+  border: 1px solid rgba(122, 156, 255, 0.35);
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.72rem;
+  line-height: 1.15;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.card-chip:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: #262650;
+}
+
+/* Equipped cards read as "on" rather than as another clickable action. */
+.card-chip[data-equipped="1"] {
+  border-color: var(--accent);
+  background: #2a2a5e;
+}
+
+/* A card the player cannot afford shows why, instead of silently doing nothing. */
+.card-chip[data-affordable="0"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.card-chip .cost {
+  color: var(--muted);
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+}
+
 #welcome h1 {
   margin: 0;
   font-size: 1.75rem;

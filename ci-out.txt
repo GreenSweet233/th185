@@ -1,0 +1,260 @@
+[PASS] target            (default)
+         目标版本 : th185 v1.00a (Japanese)
+         游戏目录 : D:\Windows\GreenSweet\Game\Materials\東方Project\小数点作\[th185] 弹幕狂们的黑市 (汉化版+日文版)
+         ==============================================================================
+           OK     th185.exe         883200  SHA256=76BBF844E962C160...
+           OK     th185.dat       74537324  SHA256=5AF133F02ADD57F2...
+           OK     thbgm.dat      255321904  SHA256=5224F1311D4FD913...
+           OK     custom.exe        128512  SHA256=AFA0747120A4B7EA...
+         ==============================================================================
+         PE 指纹（thprac ID_TH185 识别 + 重建基准）:
+           TimeDateStamp    实测=1659144319  期望=1659144319  OK
+           TextRawSize      实测=711168  期望=711168  OK
+           PECheckSum       实测=911263  期望=911263  OK
+           CheckSum 自洽    重算=0x000DE79F  存储=0x000DE79F  OK
+         ==============================================================================
+         分节 SHA-256（行为等价验证的参照，不是字节级 matching 门禁）:
+           .text      VA=0x00001000 RawSize=0x0ada00  SHA256=09DA18EF96EA7248DA75791B51AD4BCB51177CEE9BBF378FADFCE7764F12335F
+           .rdata     VA=0x000af000 RawSize=0x018000  SHA256=93B54C51113D1927108EC1A258883A2CCC70666F1A6C48ABFCAB528A5904E665
+           .data      VA=0x000c7000 RawSize=0x010000  SHA256=E0DE65F0E72D3421351B5E4DCCB4CBB6162B1C41F949D077D3F006841F26FF57
+           .rsrc      VA=0x0017b000 RawSize=0x001c00  SHA256=5B428BF3630C6A3171DFAE95FADD193C6214B58465C373E3A1928B23D665C89A
+         
+           overlay = 0 字节（0 表示无壳、无附加数据）
+           ImageBase = 0x00400000  EntryPoint RVA = 0x0009003B
+         ==============================================================================
+         结果：PASS —— 4 个文件全部匹配原版日文 v1.00a，PE 指纹与 CheckSum 自洽
+[PASS] ledgers           (default)
+         目标     : th185 v1.00a
+         子系统   : 33 个  (complete=6  in-progress=10  not-started=17)
+         行为断言 : 370 条  (verified=343  implemented=27)
+         已知符号 : 23 条
+         ======================================================================
+         结果：PASS —— 账本一致
+[PASS] progress          (--stdout)
+         | 子系统总数 | 33 |
+         | 已完成 | 6 |
+         | 行为断言总数 | 370 |
+         | 已验证断言 | 343 |
+         | 已完成 | 6 | SYS-CORE-ARCHIVE / SYS-CORE-ANM / SYS-CORE-RNG / SYS-GAME-CARD / SYS-GAME-MARKET / SYS-GAME-STAGE |
+[PASS] progress-fresh    (--check)
+         docs/PROGRESS.md is up to date (1159 bytes)
+[PASS] probe             (--selftest)
+         [PASS] memcpy(0x92E00) ���� 64 �ֽ�
+[PASS] rng               (--selftest)
+         seed = 0x1234
+[PASS] waves             (--selftest)
+[PASS] waves-algo        (--selftest-algo)
+[PASS] waves-force       (--selftest-force)
+[PASS] cards             (--selftest)
+[PASS] card-classes      (--selftest)
+         === ability-card class map selftest ===
+         
+         [PASS] found 87 AbilityCard RTTI classes (expect 87)
+         [PASS] every class resolves to a vtable (87 / 87)
+         [PASS] every vtable has exactly 22 virtual functions
+         [PASS] every class has a DISTINCT vtable
+         [PASS] all vtables lie in the expected .rdata window
+         [PASS] the abstract base (.?AVAbilityCardInf@@) is present
+         [PASS] slot 21 is the scalar deleting destructor in every class
+         [PASS] card table also has 87 entries (they correspond 1:1)
+                16 card-table names have no exact RTTI match: ['FLAN', 'STAR', 'LUNA', 'SUNNY', 'YUREIMU', 'YUMARISA']
+         
+         selftest passed: all 87 card classes mapped to vtables
+[PASS] lzss              (--selftest)
+[PASS] difficulty        (--selftest)
+         selftest passed: difficulty system matches expectations
+[PASS] pbg4              (--selftest)
+         [PASS] magic = 0x31414854 (THA1)
+         selftest passed: PBG4 container fully parsed
+[PASS] save              (--selftest)
+         === save file reader selftest ===
+         
+         file: C:\Users\HP\AppData\Roaming\ShanghaiAlice\th185\scoreth185.dat (20820 bytes)
+         
+         [PASS] magic is "581T"
+         [PASS] version is 6
+         [PASS] header echoes the file size (20820)
+         [PASS] 24 + compressed size == file size
+         [PASS] +0x0C is the constant 0x100
+         [PASS] LZSS produced exactly 158240 bytes
+         [PASS] records consume the whole buffer (158240 / 158240 bytes)
+         [PASS] every record has a known magic (['CR', 'CR', 'ST'])
+         [PASS] found 2 CR record(s)
+         [PASS] first CR record has 62 slots
+         [PASS] 60 empty slots form 6 groups of 10
+         [PASS] empty-slot scores decrease within each group
+         [PASS] every empty slot is named '--------'
+                (2 real result slot(s) present)
+         [PASS] every slot name is 8 characters
+         [PASS] found 1 ST record(s)
+         
+         selftest passed: save file fully decoded
+[PASS] anm               (--selftest)
+         === ANM parser selftest (thtk anm_header11_t) ===
+         
+         [PASS] found 55 .anm files (expect 55)
+         [PASS] all 55 .anm files parse (0 errors)
+         [PASS] every file reports version 8
+         [PASS] sprite count matches the header for every file (0 bad)
+         [PASS] 1879 sprite records total (expect 1879)
+         [PASS] format distribution is {5: 32, 1: 19, 3: 4} (got {5: 32, 1: 19, 3: 4})
+         [PASS] every THTX block has a whole bytes-per-pixel of 1/2/4 (0 bad)
+         [PASS] text.anm uses the in-file atlas marker "@"
+         [PASS] 8 files set lowresscale (expect 8)
+         [PASS] 610 script entries total (expect 610)
+         [PASS] 10566 script instructions total (expect 10566)
+         [PASS] every instruction is 8+ bytes, 4-aligned, and contiguous (0 bad)
+         [PASS] thtk formats_v8 predicts the size of all 71 covered opcodes (0 bad)
+         
+         selftest passed: ANM container fully parsed via anm_header11_t
+[PASS] anm-texture       (default)
+         === ANM texture decoder selftest ===
+         
+         [PASS] collected 54 THTX blocks
+         [PASS] every block uses a known format code (0 unknown)
+         [PASS] every block size equals width*height*bytes_per_pixel (0 bad)
+                format distribution across blocks: {5: 31, 1: 19, 3: 4}
+         [PASS] decoded 40 blocks with correct output shape and alpha (0 bad)
+         [PASS] BGRA8888 sample decodes to RGBA [30, 20, 10, 40]
+         [PASS] ARGB4444 0xFFFF decodes to opaque white
+         [PASS] RGB565 0xFFFF decodes to opaque white
+         [PASS] unknown format code is rejected
+         
+         selftest passed: ANM textures decode correctly
+[PASS] std               (--selftest)
+         selftest passed: all 9 scenes parsed
+[PASS] ecl               (--selftest)
+         selftest passed: SCPT/ECLH structure fully parsed
+[PASS] ecl-builtins      (--selftest)
+         selftest passed: ECL builtin table decoded
+[PASS] ecl-coverage      (--selftest)
+         === ECL opcode coverage selftest ===
+         
+         [PASS] 23770 instructions across 165 opcodes (expect 23770 / 165)
+         [PASS] distinct opcode count is 165 (expect 165)
+         [PASS] TH11-shared opcodes cover 54.89% of instructions (expect ~54.89%)
+         [PASS] 12 of the 20 busiest opcodes are TH11-shared
+         [PASS] 54 opcodes reach 90% coverage (expect 54)
+         [PASS] 109 opcodes reach 99% coverage (expect 100..120)
+         [PASS] all 44 shared opcodes have a TH11 name
+                (10 opcodes have variable instruction size: [300, 15, 301, 30, 1006, 16, 11, 304] ...)
+         
+         selftest passed: opcode coverage matches the documented figures
+[PASS] ecl-interp        (default)
+         === ECL interpreter selftest ===
+         
+         [PASS] implemented opcodes cover 87.92% of instructions (pure stack ops)
+         [PASS] needs-context opcodes cover 0.00% (blocked on EclContext)
+         [PASS] implemented and needs-context sets are disjoint (ok)
+                (14 implemented opcodes never appear in TH185 data: [18, 19, 20, 41, 60, 62, 71, 72, 73, 75, 79, 80, 83, 88])
+         [PASS] every jump target is a boundary or past the subroutine end (0 bad, 34 exits)
+         [PASS] instruction offsets are contiguous (offset+size == next) (0 bad)
+         [PASS] 173 subroutine(s) use only implemented opcodes
+                BossDead / Ecl_EtBreak (14 instructions)
+                BossDead / Ecl_EtBreak2 (14 instructions)
+                BossDead / Ecl_EtBreak2_ni (14 instructions)
+                BossDead / Ecl_EtBreak_ni (14 instructions)
+                BossDead / EffChargePoint (8 instructions)
+         [PASS] every case-body opcode is reachable via is_supported() (0 dead: none)
+         [PASS] every Store reference decodes (411 builtin, 537 frame-local, 0 bad)
+         [PASS] both reference kinds occur in real data
+         [PASS] all 364 Call targets parse (0 bad)
+         [PASS] 156 distinct call targets (most frequent: ('EffChargePoint2', 57))
+         [PASS] all 1021 op1013 schedules have the expected structure (0 bad)
+         [PASS] every op1013 time sequence is non-decreasing (1021/1021)
+         [PASS] op1013 slot values are a small set (11 distinct: [0, 1, 4, 5, 8, 9, 12, 13, 16, 17, 18])
+         [PASS] all 1704 op23 prefixes are 0 or 8 (0 bad)
+         [PASS] op23 values are a small frame-like set (51 distinct)
+         
+                coverage breakdown (three DIFFERENT definitions):
+                  total instructions          : 23770
+                  A. real switch case body    : 21684 (91.22%)  <- semantics executed
+                  B. A + inferred stack effect: 23659 (99.53%)  <- balanced, semantics unknown
+                  C. this check's IMPLEMENTED : 20899 (87.92%)  <- what the assertions use
+                  needs ECL context           : 0
+                  no handler at all           : 111
+         [PASS] the checker never claims an opcode the code does not handle (ok)
+         
+         selftest passed: ECL interpreter covers the TH11-shared opcodes
+[PASS] ecl-stack         (--selftest)
+         === ECL stack-effect inference selftest ===
+         
+         [PASS] found 480 loops containing unknown opcodes
+         [PASS] 404 of 480 loops are tight enough to use (|residual| <= 4)
+                solved 32 opcode effect(s), 14 loop(s) still under-determined
+                  op 11    net +0
+                  op 15    net +0
+                  op 45    net -1
+                  op 81    net -1
+                  op 82    net -2
+                  op 93    net +1
+                  op 94    net +1
+                  op 303   net +0
+                  op 313   net -1
+                  op 316   net -1
+                  op 319   net +1
+                  op 404   net +0
+                  op 405   net +1
+                  op 412   net +1
+                  op 422   net +0
+                  op 441   net +1
+                  op 445   net +2
+                  op 535   net +0
+                  op 555   net +0
+                  op 601   net +1
+                  op 603   net -1
+                  op 604   net +0
+                  op 605   net -1
+                  op 609   net +0
+                  op 610   net +0
+                  op 615   net +0
+                  op 626   net -2
+                  op 627   net +1
+                  op 628   net -2
+                  op 702   net +2
+                  op 1011  net +0
+                  op 1021  net -1
+         [PASS] every solved effect is small (|net| <= 4)
+         [PASS] pinned at least one 600-family opcode ([601, 604, 609, 605, 610, 626, 603, 627, 628, 615])
+         
+         selftest passed: stack effects inferred from loop constraints
+[PASS] rng-cpp           (--selftest)
+         selftest passed: cpp/game/Rng.hpp is bit-identical to the reference
+[PASS] archive-cpp       (--selftest)
+         selftest passed: cpp/game/Archive.cpp matches the reference
+[PASS] ecl-cpp           (--selftest)
+         selftest passed: cpp/game/EclResource.cpp matches the reference
+[PASS] stage-cpp         (--selftest)
+         selftest passed: cpp/game/StageScript.cpp matches the reference
+[PASS] waves-cpp         (--selftest)
+         selftest passed: cpp/game/WaveSelector.cpp matches the reference
+[PASS] enemymanager-cpp  (--selftest)
+         === EnemyManager weight model selftest ===
+         
+         [PASS] counter -> weights_a stride is 111 * 4 = 0x1BC
+         [PASS] weights_a -> weights_b stride is 111 * 4 = 0x1BC
+         [PASS] header declares EM_COUNTER_OFFSET = 0x168
+         [PASS] header declares EM_WEIGHTS_A_OFFSET = 0x324
+         [PASS] header declares EM_WEIGHTS_B_OFFSET = 0x4E0
+         [PASS] header declares EM_SKIP_INDEX_OFFSET = 0x4F4C
+         [PASS] weights_a is a straight copy of value_a
+         [PASS] weights_b = value_b/(count+1) - count with count=0 gives 1000
+         [PASS] count=9 gives weights_b = 1000/10 - 9 = 91
+         [PASS] a negative result is filtered to 0 and counted as ineligible
+         [PASS] note_drawn increments the counter and records the skip index
+         [PASS] drawing the same template twice makes counter 2
+         [PASS] the source really increments counter[index]
+         [PASS] header states value_a/value_b are inputs (general ECL reader)
+         [PASS] after 50 draws template 0 is no longer eligible
+         
+         selftest passed: EnemyManager weight model matches the disassembly
+[PASS] cards-cpp         (--selftest)
+         selftest passed: cpp/game/CardManager.cpp matches the reference
+[PASS] difficulty-cpp    (--selftest)
+         selftest passed: cpp/game/Difficulty.cpp matches the reference
+[PASS] cpp-build         (default)
+         compiled 29 translation unit(s), archive written
+[PASS] cpp-runtime       (--selftest)
+         selftest passed: the COMPILED C++ RNG is bit-identical to the original
+[PASS] cpp-archive       (--selftest)
+         selftest passed: the COMPILED C++ parses the real archive correctly

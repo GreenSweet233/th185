@@ -88,6 +88,9 @@ checks.push(
   // No browser automation here, so the shell is checked by CONTRACT: exports,
   // element ids, asset paths. Those are the failures that actually happen.
   { name: "shell-contract", args: [resolve(here, "native", "shell_contract_check.py")], python: true },
+  // The cards panel's data path: two different card keys, budget/slot gates,
+  // slot-index removal, and whether the equipped set actually changes the run.
+  { name: "loadout", args: [resolve(here, "native", "loadout_check.py")], python: true, timeoutMs: 600000 },
   // Rendering a frame and moving a character are different claims; this proves
   // the bitmask the shell sends actually reaches an entity.
   { name: "player-input", args: [resolve(here, "native", "player_input_check.py")], python: true, timeoutMs: 1800000 },
