@@ -256,6 +256,27 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # 9.1 The scene / difficulty pickers must exist AND be wired.
+    #
+    # The shell used to always load scene 0 at difficulty 0. Eight of the nine
+    # scenes and seven of the eight difficulties were unreachable from the
+    # browser, even though every export existed and the probe drove them
+    # directly -- the gap was purely in the shell, and nothing noticed because
+    # "the game runs" was the only thing being checked.
+    for element in ('id="scene"', 'id="difficulty"'):
+        ok = element in html
+        print('[%s] the welcome panel has a %s picker'
+              % ('PASS' if ok else 'FAIL', element.split('"')[1]))
+        if not ok:
+            failures += 1
+
+    for name in ('_th185_scene_count', '_th185_scene_name',
+                 '_th185_load_stage', '_th185_set_difficulty'):
+        ok = name in shell
+        print('[%s] the shell uses %s' % ('PASS' if ok else 'FAIL', name))
+        if not ok:
+            failures += 1
+
     # 10. pause_confirm must read the module's phase rather than assume which
     #     item was picked: Resume/Restart keep Playing, Quit goes to Idle.
     ok = re.search(r'function pauseActivate\(\)[\s\S]{0,600}?_th185_phase\(\)', shell) is not None

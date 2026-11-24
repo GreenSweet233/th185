@@ -8,6 +8,7 @@
 // so exporting th11_*_audio_probe style functions would be dishonest.
 
 #include "Application.hpp"
+#include "../game/Difficulty.hpp"   // difficulty_names() for the shell's picker
 
 #include <cstdio>
 #include <cstring>
@@ -493,6 +494,18 @@ EMSCRIPTEN_KEEPALIVE void th185_set_difficulty(unsigned difficulty) {
 
 EMSCRIPTEN_KEEPALIVE unsigned th185_difficulty() {
     return th185::app::instance().difficulty();
+}
+
+// Difficulty list for the shell's picker. The names come from Difficulty.cpp,
+// which parses them out of the executable (VA 0x4D1038) -- they are not typed
+// in by hand, so the picker cannot drift from the binary.
+EMSCRIPTEN_KEEPALIVE unsigned th185_difficulty_count() {
+    return th185::DIFFICULTY_COUNT;
+}
+
+EMSCRIPTEN_KEEPALIVE const char* th185_difficulty_name(unsigned index) {
+    const auto& names = th185::difficulty_names();
+    return index < names.size() ? names[index] : "";
 }
 
 // The difficulty the ECL interpreter itself sees (diagnostics only).

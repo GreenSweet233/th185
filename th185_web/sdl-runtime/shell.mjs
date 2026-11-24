@@ -290,6 +290,59 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
+// Populate the scene / difficulty pickers from the module.
+//
+// Before this, the shell always loaded scene 0 at difficulty 0: eight of the
+// nine scenes and seven of the eight difficulties were unreachable from the
+// browser even though the exports existed and the probe drove them directly.
+// The names are read back from the module (which parses them out of the
+// executable), so the menus cannot silently drift from the data.
+function populatePickers() {
+  const sceneSelect = document.querySelector('#scene');
+  const difficultySelect = document.querySelector('#difficulty');
+
+  if (sceneSelect) {
+    sceneSelect.innerHTML = '';
+    const count = core._th185_scene_count();
+    for (let i = 0; i < count; ++i) {
+      const option = document.createElement('option');
+      option.value = String(i);
+      const name = core.UTF8ToString(core._th185_scene_name(i));
+      const waves = core._th185_scene_waves(i);
+      option.textContent = (i + 1) + '. ' + (name || ('Scene ' + i)) + '（' + waves + ' 波）';
+      sceneSelect.appendChild(option);
+    }
+  }
+
+  if (difficultySelect) {
+    difficultySelect.innerHTML = '';
+    const count = core._th185_difficulty_count();
+    for (let i = 0; i < count; ++i) {
+      const option = document.createElement('option');
+      option.value = String(i);
+      const name = core.UTF8ToString(core._th185_difficulty_name(i));
+      option.textContent = name || ('难度 ' + i);
+      difficultySelect.appendChild(option);
+    }
+    // Default to Normal when it exists rather than leaving it on Very Easy.
+    if (count > 2) difficultySelect.value = '2';
+  }
+}
+
+// Applies the picker selection to the module. Called on start and on restart.
+function applySelection() {
+  const sceneSelect = document.querySelector('#scene');
+  const difficultySelect = document.querySelector('#difficulty');
+  if (difficultySelect && core._th185_set_difficulty) {
+    core._th185_set_difficulty(Number(difficultySelect.value) || 0);
+  }
+  const scene = sceneSelect ? Number(sceneSelect.value) || 0 : 0;
+  if (core._th185_load_stage && !core._th185_load_stage(scene)) {
+    throw new Error(moduleError() || '无法加载所选场景');
+  }
+  return scene;
+}
+
 async function prepare() {
   status.textContent = '正在加载引擎…';
   const moduleUrl = new URL('/th185-app.mjs', location.href).href;
@@ -318,6 +371,10 @@ async function prepare() {
   if (!core._th185_initialize()) {
     throw new Error(moduleError());
   }
+  // initialize() loads scene 0. Fill the pickers from the module, then apply
+  // whatever the user selected (no-op on the very first start).
+  populatePickers();
+  applySelection();
   if (!core._th185_start()) {
     throw new Error(moduleError());
   }
@@ -331,8 +388,18 @@ document.querySelector('#start').addEventListener('click', async () => {
   button.disabled = true;
   errorBox.hidden = true;
   try {
-    if (!core) await prepare();
-    else if (!core._th185_restart()) throw new Error(moduleError());
+    if (!core) {
+      await prepare();
+    } else {
+      // Restart from the title screen must honour the pickers; the old code
+      // called restart() which always reloads scene 0 at the current
+      // difficulty, silently ignoring what the user had chosen.
+      if (!core._th185_restart()) throw new Error(moduleError());
+      if (core._th185_set_difficulty) {
+        core._th185_set_difficulty(Number(document.querySelector('#difficulty').value) || 0);
+      }
+      applySelection();
+    }
 
     document.querySelector('#welcome').hidden = true;
     running = true;
