@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import re
 import sys
 from pathlib import Path
 
@@ -205,6 +206,45 @@ def selftest() -> int:
     if clean:
         for name, sub_name, count in clean[:5]:
             print('       %s / %s (%d instructions)' % (name, sub_name, count))
+    if not ok:
+        failures += 1
+
+    # 6.1 Every opcode with a `case EclOp::` body must be REACHABLE.
+    #
+    # is_supported() is consulted before the switch and returns
+    # "in kOpNames or in kInferredNet". A case body whose opcode is in neither
+    # table therefore never runs -- the code looks implemented and is dead.
+    #
+    # This actually happened: op1017 and op1019 had full case bodies (stage
+    # signal set / wait) and were absent from both tables, so the bodies were
+    # unreachable and the stage_signal counters could never move. Nothing caught
+    # it, because "there is a case for it" reads as "it is implemented".
+    source = (HERE.parent / '..' / 'cpp' / 'game' / 'EclInterpreter.cpp').resolve().read_text(
+        encoding='utf-8', errors='replace')
+    header = (HERE.parent / '..' / 'cpp' / 'game' / 'EclInterpreter.hpp').resolve().read_text(
+        encoding='utf-8', errors='replace')
+
+    enum_match = re.search(r'enum class EclOp[\s\S]{0,8000}?\n\};', header)
+    enum_of = {}
+    if enum_match:
+        for name, number in re.findall(r'(\w+)\s*=\s*(\d+)', enum_match.group(0)):
+            enum_of[name] = int(number)
+
+    case_ops = {enum_of[name] for name in re.findall(r'case EclOp::(\w+)\s*:', source)
+                if name in enum_of}
+
+    names_table = re.search(r'const OpName kOpNames\[\] = \{([\s\S]*?)\n\};', source)
+    supported = set()
+    if names_table:
+        supported |= {int(n) for n in re.findall(r'\{(\d+),\s*"', names_table.group(1))}
+    net_table = re.search(r'const NetEffect kInferredNet\[\] = \{([\s\S]*?)\n\};', source)
+    if net_table:
+        supported |= {int(n) for n in re.findall(r'\{(\d+),\s*[-+]?\d+\}', net_table.group(1))}
+
+    dead = sorted(op for op in case_ops if op not in supported)
+    ok = not dead
+    print('[%s] every case-body opcode is reachable via is_supported() (%d dead: %s)'
+          % ('PASS' if ok else 'FAIL', len(dead), dead or 'none'))
     if not ok:
         failures += 1
 

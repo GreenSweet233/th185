@@ -185,6 +185,15 @@ const OpName kOpNames[] = {
     {507, "SpawnParams"}, {1026, "BossTimerValue"},
     {545, "AttackPrepare"}, {445, "TimedValue"},
     {1013, "Op1013Schedule"},
+    // op1017 / op1019 have case bodies (stage signal set / wait) but were
+    // missing here. is_supported() runs BEFORE the switch, so returning false
+    // made both bodies unreachable dead code -- provable statically, and
+    // consistent with the stage_signal counters never leaving 0.
+    {1017, "Op1017StageSignalSet"}, {1019, "Op1019StageSignalWait"},
+    // op1017 / op1019 have case bodies (stage signal set / wait) but were
+    // missing here. is_supported() runs BEFORE the switch, so returning false
+    // here made both bodies unreachable dead code -- provable statically, and
+    // consistent with the stage_signal counters never leaving 0.
     {1015, "Op1015Query"}, {300, "Op300CallNamed"},
     {304, "Op304CallNamedVariant"}, {302, "Op302Field1c"},
     {500, "Op500BoundsA"}, {1006, "Op1006Comment"},
