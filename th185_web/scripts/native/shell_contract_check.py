@@ -277,6 +277,30 @@ def selftest() -> int:
         if not ok:
             failures += 1
 
+    # 9.2 A stage load must also reset the run.
+    #
+    # load_stage() swaps the scene data only. Lives, the starting loadout and
+    # the magic circle are all created by reset_scenario(), and the shell did
+    # not call it -- so the browser ran with player_lives=0, loadout_size=0 and
+    # magic_ready=0 while every probe reported healthy numbers, because the
+    # probes call reset_scenario() themselves (28 sites in probe-input.mjs) and
+    # were therefore asserting on their own setup.
+    #
+    # The contract that has to hold is "after load_stage the run is initialised",
+    # so check that the shell calls reset_scenario() and that it does so in
+    # applySelection(), i.e. on the path every start and restart takes.
+    apply_body = re.search(r'function applySelection\(\)\s*\{([\s\S]*?)\n\}', shell)
+    ok = apply_body is not None and '_th185_reset_scenario' in apply_body.group(1)
+    print('[%s] applySelection() re-initialises the run (reset_scenario)'
+          % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
+    ok = '_th185_reset_scenario' in exported
+    print('[%s] the build exports reset_scenario' % ('PASS' if ok else 'FAIL'))
+    if not ok:
+        failures += 1
+
     # 10. pause_confirm must read the module's phase rather than assume which
     #     item was picked: Resume/Restart keep Playing, Quit goes to Idle.
     ok = re.search(r'function pauseActivate\(\)[\s\S]{0,600}?_th185_phase\(\)', shell) is not None

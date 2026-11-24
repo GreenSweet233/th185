@@ -340,6 +340,25 @@ function applySelection() {
   if (core._th185_load_stage && !core._th185_load_stage(scene)) {
     throw new Error(moduleError() || '无法加载所选场景');
   }
+  // load_stage() only swaps the scene data; everything that makes a RUN
+  // playable is initialised by reset_scenario(). The shell never called it, so
+  // in the browser the player had ZERO lives, no starting loadout, and the
+  // magic circle was never constructed.
+  //
+  // Measured on the real module with the exact shell call order
+  // (initialize -> load_stage -> start), before this line:
+  //   cards_currency 0, cards_owned 0, loadout_size 0,
+  //   magic_ready 0, magic_reload/break 0/0, player_lives 0
+  // and after it:
+  //   cards_currency 954, cards_owned 3, loadout_size 3, cost 45/100,
+  //   magic_ready 1, magic_reload/break -33/33, player_lives 3.
+  //
+  // Nothing caught this because every probe calls reset_scenario() itself
+  // before asserting (28 call sites in probe-input.mjs), so the checks were
+  // testing the probe's own setup rather than the browser's path. That is the
+  // same class of bug as the unreachable pause menu: the export existed, the
+  // probe drove it, and only the shell was missing the call.
+  if (core._th185_reset_scenario) core._th185_reset_scenario();
   return scene;
 }
 
