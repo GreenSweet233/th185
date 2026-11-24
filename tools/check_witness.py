@@ -327,11 +327,66 @@ def find_function_start(insns, addr, by_va):
         # 前一条是 ret / int3 -> 当前位置就是函数起点
         if prev["mnemonic"].startswith("ret") or prev["mnemonic"] == "int3":
             return cur
+        # ★★ 前一条是 jmp -> **不能**继续回溯，这就是本函数的起点。
+        #
+        # 实测反例（0x004903B9）：
+        #
+        #   0x004903B4  jmp 0x49040A   <- 尾调用桩，属于**另一个函数**
+        #   0x004903B9  xor eax, eax   <- 我们要找的函数
+        #   0x004903BB  ret
+        #
+        # 旧逻辑把 jmp 当普通指令继续往前，回溯到 0x004903B4，
+        # 于是把一个只有 2 条指令的函数膨胀成 3 条，并吞掉了邻居的 jmp。
+        # 后果：形状分组把 0x004903B9 和另外三个 2 条指令的 xor 函数拆开，
+        # 我却在源码里把它们写进了同一个函数。
+        if prev["mnemonic"] == "jmp":
+            return cur
         # 前一条是 push ebp（函数序言）-> 从它起
         if prev["mnemonic"] == "push" and prev["op_str"].strip() == "ebp":
             return prev_va
         pos -= 1
     return ordered[pos]
+
+
+def infer_signature(body, mode=""):
+    """从函数体推导 (ret_bytes, param_count, convention)。
+
+    ## 为什么需要
+
+    形状分组如果只看指令序列，会把**签名不同**的函数归到一起。
+    实测：`0x00417750` 是 `ret 0xC`（3 个参数），
+    而 `0x00458 7B0` 是 `ret 8`（2 个参数）—— 指令序列几乎一样，
+    因为都是 fsincos 极坐标，但多了一个 length 参数。
+
+    ret 操作数是最可靠的签名证据：
+      ret      -> cdecl / thiscall 无参数（调用方清栈）
+      ret N    -> stdcall / thiscall 带栈清理，N 字节参数
+    参数个数 = N / 4。
+
+    ## 参数个数的盲点
+
+    我第一版用 `int(retop, 16) // 4`，但 `ret 0xC` 的 op_str 是字符串 "0xc"，
+    `int("0xc", 16)` = 12，12//4 = 3 —— 这条其实是对的。
+    真正的坑是 `ret` 无操作数时 op_str 是空串，被当成 0 个参数，
+    而它实际表示「调用方清栈」，参数个数无法从 ret 推出。
+    """
+    retop = None
+    for ins in reversed(body):
+        if ins["mnemonic"].startswith("ret"):
+            retop = ins["op_str"].strip()
+            break
+    if retop is None:
+        return {"ret_bytes": None, "params": None, "convention": "unknown"}
+    if retop == "":
+        # 无操作数：无法从 ret 推参数个数
+        return {"ret_bytes": 0, "params": None,
+                "convention": mode or "cdecl?"}
+    try:
+        n = int(retop, 16) if not retop.startswith("0x") else int(retop, 16)
+    except ValueError:
+        return {"ret_bytes": None, "params": None, "convention": "unknown"}
+    return {"ret_bytes": n, "params": n // 4,
+            "convention": mode or ("thiscall" if n % 4 == 0 else "?")}
 
 
 def function_extent(label, insns):
