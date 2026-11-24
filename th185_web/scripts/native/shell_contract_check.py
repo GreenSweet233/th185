@@ -214,6 +214,26 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
+    # 8. addEventListener must not be called from inside the frame loop.
+    #
+    # addEventListener deduplicates by listener IDENTITY. A closure created
+    # inside frame() is a new function object on every call, so it is never
+    # deduplicated and the listeners accumulate: the audio-unlock handler used
+    # to do exactly this, adding two listeners per frame (pointerdown + keydown)
+    # until the first gesture fired -- thousands of pending listeners after a
+    # minute of play, all invoked on the next keypress.
+    #
+    # Checking "the listener is registered at module scope" is the property that
+    # actually prevents the leak, and it is checkable without a browser.
+    frame_body = re.search(r'function frame\(now\) \{([\s\S]*?)\n\}', shell)
+    leak = False
+    if frame_body and 'addEventListener' in frame_body.group(1):
+        leak = True
+    print('[%s] the frame loop registers no event listeners (leak guard)'
+          % ('PASS' if not leak else 'FAIL'))
+    if leak:
+        failures += 1
+
     # Pausing must drop the touch bits too, or a held direction stays stuck on
     # after resume (the pointerup is lost while the game is paused).
     ok = ('function clearInput' in shell

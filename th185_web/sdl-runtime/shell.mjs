@@ -222,6 +222,24 @@ function resumeAudio() {
   }
 }
 
+// Audio needs a user gesture before a browser will start it. Bind ONCE, at module
+// scope, then unhook so later gestures do not re-create the context.
+//
+// This used to live INSIDE frame(). addEventListener deduplicates by listener
+// identity, and a closure created inside frame() is a brand new function object
+// every call -- so each frame added two more listeners (pointerdown + keydown)
+// and none were removed until a gesture fired. After one minute at 60 fps that
+// is ~7200 accumulated listeners, all invoked on the next keypress. It was a
+// leak that also made the first input event slow, on a path nobody looks at
+// because the game still "worked".
+const wakeAudio = () => {
+  resumeAudio();
+  window.removeEventListener('pointerdown', wakeAudio);
+  window.removeEventListener('keydown', wakeAudio);
+};
+window.addEventListener('pointerdown', wakeAudio);
+window.addEventListener('keydown', wakeAudio);
+
 function audioHealth() {
   if (!audioEnabled) return '音频未启用';
   if (!audioContext) return '音频初始化中';
@@ -269,18 +287,7 @@ function frame(now) {
     healthAt = now;
   }
   ++frames;
-
-  // Audio needs a user gesture. Bind once, then unhook so later clicks do
-// not re-create the context.
-const wakeAudio = () => {
-  resumeAudio();
-  window.removeEventListener('pointerdown', wakeAudio);
-  window.removeEventListener('keydown', wakeAudio);
-};
-window.addEventListener('pointerdown', wakeAudio);
-window.addEventListener('keydown', wakeAudio);
-
-requestAnimationFrame(frame);
+  requestAnimationFrame(frame);
 }
 
 async function prepare() {
