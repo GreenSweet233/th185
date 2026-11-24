@@ -68,32 +68,37 @@ def clang_version(clang):
 
 
 def find_msvc():
-    r"""找本机可用的 cl.exe。
+    """
+    找本机可用的 cl.exe。
 
-    ## 为什么不用 os.walk
+    搜索范围：
+      C:/D: 的 Program Files (x86)/Microsoft Visual Studio/<year>/<Edition>/VC/Tools/MSVC/<ver>
+      以及旧版 VC98/Bin/CL.EXE
 
-    实测：`os.path.isdir(r"C:\\Program Files\\Microsoft Visual Studio")` 为 True，
-    但 `os.walk` 对该目录返回 0 个文件（Windows 上 Program Files 的子目录
-    有 reparse point / 权限特殊性，walk 静默跳过）。
-    改为「按已知布局直接构造候选路径」，可靠且快速。
+    为什么用 glob 而不是 os.walk：
+      实测 os.path.isdir(C:/Program Files/Microsoft Visual Studio) 为 True，
+      但 os.walk 对该目录返回 0 个文件（Windows 上该子树有 reparse point /
+      权限特殊性，walk 静默跳过）。glob 走底层 FindFirstFile，不受影响。
 
-    VS 布局：<root>\<Edition>\VC\Tools\MSVC\<ver>\bin\Hostx64\x64\cl.exe
+    glob 模式为什么写两套：
+      VS2022 是 <root>/2022/Community/VC/...（多一层年份），
+      VS2019 BuildTools 装在 D 盘时是 <root>/2019/BuildTools/VC/...（同样多一层）。
+      但早期布局可能是 <root>/<Edition>/VC/...，两套都试。
     """
     import glob
+    roots = [
+        "C:\\Program Files\\Microsoft Visual Studio",
+        "C:\\Program Files (x86)\\Microsoft Visual Studio",
+        "D:\\Program Files\\Microsoft Visual Studio",
+        "D:\\Program Files (x86)\\Microsoft Visual Studio",
+    ]
     patterns = []
-    for root in ("C:\\Program Files\\Microsoft Visual Studio",
-                 "C:\\Program Files (x86)\\Microsoft Visual Studio"):
-        # 用 glob 而不是 walk：glob 走底层 FindFirstFile，不受 walk 的权限判断影响
-        # ★ 实测：VS2022 的实际布局是
-        #   C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\...
-        # 即 <root>/<year>/<Edition>/VC/... —— 比 <root>/<Edition>/VC/... 多一层。
-        # 我第一版只跨一层，glob 返回 [] ，于是误报「本机无 MSVC」。
+    for root in roots:
         for mid in (os.path.join("*", "*"), "*"):
             for host in ("Hostx64", "Hostx86"):
                 patterns.append(os.path.join(
                     root, mid, "VC", "Tools", "MSVC", "*",
                     "bin", host, "x64", "cl.exe"))
-        # 旧版 VS（VC98 / VS2002-2008）布局不同，单独加一条
         patterns.append(os.path.join(root, "*", "VC98", "Bin", "CL.EXE"))
     found = []
     for pat in patterns:
@@ -102,7 +107,6 @@ def find_msvc():
         except OSError:
             pass
     return sorted(set(found))
-
 
 def probe(clang, path, include_dirs, extra_flags):
     cmd = [clang, "-x", "c++", "-std=c++17", "-fsyntax-only",
