@@ -135,7 +135,8 @@
     "_codegen_rules": [
       "12 字节聚合类型必须用 struct 整体赋值 —— 触发 SSE2 movq+mov；逐字段赋值生成 3 条普通 mov",
       "返回 int 用 xor eax,eax + cmp [mem],eax；返回 bool 用 cmp [mem],0。判据：原版有无 33c0 前缀",
-      "原版有栈帧不等于没优化 —— /Oy 单独控制帧指针，与优化级正交"
+      "原版有栈帧不等于没优化 —— /Oy 单独控制帧指针，与优化级正交",
+      "**只有宏能让偏移折叠进 disp8** —— inline 函数生成 `add eax,[ebp+0xC]`，template 生成 `add eax,0x44`，只有 `#define` 文本替换才生成 `[ecx+0x44]` 的 disp8 编码"
     ],
     "_unresolved": [
       {
@@ -148,7 +149,13 @@
         "func": "0x0049DC88",
         "symptom": "原版有 mov edi,edi（hotpatch 序言）+ push 0x20/pop ecx",
         "tested": "25 种选项组合，0 匹配",
-        "status": "UNRESOLVED"
+        "status": "UNRESOLVED",
+        "new_evidence_2026_11_24": {
+          "hotpatch_flag": "/hotpatch 确实插入 2 字节序言，但 MSVC v142 生成 `66 90`（2 字节 nop），原版是 `8b ff`（mov edi,edi）",
+          "implication": "间接支持原版可能含更早 VS 版本（v141/VS2017 的 /hotpatch 用 8bff）",
+          "caveat": "只有 1 个函数作为证据，不足以推翻 prodId 未定的结论",
+          "push_pop_test": "测了 4 种源码写法 × 4 种选项组合，0 个产生 `push 0x20 / pop ecx`"
+        }
       },
       {
         "funcs": [
