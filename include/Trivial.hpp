@@ -108,4 +108,43 @@ void copy_vec3(void* self, const void* source);
 // 即 `this->first = value`。3 个函数：0x00406720 / 0x00433BC0 / 0x00433C80
 void set_first_field(void* self, unsigned value);
 
+// --- 形状 E2：极坐标 → Vec2，x/y 用**不同的** length（椭圆）---
+//
+// 反汇编（0x00417750，`ret 0xC` = 3 个参数）：
+//
+//   fld  dword [ebp+8]      ; st0 = angle
+//   fsincos                 ; st0 = sin, st1 = cos
+//   fmul dword [ebp+0xC]    ; * length_x
+//   fstp dword [eax]        ; x = sin(angle) * length_x
+//   fmul dword [ebp+0x10]   ; * length_y   <- 不同的参数！
+//   fstp dword [eax+4]      ; y = cos(angle) * length_y
+//   ret 0xC
+//
+// 与形状 E 的区别：E 用同一个 length 乘两次（圆），
+// 这里 x 和 y 各用一个（椭圆 / 各向异性缩放）。
+//
+// 2 个函数：0x00417750 / 0x00441580
+void polar_to_vec2_scaled(void* self, float angle, float length_x, float length_y);
+
+// --- 形状 I：指针编码（MSVC /GS 的 __security_check_cookie 用法）---
+//
+// 反汇编（0x0049DC88）：
+//
+//   mov  eax, dword [0x4C8A4C]   ; __security_cookie
+//   and  eax, 0x1F               ; cookie & 31
+//   push 0x20
+//   pop  ecx                     ; ecx = 32
+//   sub  ecx, eax                ; ecx = 32 - (cookie & 31)  旋转量
+//   mov  eax, dword [ebp+8]      ; value
+//   ror  eax, cl                 ; 右旋
+//   xor  eax, dword [0x4C8A4C]   ; 再与 cookie 异或
+//   ret
+//
+// 这是**指针编码**（encode/decode），不是哈希：
+// 同一个变换应用两次会还原（ror + xor 的组合）。
+// MSVC 用它来混淆返回值里的指针。
+//
+// 5 个函数：0x0049DC88 / 0x0049E757 / 0x0049E776 / 0x0049EB13 / 0x0049EBF3
+unsigned encode_value(unsigned value);
+
 }  // namespace th185

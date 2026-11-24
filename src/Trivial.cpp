@@ -40,7 +40,7 @@ float read_first_float(void* self) {
 //
 // 20 个函数共享 `fsincos` 形状。语义见 Trivial.hpp 的注释。
 // x = sin(angle)*length，y = cos(angle)*length（注意顺序）。
-//@witness func=0x00404B70+0x00405A70+0x00406290+0x00407E10+0x00417750+0x00417B00+0x004299D0+0x004305B0+0x00430720+0x00441580+0x00441670+0x0044CDA0+0x004587B0+0x00463DF0+0x00467150+0x0047FD20+0x0047FFE0+0x00485B20+0x00486080+0x0048F370 kind=stdcall
+//@witness func=0x00404B70+0x00405A70+0x00406290+0x00407E10+0x00417B00+0x004299D0+0x004305B0+0x00430720+0x00441670+0x0044CDA0+0x004587B0+0x00463DF0+0x00467150+0x0047FFE0+0x00485B20+0x00486080+0x0048F370 kind=stdcall
 void polar_to_vec2(void* self, float angle, float length) {
     float* out = reinterpret_cast<float*>(self);
     float s = 0.0f;
@@ -98,6 +98,41 @@ void copy_vec3(void* self, const void* source) {
 //@witness func=0x00406720+0x00433BC0+0x00433C80 kind=thiscall
 void set_first_field(void* self, unsigned value) {
     *reinterpret_cast<unsigned*>(self) = value;
+}
+
+// --- 形状 E2：极坐标 → Vec2，x/y 用不同 length ---
+//
+// 与形状 E 只差一点：E 两个分量乘同一个 length，这里各乘一个。
+// `ret 0xC` = 3 个参数，确认是 2 个 float + this。
+//@witness func=0x00417750+0x00441580 kind=stdcall
+void polar_to_vec2_scaled(void* self, float angle,
+                          float length_x, float length_y) {
+    float* out = reinterpret_cast<float*>(self);
+    out[0] = std::sin(angle) * length_x;
+    out[1] = std::cos(angle) * length_y;
+}
+
+// --- 形状 I：指针编码 ---
+//
+// 原版的循环移位量是 `32 - (cookie & 31)`，但这个值可能等于 32。
+// x86 的 `ror eax, cl` 对 32 位操作数会把 CL **按 5 位掩码**，
+// 所以 cl=32 时实际旋转 0 次 —— 等价于不旋转。
+//
+// ★ 写成 `(value >> shift) | (value << (32 - shift))` 在 shift==32 时是
+//   **未定义行为**（C++ 规定移位量 >= 类型宽度是 UB）。
+//   G5 本可以抓到这个问题（UBSan 会报 shift-out-of-bounds），
+//   但 G5 因编译器缺口无法运行 —— 所以这里靠人工推导修正。
+//   正确写法是先掩码到 0..31，与 x86 硬件行为一致。
+//@witness func=0x0049DC88+0x0049E757+0x0049E776+0x0049EB13+0x0049EBF3 kind=cdecl
+unsigned encode_value(unsigned value) {
+    const unsigned cookie = *reinterpret_cast<const unsigned*>(0x004C8A4Cu);
+    // 掩码到 5 位：与 x86 对 `ror` 计数器的处理一致
+    const unsigned shift = (32u - (cookie & 0x1Fu)) & 0x1Fu;
+    if (shift == 0u) {
+        return value ^ cookie;
+    }
+    const unsigned rotated = (value >> shift) | (value << (32u - shift));
+    return rotated ^ cookie;
 }
 
 }  // namespace th185
