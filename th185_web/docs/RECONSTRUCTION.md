@@ -1,6 +1,23 @@
 # TH185 功能还原重建方案
 
-状态：**方案确定，实现未开始。**
+状态：~~方案确定，实现未开始。~~ → **已大量实现（2026-11-24 更新）**。
+
+> ⚠️ 本文件写于项目初期，下文 §4「工作分解」里的勾选框**大多已过时**。
+> 当前真实进度以 `docs/PROGRESS.md`（自动生成）与 `config/behaviors.csv` 为准。
+> 已经做完但本文仍标 `[ ]` 的，逐条实测确认（不是推断）：
+>
+> | 本文原标 `[ ]` 的项 | 实测状态 | 证据 |
+> |---|---|---|
+> | PBG4 解密 | ✅ 完成 | `pbg4.py --selftest` → "PBG4 container fully parsed" |
+> | RNG 逆向 | ✅ 完成 | `rng.py --selftest` → 与探针 16 个种子逐位一致 |
+> | ECL 解释器 | ⚠️ **部分**：20899 / 23770 条指令（87.92%）有专用实现，2871 条 TH185-only 仍只记录 | `ecl_interp_check.py` |
+> | ANM 解释器 | ✅ 完成 | `anm.py --selftest` → 55/55 文件 |
+> | 波次系统 | ✅ 算法完成，**权重数据未 dump** | `waves*.py` 四个自检 + `docs/CPP.md` §12.7 |
+> | 卡牌系统 | ✅ 表完成 | `cards.py` / `card_classes.py` 自检 |
+> | 8 档难度 | ✅ 表完成，**数值倍率未解** | `difficulty.py --selftest` |
+> | 状态快照比对 | ⚠️ 有 Unicorn 探针，但**未做成逐点比对流水线** | `native/probe.py` |
+>
+> 保留原文是为了留下「当时的判断」——尤其 §3.2.1 关于 Replay 的考证仍然有效。
 
 本文件说明 TH185 走「功能还原重建（source reconstruction）」而非「字节级 matching decompilation」的理由、路线与验收标准。
 

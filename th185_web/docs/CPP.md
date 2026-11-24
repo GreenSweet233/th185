@@ -1,7 +1,22 @@
 # TH185 C++ 实现（cpp/game）
 
-> 状态：**RNG 已完成并逐位验证；其余全部待实现。**
-> 日期：2026-11-11
+> 状态：**`cpp/game/` 29 个实现单元 + `cpp/sdl/` 2 个，全部编译通过。**
+> 最后更新：2026-11-24（原写「其余全部待实现」，是 2026-11-11 的状态，早已过期）
+>
+> 29 个实现单元（`Get-ChildItem cpp/game -Filter *.cpp` 实测，含 Harness 除外）：
+> `AnmInterpreter  AnmManager  AnmResource  AnmTexture  Archive  BgmPlayer`
+> `BulletPool  CardManager  Difficulty  EclContext  EclInterpreter  EclOwner`
+> `EclResource  EnemyManager  EnemyPool  GameSession  Hud  Interpolation`
+> `ItemPool  MagicCircle  Player  PngWriter  Rng  SaveFile`
+> `ScoreSystem  SoftwareRaster  SoundBank  StageScript  WaveSelector`
+>
+> 平台层 `cpp/sdl/`：`Application`（1827 行）+ `Exports`（1005 行，242 个导出）。
+>
+> `node th185_web/scripts/build-cpp.mjs` → 29/29 翻译单元编译通过。
+> `build-cpp.mjs --harness --app` → harness + 浏览器模块均能产出。
+>
+> 下文按时间顺序保留了每一轮的实现记录，**读的时候注意每节标题写的是
+> 「当时」的进度**，不是最终状态。
 
 ---
 
