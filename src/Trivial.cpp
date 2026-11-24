@@ -49,15 +49,8 @@ float __fastcall read_first_float(void* self, void* unused_edx) {
 void __fastcall polar_to_vec2(void* self, void* unused_edx, float angle, float length) {
     (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
-    float s = 0.0f;
-    float c = 0.0f;
-    // 用 sincos 的语义：原版用 x87 的 fsincos 一次算出两者。
-    // 这里分两次算，因为 C++ 标准库没有 sincos；Phase B 若需要逐字节
-    // 一致，要换成编译器内建或内联 x87。
-    s = std::sin(angle);
-    c = std::cos(angle);
-    out[0] = s * length;
-    out[1] = c * length;
+    out[0] = ::cos(angle) * length;
+    out[1] = ::sin(angle) * length;
 }
 
 // --- 形状 F：返回 0 ---
@@ -128,8 +121,8 @@ void __fastcall polar_to_vec2_scaled(void* self, void* unused_edx,
     (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
     // ★ 实测修正：x 用 cos*length_x，y 用 sin*length_y
-    out[0] = std::cos(angle) * length_x;
-    out[1] = std::sin(angle) * length_y;
+    out[0] = ::cos(angle) * length_x;
+    out[1] = ::sin(angle) * length_y;
 }
 
 // --- 形状 I：指针编码 ---
