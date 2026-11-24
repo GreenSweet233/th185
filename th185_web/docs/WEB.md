@@ -141,10 +141,12 @@ node th185_web/scripts/serve-shell.mjs --port 8170 --data 'C:\path\to\th185.dat'
 |---|---|
 | ~~音频~~ | ✅ **已完成**（本节此前写「无 SDL_mixer 对应实现」是错的）。模块导出 `th185_audio_*` 五个函数，外壳用 ScriptProcessor 每 tick 拉一次立体声，22050 Hz / 每 tick 367 帧。裸测：`probe-input.mjs` 断言「音频缓冲非静音」与「峰值不超过 1.0」均通过。未验证的是**听感与原版一致**。 |
 | ~~输入映射~~ | ✅ **已完成**（本节此前写「触控按钮是占位」是错的）。2026-11-24 修复：`TOUCH_TO_BUTTON` 把四个触控 id 映射到 `BUTTON` 位，`heldMask()` 把它 OR 进 tick 的入参；键盘键位表同样已接线。裸测：`player_input_check.py` 断言低速速度 20 vs 常速 40、子弹发射与回收、左边界钳制 x=-192 全部通过。未验证的是**真机触屏手感**。 |
-| 关卡流程 | 仍只加载 stage 0；`_th185_load_stage` 已导出但外壳没有场景选择界面 |
-| 市场 / 卡牌 UI | **已有渲染**（见 `docs/media/market.png`：三选一 + 价格 + 剩余次数），但外壳没有调用 `_th185_market_*` 的显式入口，靠游戏中 `Phase::Cleared` 自动进入 |
-| 暂停菜单 | 模块侧有 `_th185_pause_move` / `_th185_pause_confirm`，外壳只发 `_th185_pause` / `_th185_resume`，**上下选择与确认未接** |
-| 菜单 / 标题画面 | 未做（原版的标题、MusicRoom、Achievement 都没有） |
-| 真实关卡流程 | 只加载 enemy.anm |
-| 菜单 / 标题画面 | 未做 |
-| 浏览器实测 | 本环境无浏览器 |
+| ~~关卡流程~~ | ✅ **已完成**（2026-11-24）。标题页新增场景选择器（9 项，带波次数）与难度选择器（8 项，默认 Normal）。此前外壳对 `_th185_load_stage` 零引用，**8 个场景不可达**。 |
+| ~~暂停菜单~~ | ✅ **已完成**（2026-11-24）。暂停时 frame() 不 tick，所以位掩码送不进模块 —— 改为按键驱动 `_th185_pause_move` / `_th185_pause_confirm`，面板新增「当前：xxx」状态行。 |
+| ~~事件监听器泄漏~~ | ✅ **已修**（2026-11-24）。`wakeAudio` 原本在 frame() 内部注册，每帧新增 2 个监听器且不被去重；已提到模块作用域。 |
+| 市场 / 卡牌 UI | 模块侧有完整实现（`market_open` / `market_offers` / `market_buy` / 卡槽 / Cost），渲染也画得出来（见 `docs/media/market.png`），但**外壳没有显式入口**：靠游戏中 `Phase::Cleared` 自动进入，玩家无法主动开市场、也无法在标题页配卡组。 |
+| 卡组编成 | 未做。`_th185_cards_equip` / `_th185_cards_loadout_*` 已导出但外壳零引用 —— 原版「买卡 → 编成 → 进关」的循环在网页里缺后半段。 |
+| 菜单 / 标题画面 | 未做（原版的标题、MusicRoom、Achievement 都没有）。现在只有一个欢迎面板 + 场景/难度选择。 |
+| 真机浏览器实测 | **本环境无浏览器**。所有 web 结论都是「契约检查 + Node 侧模块探测」，不是真机。 |
+| 触屏真机手感 | 触控已接线（见上），但没有在任何真实触屏设备上验证过。 |
+| 高 DPI / 全屏缩放 | 未做。canvas 固定 640×480，CSS 缩放，没有 devicePixelRatio 处理。 |
