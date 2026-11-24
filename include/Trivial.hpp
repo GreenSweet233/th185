@@ -38,7 +38,7 @@ namespace th185 {
 //
 // 用 void* 而不是具体类型：本函数不碰任何字段，
 // 具体类型目前无证据（AGENTS §0 第 3 条），不编造。
-void* return_this(void* self);
+void* __fastcall return_this(void* self, void* unused_edx);
 
 // --- 形状 B：空函数 ---
 //
@@ -48,12 +48,12 @@ void do_nothing();
 // --- 形状 C：读首字段 ---
 //
 // 返回 *reinterpret_cast<unsigned*>(self)。
-unsigned read_first_field(void* self);
+unsigned __fastcall read_first_field(void* self, void* unused_edx);
 
 // --- 形状 D：读首字段为 float ---
 //
 // `movss xmm0, [ecx]; ret` —— 与形状 C 只差数据宽度。
-float read_first_float(void* self);
+float __fastcall read_first_float(void* self, void* unused_edx);
 
 // --- 形状 E：极坐标 → Vec2（`fsincos` 形状，20 个函数共享）---
 //
@@ -83,7 +83,7 @@ float read_first_float(void* self);
 //
 //   **教训**：x87 栈序推断容易出错（fsincos 的 st0/st1 顺序、fstp 的弹出语义、
 //   以及 fmul 作用在哪一层，任一处记错都会导致结论反了）。这类语义必须实测。
-void polar_to_vec2(void* self, float angle, float length);
+void __fastcall polar_to_vec2(void* self, void* unused_edx, float angle, float length);
 
 // --- 形状 F：返回 0（`xor eax, eax; ret`）---
 //
@@ -105,7 +105,7 @@ int return_zero();
 // 即 `*this = *src`，12 字节 = 3 个 float（Vec3）。
 // MSVC 用 movq 拷前 8 字节 + mov 拷剩余 4 字节，是 12 字节结构体的标准拷贝序列。
 // 3 个函数：0x00405830 / 0x00417730 / 0x00441650
-void copy_vec3(void* self, const void* source);
+void __fastcall copy_vec3(void* self, void* unused_edx, const void* source);
 
 // --- 形状 H：写首字段为 u32（`mov [ecx], eax; ret 4`）---
 //
@@ -116,7 +116,7 @@ void copy_vec3(void* self, const void* source);
 //   ret 4
 //
 // 即 `this->first = value`。3 个函数：0x00406720 / 0x00433BC0 / 0x00433C80
-void set_first_field(void* self, unsigned value);
+void __fastcall set_first_field(void* self, void* unused_edx, unsigned value);
 
 // --- 形状 E2：极坐标 → Vec2，x/y 用**不同的** length（椭圆）---
 //
@@ -136,7 +136,8 @@ void set_first_field(void* self, unsigned value);
 // ★ 实测：x = cos(angle) * length_x，y = sin(angle) * length_y（同形状 E 的修正）。
 //
 // 2 个函数：0x00417750 / 0x00441580
-void polar_to_vec2_scaled(void* self, float angle, float length_x, float length_y);
+void __fastcall polar_to_vec2_scaled(void* self, void* unused_edx,
+                                     float angle, float length_x, float length_y);
 
 // --- 形状 I：指针编码（MSVC /GS 的 __security_check_cookie 用法）---
 //

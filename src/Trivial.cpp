@@ -8,7 +8,8 @@ namespace th185 {
 //
 // 2 个二进制函数共享此形状：0x00404AA0（6 个调用方）、0x00417AF0（15 个调用方）
 //@witness func=0x00404AA0+0x00417AF0 kind=thiscall
-void* return_this(void* self) {
+void* __fastcall return_this(void* self, void* unused_edx) {
+    (void)unused_edx;
     return self;
 }
 
@@ -24,7 +25,8 @@ void do_nothing() {
 //
 // 2 个：0x0041FA20（7 个调用方）、0x00433B40（4 个调用方）
 //@witness func=0x0041FA20+0x00433B40 kind=thiscall
-unsigned read_first_field(void* self) {
+unsigned __fastcall read_first_field(void* self, void* unused_edx) {
+    (void)unused_edx;
     return *reinterpret_cast<unsigned*>(self);
 }
 
@@ -32,7 +34,8 @@ unsigned read_first_field(void* self) {
 //
 // 2 个：0x00404B60、0x00441610
 //@witness func=0x00404B60+0x00441610 kind=thiscall
-float read_first_float(void* self) {
+float __fastcall read_first_float(void* self, void* unused_edx) {
+    (void)unused_edx;
     return *reinterpret_cast<float*>(self);
 }
 
@@ -41,7 +44,8 @@ float read_first_float(void* self) {
 // 20 个函数共享 `fsincos` 形状。语义见 Trivial.hpp 的注释。
 // x = sin(angle)*length，y = cos(angle)*length（注意顺序）。
 //@witness func=0x00404B70+0x00405A70+0x00406290+0x00407E10+0x00417B00+0x004299D0+0x004305B0+0x00430720+0x00441670+0x0044CDA0+0x004587B0+0x00463DF0+0x00467150+0x0047FFE0+0x00485B20+0x00486080+0x0048F370 kind=stdcall
-void polar_to_vec2(void* self, float angle, float length) {
+void __fastcall polar_to_vec2(void* self, void* unused_edx, float angle, float length) {
+    (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
     float s = 0.0f;
     float c = 0.0f;
@@ -84,7 +88,8 @@ int return_zero() {
 // Phase A 写法要简洁：中间变量会让 token/指令比超上限（实测 4.67 > 4.00）。
 // 原版就是三次读取 + 三次写入，没有暂存。
 //@witness func=0x00405830+0x00417730+0x00441650 kind=thiscall
-void copy_vec3(void* self, const void* source) {
+void __fastcall copy_vec3(void* self, void* unused_edx, const void* source) {
+    (void)unused_edx;
     const float* src = static_cast<const float*>(source);
     float* dst = static_cast<float*>(self);
     dst[0] = src[0];
@@ -96,7 +101,8 @@ void copy_vec3(void* self, const void* source) {
 //
 // `this[0..3] = value`。
 //@witness func=0x00406720+0x00433BC0+0x00433C80 kind=thiscall
-void set_first_field(void* self, unsigned value) {
+void __fastcall set_first_field(void* self, void* unused_edx, unsigned value) {
+    (void)unused_edx;
     *reinterpret_cast<unsigned*>(self) = value;
 }
 
@@ -105,8 +111,9 @@ void set_first_field(void* self, unsigned value) {
 // 与形状 E 只差一点：E 两个分量乘同一个 length，这里各乘一个。
 // `ret 0xC` = 3 个参数，确认是 2 个 float + this。
 //@witness func=0x00417750+0x00441580 kind=stdcall
-void polar_to_vec2_scaled(void* self, float angle,
-                          float length_x, float length_y) {
+void __fastcall polar_to_vec2_scaled(void* self, void* unused_edx,
+                                     float angle, float length_x, float length_y) {
+    (void)unused_edx;
     float* out = reinterpret_cast<float*>(self);
     // ★ 实测修正：x 用 cos*length_x，y 用 sin*length_y
     out[0] = std::cos(angle) * length_x;

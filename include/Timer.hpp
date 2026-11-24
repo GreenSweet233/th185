@@ -63,6 +63,11 @@ constexpr unsigned kTimerArrayBOffset = 0x4C;      // int32[16] 数组基址（�
 constexpr unsigned kTimerFieldBOffset = 0xD4;      // 两支都清零
 
 // 递减倒计时并按结果分支。
-void tick_timer(void* self);
+//
+// ★ 调用约定：原版是 thiscall（ecx = this）。
+//   MSVC 不允许对自由函数用 __thiscall，所以用 __fastcall + 哑的 edx 参数模拟：
+//   x86 上 __fastcall 把第一个参数放 ecx、第二个放 edx，生成的代码与 thiscall 完全一致。
+//   实测：用 cdecl 会多出 4 字节 `mov ecx,[esp+4]`。
+void __fastcall tick_timer(void* self, void* unused_edx);
 
 }  // namespace th185

@@ -19,7 +19,8 @@ inline int* field_at(void* self, unsigned offset) {
 //@witness disp 0xD4
 //@witness disp 0x0C
 //@witness disp 0x4C
-void tick_timer(void* self) {
+void __fastcall tick_timer(void* self, void* unused_edx) {
+    (void)unused_edx;
     const int countdown = *field_at(self, kTimerCountdownOffset) - 1;
     *field_at(self, kTimerCountdownOffset) = countdown;
     if (countdown < 0) {
