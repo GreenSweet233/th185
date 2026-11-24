@@ -55,7 +55,16 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pe_common
 
 
-WITNESS_RE = re.compile(r"//\s*@witness\s+(\w+)\s+(.+)$")
+# 匹配 //@witness <任意非空内容到行尾>
+#
+# ★ 踩过的坑：原正则写作
+#     //\s*@witness\s+(\w+)\s+(.+)$
+#   它要求 @witness 后先是一个 \w+ 词、再是空白。
+#   但 `func=0x00402A50 kind=thiscall` 里 "func" 后面紧跟的是 "="，
+#   不是空白，于是 \s+ 失败，整条匹配 None ——
+#   所有 func 声明被静默忽略，witness declarations 恒为 0。
+#   改为只捕获 @witness 之后到行尾的全部内容，再按 key=value 解析。
+WITNESS_RE = re.compile(r"//\s*@witness\s+(.+)$")
 
 
 def parse_witnesses(sources_root):
@@ -79,17 +88,30 @@ def parse_witnesses(sources_root):
                 m = WITNESS_RE.search(raw)
                 if not m:
                     continue
-                kind = m.group(1)
-                rest = m.group(2).strip()
+                payload = m.group(1).strip()
+                # 两种写法都支持：
+                #   //@witness func=0x00402A50 kind=thiscall   （新，推荐）
+                #   //@witness disp 0x8C                      （旧，位置参数）
+                kv = dict(re.findall(r"(\w+)=([^\s]+)", payload))
+                if kv:
+                    kind = payload.split("=")[0].strip()
+                else:
+                    parts = payload.split(None, 1)
+                    kind = parts[0] if parts else ""
+                    rest = parts[1].strip() if len(parts) > 1 else ""
                 if kind == "func":
-                    # func=0x414F20 kind=this
-                    fm = re.match(r"(\S+)\s*(.*)$", rest)
-                    current = fm.group(1) if fm else rest
+                    # 声明写法：//@witness func=0x00402A50 kind=thiscall
+                    current = kv.get("func")
+                    if not current:
+                        continue
                     decls.setdefault(current, []).append({
                         "kind": "func", "value": current,
+                        "mode": kv.get("kind", ""),
                         "file": path, "line": idx, "raw": raw.strip(),
                     })
                 else:
+                    if not kv:
+                        pass  # rest 已在上面的位置参数分支里赋值
                     key = current or ("<file:%s>" % os.path.basename(path))
                     decls.setdefault(key, []).append({
                         "kind": kind, "value": rest,
@@ -99,9 +121,17 @@ def parse_witnesses(sources_root):
 
 
 def norm_value(kind, value):
-    """把声明值规范化成可比较的整数（能转就转，不能就原样返回）。"""
+    """把声明值规范化成可比较的整数（能转就转，不能就原样返回）。
+
+    ★ 这里必须覆盖「所有会在判定里做 int 比较的 kind」。
+    我最初只写了 call / imm，后来新增 disp 却忘了加进来，
+    结果是 disp 的见证值以字符串 "0x8C" 返回，
+    `isinstance(val, int)` 为 False，所有 disp 见证一律 FAIL ——
+    而且报错信息是「displacement not found」，看起来像是二进制里没有，
+    实际是类型没转换。新增见证类型时务必同步改这里。
+    """
     v = value.strip()
-    if kind == "call" or kind == "imm":
+    if kind in ("call", "imm", "disp"):
         try:
             return int(v, 16) if v.lower().startswith("0x") else int(v, 0)
         except ValueError:
@@ -119,6 +149,7 @@ def build_target_facts(sections, image_base, md):
     insns = pe_common.scan_text(sections, image_base, md)
     calls = set()
     imms = set()
+    disps = set()
     slots = set()
     for ins in insns:
         if ins.get("is_data"):
@@ -128,9 +159,24 @@ def build_target_facts(sections, image_base, md):
                 calls.add(int(ins["op_str"], 16))
             except ValueError:
                 pass
-        # 立即数：op_str 里的 0x 数字
-        for m in re.finditer(r"0x([0-9a-fA-F]+)", ins["op_str"]):
+        # 立即数与内存位移必须分开。
+        #
+        # mov [ecx + 0x8C], edx   的 0x8C 是**位移**（方括号内）
+        # mov eax, 0x8C           的 0x8C 是**立即数**（方括号外）
+        #
+        # 早先只用一个 imms 集合把两者混在一起，造成两类误判：
+        #   1. 位移被当成「立即数存在」，假的 imm 见证也能过
+        #   2. `imm 0x00`（0 只作为位移出现）被误判为不存在
+        # 现分开收，各自独立判定。
+        disp_parts = re.findall(r"\[[^\]]*\]", ins["op_str"])
+        outside = ins["op_str"]
+        for d in disp_parts:
+            outside = outside.replace(d, "")
+        for m in re.finditer(r"0x([0-9a-fA-F]+)", outside):
             imms.add(int(m.group(1), 16))
+        for d in disp_parts:
+            for m in re.finditer(r"0x([0-9a-fA-F]+)", d):
+                disps.add(int(m.group(1), 16))
         # 栈槽：ebp - 0xNN / ebp + 0xNN
         for m in re.finditer(r"ebp ([+-]) 0x([0-9a-fA-F]+)", ins["op_str"]):
             sign = -1 if m.group(1) == "-" else 1
@@ -141,8 +187,90 @@ def build_target_facts(sections, image_base, md):
         "data_bytes": sum(i["size"] for i in insns if i.get("is_data")),
         "call_targets": calls,
         "immediates": imms,
+        "displacements": disps,
         "stack_slots": slots,
     }
+
+
+def facts_for_range(sections, image_base, md, lo, hi):
+    """提取 [lo, hi) 这个 VA 范围内的 artifact。
+
+    ## 为什么必须按范围而不是全局
+
+    第一版用全局集合判定见证，实测抓不到假见证：
+    声明 disp 0x7F8 时全 PASS，因为 .text 里别处确实用了 0x7F8。
+    验证过程：
+      目标函数 0x00402A50..0x00402A7C 内只有 0x8C 和 0xD4 两个位移
+      0x7F8 在目标函数外出现（别的函数用了）
+      -> 全局存在 ≠ 这个函数里有
+
+    见证的意义是「这个函数的这段码里出现了这个 artifact」，
+    所以判定必须限定在函数的地址范围内。否则 G2 就是摆设。
+    """
+    insns = pe_common.scan_text(sections, image_base, md)
+    calls, imms, disps, slots = set(), set(), set(), set()
+    body = []
+    for ins in insns:
+        if not (lo <= ins["va"] < hi):
+            continue
+        if ins.get("is_data"):
+            continue
+        body.append(ins)
+        if ins["mnemonic"] == "call" and ins["op_str"].startswith("0x"):
+            try:
+                calls.add(int(ins["op_str"], 16))
+            except ValueError:
+                pass
+        disp_parts = re.findall(r"\[[^\]]*\]", ins["op_str"])
+        outside = ins["op_str"]
+        for d in disp_parts:
+            outside = outside.replace(d, "")
+        for m in re.finditer(r"0x([0-9a-fA-F]+)", outside):
+            imms.add(int(m.group(1), 16))
+        for d in disp_parts:
+            for m in re.finditer(r"0x([0-9a-fA-F]+)", d):
+                disps.add(int(m.group(1), 16))
+        for m in re.finditer(r"ebp ([+-]) 0x([0-9a-fA-F]+)", ins["op_str"]):
+            sign = -1 if m.group(1) == "-" else 1
+            slots.add(sign * int(m.group(2), 16))
+    return {
+        "instruction_count": len(body),
+        "call_targets": calls,
+        "immediates": imms,
+        "displacements": disps,
+        "stack_slots": slots,
+        "body": body,
+    }
+
+
+def function_extent(label, insns):
+    """给定 func 声明的标签（0xNNN 或 0xNNN+N），返回 (lo, hi)。
+
+    标签形式：
+      0x00402A50         -> 从该地址到下一个 ret（含）
+      0x00402A50+0x2C    -> 显式长度
+    """
+    if "+" in label:
+        addr_s, len_s = label.split("+", 1)
+        try:
+            lo = int(addr_s, 16)
+            hi = lo + int(len_s, 16)
+            return lo, hi
+        except ValueError:
+            return None, None
+    try:
+        lo = int(label, 16)
+    except ValueError:
+        return None, None
+    # 从 lo 往后找第一条 ret
+    for ins in insns:
+        if ins["va"] < lo:
+            continue
+        if ins.get("is_data"):
+            continue
+        if ins["mnemonic"].startswith("ret"):
+            return lo, ins["va"] + ins["size"]
+    return lo, lo + 0x400   # 找不到 ret 就给一个上界
 
 
 def main():
@@ -185,23 +313,48 @@ def main():
     checked_items = 0
     missing_items = []
 
+    all_insns = pe_common.scan_text(sections, image_base, md)
+
     for func_key, items in decls.items():
+        if func_key.startswith("<file:"):
+            continue
+        # 先确定这个函数的地址范围，判定只在该范围内做。
+        lo, hi = function_extent(func_key, all_insns)
+        local = None
+        if lo is not None:
+            local = facts_for_range(sections, image_base, md, lo, hi)
+
         for it in items:
             if it["kind"] == "func":
+                # func 声明本身也要验证：目标地址必须真的在 .text 里，
+                # 且（若有后续 ret）范围可确定。
+                checked_items += 1
+                if lo is None or local is None or local["instruction_count"] == 0:
+                    missing_items.append({
+                        "func": func_key, "kind": "func", "value": it["value"],
+                        "file": os.path.relpath(it["file"], root), "line": it["line"],
+                        "reason": "function address not found in target .text",
+                    })
                 continue
             checked_items += 1
             val = norm_value(it["kind"], it["value"])
             ok = True
             detail = ""
-            if it["kind"] == "call":
-                ok = isinstance(val, int) and val in facts["call_targets"]
-                detail = "not a call target in target .text"
+            if local is None:
+                ok = False
+                detail = "cannot locate function extent; refusing to fall back to global scan"
+            elif it["kind"] == "call":
+                ok = isinstance(val, int) and val in local["call_targets"]
+                detail = "call target not inside this function"
             elif it["kind"] == "imm":
-                ok = isinstance(val, int) and val in facts["immediates"]
-                detail = "immediate not present in target .text"
+                ok = isinstance(val, int) and val in local["immediates"]
+                detail = "immediate not inside this function"
             elif it["kind"] == "slot":
-                ok = isinstance(val, int) and val in facts["stack_slots"]
-                detail = "stack slot not found in target .text"
+                ok = isinstance(val, int) and val in local["stack_slots"]
+                detail = "stack slot not inside this function"
+            elif it["kind"] == "disp":
+                ok = isinstance(val, int) and val in local["displacements"]
+                detail = "memory displacement not inside this function"
             else:
                 ok = False
                 detail = "unknown witness kind %r" % it["kind"]
@@ -254,6 +407,7 @@ def main():
         "binary_artifacts": {
             "call_targets": len(facts["call_targets"]),
             "immediates": len(facts["immediates"]),
+            "displacements": len(facts["displacements"]),
             "stack_slots": len(facts["stack_slots"]),
         },
         "witness_declarations": {
@@ -297,9 +451,9 @@ def main():
         print("=== G2 binary witness ===")
         print("  target exe          : %s" % exe)
         print("  .text instructions  : %d" % facts["instruction_count"])
-        print("  binary artifacts    : calls=%d  immediates=%d  slots=%d"
+        print("  binary artifacts    : calls=%d  imm=%d  disp=%d  slots=%d"
               % (len(facts["call_targets"]), len(facts["immediates"]),
-                 len(facts["stack_slots"])))
+                 len(facts["displacements"]), len(facts["stack_slots"])))
         print("  witness declarations: %d item(s) in %d function(s)"
               % (checked_items, result["witness_declarations"]["functions"]))
         print("  reverse coverage    : %.4f%% (%d / %d call targets explained)"

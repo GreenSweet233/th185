@@ -1,6 +1,6 @@
 {
   "_comment": "AGENTS.md §11 仪表盘。人类唯一审查对象。禁止粉饰。",
-  "updated_at": "2026-11-24T12:55:11",
+  "updated_at": "2026-11-24T13:01:45",
   "phase": "bootstrap",
   "gates_implemented": {
     "G1": true,
@@ -35,7 +35,7 @@
     "status": "INCOMPLETE",
     "instruction_count": 207516,
     "binary_call_targets": 1678,
-    "witness_items": 0,
+    "witness_items": 3,
     "reverse_coverage": 0.0
   },
   "_g4_last_run": {
