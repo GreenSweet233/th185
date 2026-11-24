@@ -13,10 +13,21 @@ inline int* field_at(void* self, unsigned offset) {
     return reinterpret_cast<int*>(static_cast<char*>(self) + offset);
 }
 
-// 取 +offset 处的 float 地址（避免裸偏移强转）。
-inline float* float_at(void* self, unsigned offset) {
-    return reinterpret_cast<float*>(static_cast<char*>(self) + offset);
-}
+// 取 +offset 处的 float 地址。
+//
+// ★★ 必须是宏，不能是 inline 函数或模板。实测：
+//
+//   inline float* float_at(void* s, unsigned o)  ->  558bec8b4508 0345 0c5dc3
+//       （offset 走栈 [ebp+0xC]，生成 add eax,[ebp+0xC]）
+//   __forceinline 同上
+//   template<unsigned O>                         ->  558bec 8b4508 83c044 5dc3
+//       （生成了 add eax,0x44 —— 仍多一条指令）
+//   宏（文本替换）                               ->  f30f104144c3  MATCH
+//
+// 原因：MSVC 不会把函数参数/模板参数的常量折叠进内存操作数的位移字段，
+// 只有预处理阶段的文本替换能让 `[ecx+0x44]` 成为真正的 disp8 编码。
+#define FLOAT_AT(self, offset) \
+    reinterpret_cast<float*>(static_cast<char*>(self) + (offset))
 
 // 12 字节聚合类型。
 //
@@ -91,7 +102,7 @@ __m128 __fastcall read_first_as_m128(void* self, void* unused_edx) {
 //@witness disp 0x44
 __m128 __fastcall read_44_as_m128(void* self, void* unused_edx) {
     (void)unused_edx;
-    return _mm_load_ss(float_at(self, kSseField44Offset));
+    return _mm_load_ss(FLOAT_AT(self, kSseField44Offset));
 }
 
 // --- 0x0041C710：SSE 标量乘法 ---
@@ -105,8 +116,8 @@ __m128 __fastcall read_44_as_m128(void* self, void* unused_edx) {
 //@witness disp 0x54
 __m128 __fastcall mul_74_x_54(void* self, void* unused_edx) {
     (void)unused_edx;
-    return _mm_mul_ss(_mm_load_ss(float_at(self, kSseField74Offset)),
-                      *reinterpret_cast<__m128*>(float_at(self, kSseField54Offset)));
+    return _mm_mul_ss(_mm_load_ss(FLOAT_AT(self, kSseField74Offset)),
+                      *reinterpret_cast<__m128*>(FLOAT_AT(self, kSseField54Offset)));
 }
 
 }  // namespace th185
