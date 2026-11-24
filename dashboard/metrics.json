@@ -1,9 +1,9 @@
 {
   "_comment": "AGENTS.md §11 仪表盘。人类唯一审查对象。禁止粉饰。",
-  "updated_at": "2026-11-24T04:40:53.288Z",
+  "updated_at": "2026-11-24T12:47:08",
   "phase": "bootstrap",
   "gates_implemented": {
-    "G1": false,
+    "G1": true,
     "G2": false,
     "G3": false,
     "G4": false,
@@ -22,5 +22,12 @@
     "total": null,
     "ratio": 0
   },
-  "_null_means": "null = 该指标尚未测得（对应门槛脚本未实现）。禁止填 0 冒充「无问题」。"
+  "_null_means": "null = 该指标尚未测得（对应门槛脚本未实现）。禁止填 0 冒充「无问题」。",
+  "_notes": {
+    "type_conflicts": "null = 尚无定义被测得（bootstrap 期 /src 与 /include 为空）"
+  },
+  "_g1_last_run": {
+    "failures": 0,
+    "definitions_checked": 0
+  }
 }
