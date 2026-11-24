@@ -120,4 +120,65 @@ __m128 __fastcall mul_74_x_54(void* self, void* unused_edx) {
                       *reinterpret_cast<__m128*>(FLOAT_AT(self, kSseField54Offset)));
 }
 
+// ===========================================================================
+// 第三批：极简访问器（2-3 条指令，全部无栈帧）
+// ===========================================================================
+
+// --- 0x00406730：读 +0x24 ---
+// 字节: 8b4124c3 = mov eax,[ecx+0x24] ; ret
+//@witness func=0x00406730 kind=thiscall
+int __fastcall get_field_24(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField24Offset);
+}
+
+// --- 0x004176D0：读 +0x20 ---
+// 字节: 8b4120c3
+//@witness func=0x004176D0 kind=thiscall
+int __fastcall get_field_20(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField20Offset);
+}
+
+// --- 0x00429A50：取 +0x1c 的地址 ---
+// 字节: 8d411cc3 = lea eax,[ecx+0x1c] ; ret
+//@witness func=0x00429A50 kind=thiscall
+int* __fastcall addr_of_1C(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kField1COffset);
+}
+
+// --- 0x00407E30：取 +0x620 的地址 ---
+// 字节: 8d8120060000c3
+//@witness func=0x00407E30 kind=thiscall
+int* __fastcall addr_of_620(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kField620Offset);
+}
+
+// --- 0x00424480：清 +0x28 ---
+// 字节: c7412800000000c3 = mov dword [ecx+0x28],0 ; ret
+//@witness func=0x00424480 kind=thiscall
+void __fastcall clear_field_28(void* self, void* unused_edx) {
+    (void)unused_edx;
+    *INT_AT(self, kField28Offset) = 0;
+}
+
+// --- 0x00404BD0：返回常量地址 ---
+// 字节: b8689c5700c3 = mov eax,0x579C68 ; ret
+//@witness func=0x00404BD0 kind=cdecl
+void* __fastcall return_const_addr(void* self, void* unused_edx) {
+    (void)unused_edx;
+    (void)self;
+    return reinterpret_cast<void*>(0x00579C68u);
+}
+
+// --- 0x00429AB0：清低 4 位 ---
+// 字节: 836140f0c3 = and dword [ecx+0x40],0xFFFFFFF0 ; ret
+//@witness func=0x00429AB0 kind=thiscall
+void __fastcall clear_low_nibble_at_40(void* self, void* unused_edx) {
+    (void)unused_edx;
+    *reinterpret_cast<unsigned*>(INT_AT(self, kField40Offset)) &= 0xFFFFFFF0u;
+}
+
 }  // namespace th185

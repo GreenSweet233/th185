@@ -18,6 +18,11 @@ constexpr unsigned kVec3At5F0Offset = 0x5F0;
 constexpr unsigned kSseField44Offset = 0x44;
 constexpr unsigned kSseField74Offset = 0x74;
 constexpr unsigned kSseField54Offset = 0x54;
+constexpr unsigned kField24Offset = 0x24;
+constexpr unsigned kField1COffset = 0x1C;
+constexpr unsigned kField28Offset = 0x28;
+constexpr unsigned kField40Offset = 0x40;
+constexpr unsigned kField620Offset = 0x620;
 
 // --- 0x00404D10：stdcall，3 参数，只返回第一个 ---
 // 字节: 55 8bec 8b4508 5d c20c00
@@ -52,5 +57,14 @@ void __fastcall copy_vec3_to_5F0(void* self, void* unused_edx, const void* src);
 __m128 __fastcall read_first_as_m128(void* self, void* unused_edx);
 __m128 __fastcall read_44_as_m128(void* self, void* unused_edx);
 __m128 __fastcall mul_74_x_54(void* self, void* unused_edx);
+
+// --- 第三批：极简访问器 ---
+int __fastcall get_field_24(void* self, void* unused_edx);
+int __fastcall get_field_20(void* self, void* unused_edx);
+int* __fastcall addr_of_1C(void* self, void* unused_edx);
+int* __fastcall addr_of_620(void* self, void* unused_edx);
+void __fastcall clear_field_28(void* self, void* unused_edx);
+void* __fastcall return_const_addr(void* self, void* unused_edx);
+void __fastcall clear_low_nibble_at_40(void* self, void* unused_edx);
 
 }  // namespace th185
