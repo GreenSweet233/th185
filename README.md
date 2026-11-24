@@ -28,7 +28,7 @@ prove it has never run.
 | G2 | Binary witness, both directions | **INCOMPLETE** — 50 / 1678 functions matched (2.98%) |
 | G3 | Structure alignment (loops vs back edges) | **PASS** |
 | G4 | Canonical form + blacklist | **PASS** — without `clang-format`, which is absent here |
-| G5 | No UB + perturbation stability | **INCOMPLETE** — needs a compiler this machine lacks |
+| G5 | No UB + perturbation stability | **INCOMPLETE** — needs the two MSVC generations above |
 | G6 | Independent evidence (RTTI/vtable) | **INCOMPLETE** — three of its four requirements are unsupported natively |
 
 `dashboard/metrics.json` is the only thing a human needs to read; it records
@@ -95,22 +95,43 @@ What the executable says about how ZUN built it:
 
 | | | Evidence |
 |---|---|---|
-| Compiler | **three MSVC builds side by side**: 27412, 31328, 31332 (VS2019 16.0.x / 16.8 / 16.9) | Rich header, key `0x0D2865FF`: 237 objects at 27412, 89 at 31328, 81 at 31332 |
+| Compiler | **two MSVC generations**: VS2017 15.x (237 objects) + VS2019 16.x (170 objects) | Rich header, key `0x0D2865FF`. Product IDs 27412 / 31328 / 31332 — see the correction note below |
 | Target | PE32 / x86, ImageBase `0x00400000`, entry RVA `0x0009003B` | Optional header |
 | Linker flags | not yet recovered | LTCG signature absent from the POGO debug entry |
 | Timestamp | `1659144319` = 2022-07-30T01:25:19Z | COFF header |
 | PE CheckSum | `0x000DE79F` | recomputed value matches |
 | Sections | `.text` 711114 / `.rdata` 97948 / `.data` 734132 / `.rsrc` 7168 (VSize) | section table |
 
-### The three-build problem
+### The compiler identification, corrected
 
 `.data` declares 734132 bytes of virtual size but only 65536 are stored, so
 668596 bytes are BSS — vtables live there and their initial contents cannot be
 read from the file, only reconstructed from the constructors that write them.
 
-More seriously, one executable carrying three compiler builds means a matching
-build needs all three toolchains present, or a proof that two of them leave no
-trace in `.text`. **Neither has been done.** This is why G5 and P1 are blocked.
+An earlier revision of this document claimed "three MSVC builds side by side"
+and concluded that matching was blocked until three toolchains could be
+installed. **That was wrong, and the error is worth recording.**
+
+Each Rich Header entry is a pair `(comp_id, count)`. The high 16 bits of
+`comp_id` are the build number; the low 16 bits are the product id. The earlier
+parse had the two fields swapped, so product ids `27412 / 31328 / 31332` were
+read as build numbers. The actual build numbers are `257 / 259 / 260 / 261 /
+262 / 265 / 255 / 258` — which is the right magnitude, as one glance at any
+installed MSVC's `FileVersion` would have shown (this machine's is
+`19.44.35213.0`, where `35213` is the build).
+
+Grouped by product id, the truth is two compiler generations, not three:
+
+| Product id | Objects | Meaning |
+|---|---:|---|
+| 27412 | 237 | VS2017 15.x MSVC |
+| 31328 | 89 | VS2019 16.x MSVC |
+| 31332 | 81 | VS2019 16.x MSVC (possibly the same toolset as 31328) |
+
+So the requirement is two Visual Studio generations, and the byte-equality
+check is blocked on an install rather than on an impossibility. `toolchain.lock`
+now records this as `PARTIALLY_RESOLVED`; the original wrong conclusion is kept
+in `AGENTS.md` under a collapsed section rather than edited away.
 
 ### This machine's toolchain
 
