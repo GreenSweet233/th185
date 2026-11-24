@@ -243,6 +243,11 @@ def main():
         ("0x0040A0E0", 0x0040A0E0, "FieldAccess.cpp", "get_field_47FAC", True),
         # ★ 这个函数需要 /Os（生成 pop ecx 而非 add esp,4）
         ("0x0048F711", 0x0048F711, "FieldAccess.cpp", "forward_to_cpu_probe", False, "/MT /Os /GS- /Oy-"),
+        ("0x0041FA30", 0x0041FA30, "FieldAccess.cpp", "get_field_1C_int", True),
+        ("0x00433B40", 0x00433B40, "FieldAccess.cpp", "get_field_00", True),
+        ("0x00441210", 0x00441210, "FieldAccess.cpp", "get_field_3C", True),
+        ("0x00433DD0", 0x00433DD0, "FieldAccess.cpp", "addr_of_4FF4", True),
+        ("0x00433DF0", 0x00433DF0, "FieldAccess.cpp", "addr_of_1230", True),
     ]
 
     for label, va, src_name, fn_name, need_this, *rest in targets:

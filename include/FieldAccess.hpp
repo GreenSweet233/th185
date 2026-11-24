@@ -29,6 +29,10 @@ constexpr unsigned kField04Offset = 0x04;
 constexpr unsigned kField50Offset = 0x50;
 constexpr unsigned kField19260Offset = 0x19260;
 constexpr unsigned kField47FACOffset = 0x47FAC;
+constexpr unsigned kField00Offset = 0x00;
+constexpr unsigned kField3COffset = 0x3C;
+constexpr unsigned kField4FF4Offset = 0x4FF4;
+constexpr unsigned kField1230Offset = 0x1230;
 
 // --- 0x00404D10：stdcall，3 参数，只返回第一个 ---
 // 字节: 55 8bec 8b4508 5d c20c00
@@ -81,5 +85,12 @@ int* __fastcall addr_of_44(void* self, void* unused_edx);
 int __fastcall get_field_50(void* self, void* unused_edx);
 int __fastcall get_field_19260(void* self, void* unused_edx);
 int __fastcall get_field_47FAC(void* self, void* unused_edx);
+
+// --- 第六批 ---
+int __fastcall get_field_1C_int(void* self, void* unused_edx);
+int __fastcall get_field_00(void* self, void* unused_edx);
+int __fastcall get_field_3C(void* self, void* unused_edx);
+int* __fastcall addr_of_4FF4(void* self, void* unused_edx);
+int* __fastcall addr_of_1230(void* self, void* unused_edx);
 
 }  // namespace th185

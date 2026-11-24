@@ -248,4 +248,38 @@ void __cdecl forward_to_cpu_probe(int features) {
     th185_CpuFeatureProbe(features);
 }
 
+// ===========================================================================
+// 第六批：最后几个 2-7 字节纯访问器
+// ===========================================================================
+
+//@witness func=0x0041FA30 kind=thiscall
+int __fastcall get_field_1C_int(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField1COffset);
+}
+
+//@witness func=0x00433B40 kind=thiscall
+int __fastcall get_field_00(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField00Offset);
+}
+
+//@witness func=0x00441210 kind=thiscall
+int __fastcall get_field_3C(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return *INT_AT(self, kField3COffset);
+}
+
+//@witness func=0x00433DD0 kind=thiscall
+int* __fastcall addr_of_4FF4(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kField4FF4Offset);
+}
+
+//@witness func=0x00433DF0 kind=thiscall
+int* __fastcall addr_of_1230(void* self, void* unused_edx) {
+    (void)unused_edx;
+    return INT_AT(self, kField1230Offset);
+}
+
 }  // namespace th185
