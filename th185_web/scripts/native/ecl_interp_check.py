@@ -238,8 +238,11 @@ def selftest() -> int:
     if names_table:
         supported |= {int(n) for n in re.findall(r'\{(\d+),\s*"', names_table.group(1))}
     net_table = re.search(r'const NetEffect kInferredNet\[\] = \{([\s\S]*?)\n\};', source)
+    inferred_ops = set()
     if net_table:
-        supported |= {int(n) for n in re.findall(r'\{(\d+),\s*[-+]?\d+\}', net_table.group(1))}
+        inferred_ops = {int(n) for n in re.findall(r'\{(\d+),\s*[-+]?\d+\}', net_table.group(1))}
+    supported |= inferred_ops
+    # case_ops and inferred_ops are reused by the coverage report in step 11.
 
     dead = sorted(op for op in case_ops if op not in supported)
     ok = not dead
@@ -425,17 +428,49 @@ def selftest() -> int:
     if not ok:
         failures += 1
 
-    # 11. Report the honest coverage split so the number cannot drift silently.
+    # 11. Report the coverage split honestly, with ALL three definitions.
+    #
+    # There are three different things "covered" can mean here and they differ
+    # by 11 percentage points:
+    #
+    #   A. the opcode has a real switch case body   -> executed, semantics known
+    #   B. A plus kInferredNet (stack effect only)  -> stack stays balanced,
+    #                                                  payload recorded,
+    #                                                  semantics NOT known
+    #   C. this file's IMPLEMENTED set              -> what the check asserts on
+    #
+    # C used to be the only number printed, and it silently omitted 41 opcodes
+    # that DO have case bodies (the file's list was never updated as case bodies
+    # were added). Quoting 87.92% while 91.22% had real bodies was an
+    # understatement, and quoting either while 7.5% only had their stack effect
+    # inferred would be an overstatement. Print all three.
+    covered_a = sum(c for op, c in counts.items() if op in case_ops)
+    covered_b = sum(c for op, c in counts.items()
+                    if op in case_ops or op in inferred_ops)
+    covered_c = implemented_share
     print()
-    print('       coverage breakdown:')
-    print('         total instructions : %d' % total)
-    print('         implemented        : %d (%.2f%%)'
-          % (implemented_share, 100.0 * implemented_share / total))
-    print('         needs ECL context  : %d'
+    print('       coverage breakdown (three DIFFERENT definitions):')
+    print('         total instructions          : %d' % total)
+    print('         A. real switch case body    : %5d (%.2f%%)  <- semantics executed'
+          % (covered_a, 100.0 * covered_a / total))
+    print('         B. A + inferred stack effect: %5d (%.2f%%)  <- balanced, semantics unknown'
+          % (covered_b, 100.0 * covered_b / total))
+    print('         C. this check\'s IMPLEMENTED : %5d (%.2f%%)  <- what the assertions use'
+          % (covered_c, 100.0 * covered_c / total))
+    print('         needs ECL context           : %d'
           % sum(c for op, c in counts.items() if op in NEEDS_CONTEXT))
-    print('         TH185-only         : %d'
+    print('         no handler at all           : %d'
           % sum(c for op, c in counts.items()
-                if op not in IMPLEMENTED and op not in NEEDS_CONTEXT))
+                if op not in case_ops and op not in inferred_ops and op not in NEEDS_CONTEXT))
+
+    # The checker's set must never claim more than the code implements, or the
+    # assertion above it becomes a fiction.
+    overclaimed = sorted(IMPLEMENTED - case_ops - inferred_ops - NEEDS_CONTEXT)
+    ok = not overclaimed
+    print('[%s] the checker never claims an opcode the code does not handle (%s)'
+          % ('PASS' if ok else 'FAIL', overclaimed or 'ok'))
+    if not ok:
+        failures += 1
 
     print()
     if failures:
