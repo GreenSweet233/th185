@@ -7,11 +7,11 @@ namespace th185 {
 namespace {
 // 取 +offset 处的 32 位有符号字段。
 //
-// 用函数而不是就地强转：让「按偏移访问」这件事只出现在一个地方，
-// 将来 struct 布局确定后只需改这里。也满足 G4 的 no-bare-offset-cast 规则。
-inline int* field_at(void* self, unsigned offset) {
-    return reinterpret_cast<int*>(static_cast<char*>(self) + offset);
-}
+// ★ 用宏而非 inline 函数：实测只有文本替换能让偏移折叠进 disp8。
+//   inline / __forceinline / template 都会生成 `add eax, imm` 而非 `[ecx+disp]`。
+//   见 evidence/P3-macro-required-for-disp.json
+#define INT_AT(self, offset) \
+    reinterpret_cast<int*>(static_cast<char*>(self) + (offset))
 
 // 取 +offset 处的 float 地址。
 //
@@ -51,7 +51,7 @@ int __stdcall first_of_three(int a, int b, int c) {
 //@witness disp 0x2A0
 int __fastcall is_field_2A0_set(void* self, void* unused_edx) {
     (void)unused_edx;
-    return *field_at(self, kField2A0Offset) != 0;
+    return *INT_AT(self, kField2A0Offset) != 0;
 }
 
 //@witness func=0x0040A050 kind=thiscall
@@ -65,7 +65,7 @@ void* __fastcall clear_first_and_return_this(void* self, void* unused_edx) {
 //@witness disp 0x20
 void __fastcall set_field_20(void* self, void* unused_edx, int value) {
     (void)unused_edx;
-    *field_at(self, kField20Offset) = value;
+    *INT_AT(self, kField20Offset) = value;
 }
 
 //@witness func=0x00433BC0 kind=thiscall
@@ -79,7 +79,7 @@ void __fastcall set_first_field(void* self, void* unused_edx, int value) {
 //@witness disp 0x5F8
 void __fastcall copy_vec3_to_5F0(void* self, void* unused_edx, const void* src) {
     (void)unused_edx;
-    Vec3Raw* dst = reinterpret_cast<Vec3Raw*>(field_at(self, kVec3At5F0Offset));
+    Vec3Raw* dst = reinterpret_cast<Vec3Raw*>(INT_AT(self, kVec3At5F0Offset));
     *dst = *static_cast<const Vec3Raw*>(src);
 }
 
