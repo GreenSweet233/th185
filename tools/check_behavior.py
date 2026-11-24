@@ -46,6 +46,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pe_common
 import check_witness as cw
+try:
+    import g2plus_cases
+except ImportError:
+    g2plus_cases = None
 
 try:
     from unicorn import (Uc, UcError, UC_ARCH_X86, UC_MODE_32,
@@ -160,97 +164,6 @@ def read_file_offset(sections, image_base, va, size):
     return None
 
 
-def verify_timer_tick(sections, image_base):
-    """验证 0x00402A50（0x00402A50..0x00402A93，68 字节）。
-
-    语义（从反汇编读出，与 src/Timer.cpp 必须一致）：
-
-        countdown = *(int*)(this + 0x8C) - 1
-        *(int*)(this + 0x8C) = countdown
-        if countdown < 0:
-            *(int*)(this + 0x8C) = 0
-            *(int*)(this + 0x00) = 0
-            *(int*)(this + 0xD4) = 0
-            return
-        *(int*)(this + 0x00) = *(int*)(this + 0x0C + countdown*4)
-        *(int*)(this + 0x08) = *(int*)(this + 0x4C + countdown*4)
-        *(int*)(this + 0xD4) = 0
-    """
-    FUNC = 0x00402A50
-    OBJ_SIZE = 0xD8
-    results = []
-
-    def make_obj(init_cd):
-        obj = bytearray(OBJ_SIZE)
-        struct.pack_into("<i", obj, 0x8C, init_cd)
-        struct.pack_into("<I", obj, 0x00, 0xDEADBEEF)
-        struct.pack_into("<I", obj, 0x08, 0xFEEDFACE)
-        struct.pack_into("<I", obj, 0xD4, 0xCAFEBABE)
-        for k in range(16):
-            struct.pack_into("<i", obj, 0x0C + k * 4, 0xA000 + k)
-            struct.pack_into("<i", obj, 0x4C + k * 4, 0xB000 + k)
-        return obj
-
-    cases = [
-        (5,   "fei-fu branch: 5-1=4 -> A[4]/B[4]"),
-        (1,   "boundary: 1-1=0 (still >=0) -> A[0]/B[0]"),
-        (0,   "boundary: 0-1=-1 (negative) -> clear three fields"),
-        (-1,  "negative input: -1-1=-2 -> clear"),
-        (15,  "15-1=14 (last array element index)"),
-        (16,  "16-1=15 (array tail)"),
-        (30,  "30-1=29 (beyond array, reads adjacent fields)"),
-    ]
-
-    for init_cd, desc in cases:
-        obj = make_obj(init_cd)
-        r = Runner(sections, image_base)
-        eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj)
-        if err:
-            results.append({"case": desc, "status": "ERROR", "error": err})
-            continue
-
-        exp = bytearray(obj)
-        cd = init_cd - 1
-        if cd < 0:
-            struct.pack_into("<i", exp, 0x8C, 0)
-            struct.pack_into("<I", exp, 0x00, 0)
-            struct.pack_into("<I", exp, 0xD4, 0)
-        else:
-            struct.pack_into("<i", exp, 0x8C, cd)
-            idxA = 0x0C + cd * 4
-            valA = 0
-            if idxA + 4 <= OBJ_SIZE:
-                valA = struct.unpack_from("<i", obj, idxA)[0]
-            struct.pack_into("<i", exp, 0x00, valA)
-            idxB = 0x4C + cd * 4
-            valB = 0
-            if idxB + 4 <= OBJ_SIZE:
-                valB = struct.unpack_from("<i", obj, idxB)[0]
-            struct.pack_into("<i", exp, 0x08, valB)
-            struct.pack_into("<I", exp, 0xD4, 0)
-
-        exp_bytes = bytes(exp)
-        ok = (after == exp_bytes)
-        entry = {
-            "case": desc,
-            "init_countdown": init_cd,
-            "status": "PASS" if ok else "FAIL",
-        }
-        if not ok:
-            for off in (0x00, 0x08, 0x8C, 0xD4):
-                a = after[off:off+4]
-                e = exp_bytes[off:off+4]
-                if a != e:
-                    entry["first_diff"] = {
-                        "offset": "0x%02X" % off,
-                        "binary": "0x%08X" % struct.unpack("<I", a)[0],
-                        "expected": "0x%08X" % struct.unpack("<I", e)[0],
-                    }
-                    break
-        results.append(entry)
-
-    return results
-
 def main():
     ap = argparse.ArgumentParser(description="G2+ behavioral equivalence")
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(
@@ -266,45 +179,63 @@ def main():
         print("[FAIL] 找不到原版 th185.exe")
         return 1
 
+    if g2plus_cases is None:
+        print("[FAIL] 无法导入 g2plus_cases（用例集缺失）")
+        return 2
+
     pe, sections = pe_common.load_pe(exe)
     image_base = pe.OPTIONAL_HEADER.ImageBase
 
     print("=== G2+ behavioral equivalence ===")
     print("  target: %s" % os.path.basename(exe))
+    print("  method: unicorn 执行原版机器码，与 Python 独立重算的语义对比")
     print()
-    print("  验证 0x00402A50 (timer tick)")
-    print("  %-42s %-6s %s" % ("case", "status", "binary vs expected"));
 
-    results = verify_timer_tick(sections, image_base)
-    npass = 0
-    nfail = 0
-    for r in results:
-        if r["status"] == "PASS":
-            npass += 1
-            print("    %-42s PASS" % r["case"])
-        else:
-            nfail += 1
-            print("    %-42s %s" % (r["case"], r["status"]))
-            if r["status"] == "FAIL":
-                print("        binary   : %s" % json.dumps(r["binary"]))
-                print("        expected : %s" % json.dumps(r["expected"]))
+    all_results = []
+    total_pass = 0
+    total_fail = 0
+
+    for label, func_va, fn_name in g2plus_cases.CASES:
+        fn = getattr(g2plus_cases, fn_name, None)
+        if fn is None:
+            print("  %-32s SKIP（无验证器）" % label)
+            continue
+        print("  %s" % label)
+        try:
+            rs = fn(Runner, HEAP_BASE, sections, image_base)
+        except Exception as exc:
+            print("    %-50s EXCEPTION: %s" % ("(verifier crashed)", exc))
+            total_fail += 1
+            continue
+        for r in rs:
+            all_results.append(r)
+            if r["status"] == "PASS":
+                total_pass += 1
+                print("    %-50s PASS" % r["case"])
             else:
-                print("        error    : %s" % r.get("error"))
+                total_fail += 1
+                print("    %-50s %s" % (r["case"], r["status"]))
+                if r.get("binary"):
+                    print("        binary   : %s" % json.dumps(r["binary"]))
+                if r.get("expected"):
+                    print("        expected : %s" % json.dumps(r["expected"]))
+                if r.get("error"):
+                    print("        error    : %s" % r["error"])
+        print()
 
+    total = total_pass + total_fail
+    print("  合计: %d PASS / %d FAIL / %d total" % (total_pass, total_fail, total))
     print()
-    print("  结果: %d PASS / %d FAIL / %d total" % (npass, nfail, len(results)))
-
-    status = "PASS" if nfail == 0 else "FAIL"
+    status = "PASS" if total_fail == 0 and total > 0 else "FAIL"
     print("[%s] G2+" % status)
     if status == "PASS":
         print("  这证明 Phase A 的语义描述与原版机器码行为一致。")
         print("  注意：**不等于字节相等** —— 那只在 P1 才能验证。")
 
     if args.write_dashboard:
-        write_dashboard(root, results, status)
+        write_dashboard(root, all_results, status)
 
     return 0 if status == "PASS" else 1
-
 
 def write_dashboard(root, results, status):
     path = os.path.join(root, "dashboard", "metrics.json")

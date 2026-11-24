@@ -108,8 +108,9 @@ void set_first_field(void* self, unsigned value) {
 void polar_to_vec2_scaled(void* self, float angle,
                           float length_x, float length_y) {
     float* out = reinterpret_cast<float*>(self);
-    out[0] = std::sin(angle) * length_x;
-    out[1] = std::cos(angle) * length_y;
+    // ★ 实测修正：x 用 cos*length_x，y 用 sin*length_y
+    out[0] = std::cos(angle) * length_x;
+    out[1] = std::sin(angle) * length_y;
 }
 
 // --- 形状 I：指针编码 ---

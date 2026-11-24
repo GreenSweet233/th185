@@ -68,11 +68,21 @@ float read_first_float(void* self);
 //   fstp dword [eax+4]      ; this->y = cos(angle) * length
 //   ret 8                   ; stdcall/thiscall，2 个 float 参数
 //
-// 语义：给定角度与长度，算出 (sin*len, cos*len) 写进 this 的前两个 float。
+// 语义：给定角度与长度，算出 (cos*len, sin*len) 写进 this 的前两个 float。
 //
-// ★ 注意 x 用 sin、y 用 cos —— 不是常见的 (cos, sin)。
-//   这是从 fsincos 的栈序推出来的：fsincos 之后 st0=sin、st1=cos，
-//   第一次 fstp 弹出的是 st0=sin，写到 [eax]（即 x）。
+// ★★ 这里我错过一次，值得记录。
+//
+//   我原本从 fsincos 的 x87 栈序推断「st0=sin、st1=cos，第一次 fstp 弹出 sin
+//   写到 [eax]，所以 x=sin」。听起来很合理，**但错了**。
+//
+//   用 unicorn 实际执行 0x00404B70 得到：
+//     angle=0.0, length=2.0  ->  x=2.0, y=0.0
+//   而 sin(0)=0、cos(0)=1，所以 x 必然是 cos*length。
+//
+//   实测结论：x = cos(angle)*length，y = sin(angle)*length。
+//
+//   **教训**：x87 栈序推断容易出错（fsincos 的 st0/st1 顺序、fstp 的弹出语义、
+//   以及 fmul 作用在哪一层，任一处记错都会导致结论反了）。这类语义必须实测。
 void polar_to_vec2(void* self, float angle, float length);
 
 // --- 形状 F：返回 0（`xor eax, eax; ret`）---
@@ -122,6 +132,8 @@ void set_first_field(void* self, unsigned value);
 //
 // 与形状 E 的区别：E 用同一个 length 乘两次（圆），
 // 这里 x 和 y 各用一个（椭圆 / 各向异性缩放）。
+//
+// ★ 实测：x = cos(angle) * length_x，y = sin(angle) * length_y（同形状 E 的修正）。
 //
 // 2 个函数：0x00417750 / 0x00441580
 void polar_to_vec2_scaled(void* self, float angle, float length_x, float length_y);
