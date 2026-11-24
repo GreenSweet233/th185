@@ -1,0 +1,5 @@
+{
+  "_comment": "已锁定类型。锁定后不可被新函数推翻；要改走 conflict proposal（§6 G1、§8 第 5 条）。",
+  "version": 0,
+  "locked": {}
+}

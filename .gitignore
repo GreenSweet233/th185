@@ -13,7 +13,14 @@ th185_web/assets/
 # 它们不是游戏资源，是本项目的格式依据，必须入库才能让 README 的说法可核查。
 # 来源与每个文件的 SHA-256 记录在 reference/thtk/provenance.json。
 th185_web/local.target.json
-tools/
+# tools/ 曾整体忽略（旧布局下这里只放下载的第三方工具链）。
+# AGENTS.md §3 要求门槛脚本入库到 /tools，所以改为：忽略工具链本体，保留 .py/.mjs/.json。
+tools/*
+!tools/*.py
+!tools/*.mjs
+!tools/*.json
+!tools/*.md
+!tools/config.json
 verification/
 deploy/
 FILE-SHA256.json

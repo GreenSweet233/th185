@@ -1,0 +1,103 @@
+{
+  "_comment": "AGENTS.md §2：工具链只读、钉死。禁止为凑匹配改这里。认为必须改 → 停下写 conflict proposal。",
+  "_generated_at": "2026-11-24T04:41:52.573Z",
+  "target": {
+    "file": "th185.exe",
+    "version": "v1.00a",
+    "size": 883200,
+    "sha256": "76bbf844e962c16004b64f1b2ef3551593056baa43ea53b9a5df45ad731345c7",
+    "sections": {
+      ".text": {
+        "raw_offset": "0x400",
+        "raw_size": 711168,
+        "sha256": "09da18ef96ea7248da75791b51ad4bcb51177cee9bbf378fadfce7764f12335f"
+      },
+      ".rdata": {
+        "raw_offset": "0xADE00",
+        "raw_size": 98304,
+        "sha256": "93b54c51113d1927108ec1a258883a2ccc70666f1a6c48abfcab528a5904e665"
+      },
+      ".data": {
+        "raw_offset": "0xC5E00",
+        "raw_size": 65536,
+        "sha256": "e0de65f0e72d3421351b5e4dccb4cbb6162b1c41f949d077d3f006841f26ff57"
+      },
+      ".rsrc": {
+        "raw_offset": "0xD5E00",
+        "raw_size": 7168,
+        "sha256": "5b428bf3630c6a3171dfae95fadd193c6214b58465c373e3a1928b23d665c89a"
+      }
+    },
+    "pe": {
+      "machine": "0x014C (i386/PE32)",
+      "image_base": "0x00400000",
+      "entry_point_rva": "0x0009003B",
+      "timestamp": 1659144319,
+      "timestamp_utc": "2022-07-30T01:25:19Z",
+      "checksum": "0x000DE79F",
+      "sections_count": 4
+    }
+  },
+  "compiler": {
+    "_status": "BLOCKED",
+    "_blocker": "Rich Header 显示三档 build 并存（27412 / 31328 / 31332）。复现 .text 需要同时提供三套工具链，或证明其中两档对结果无影响。未解决前禁止 Phase B。",
+    "rich_header_key": "0x0D2865FF",
+    "builds": {
+      "27412": {
+        "approx_vs": "VS2019 16.0.x",
+        "products": [
+          "Prod259",
+          "Prod261",
+          "Prod260",
+          "Prod257",
+          "Prod262"
+        ],
+        "unit_count": 237
+      },
+      "31328": {
+        "approx_vs": "VS2019 16.8",
+        "products": [
+          "Prod253",
+          "Prod260",
+          "Prod259",
+          "Prod261"
+        ],
+        "unit_count": 89
+      },
+      "31332": {
+        "approx_vs": "VS2019 16.9",
+        "products": [
+          "Prod265",
+          "Prod255",
+          "Prod258"
+        ],
+        "unit_count": 81
+      },
+      "other": {
+        "21202": 2,
+        "30319": 3,
+        "30729": 7,
+        "50727": 2,
+        "_note": "SDK / ASM / import lib 版本，非 C++ 编译器"
+      }
+    },
+    "flags": null,
+    "linker": null,
+    "sdk_headers_hash": null
+  },
+  "reproducibility": {
+    "forbid": [
+      "__DATE__",
+      "__TIME__",
+      "路径嵌入",
+      "随机 PDB GUID"
+    ],
+    "requirement": "连编两次 hash 一致",
+    "_status": "未验证（工具链未锁定）"
+  },
+  "open_questions": [
+    "三档 build 是否分别对应不同 .obj？需要按 .text 内函数边界反推归属。",
+    "./data 有 668596 字节 BSS，vtable 初值不可见，需靠构造函数写入序列反推。",
+    "链接顺序未知——影响函数排列，是 .text 整体 diff 的关键变量。"
+  ]
+}

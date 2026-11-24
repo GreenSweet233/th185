@@ -660,14 +660,26 @@ check('op1024 (boss index) fires once the body is reached', bossSets > 0);
     check('the wave slots total 50', waves === 50);
     check('the Challenge Market has 12 waves', module._th185_scene_waves(8) === 12);
 
-    // Each scene's pool is sized to its boss count.
+    // Each scene's pool holds at least its boss count, and never fewer than the
+    // market needs.
+    //
+    // The pool used to be exactly the boss count, but scene 0 has ONE boss
+    // candidate and the market always shows three offers -- so the market
+    // opened with a single card. The pool is now widened to the offer count
+    // when the boss count is smaller.
+    const MARKET_OFFERS = 3;
     let poolOk = true;
+    let widened = 0;
     for (let s = 0; s < sceneCount; ++s) {
-        if (module._th185_scene_pool_size(s) !== module._th185_scene_boss_candidates(s)) {
-            poolOk = false;
-        }
+        const bosses = module._th185_scene_boss_candidates(s);
+        const pool = module._th185_scene_pool_size(s);
+        const want = Math.max(bosses, MARKET_OFFERS);
+        if (pool !== want) poolOk = false;
+        if (bosses < MARKET_OFFERS) ++widened;
     }
-    check('every scene pool is sized to its boss candidates', poolOk);
+    console.log('pools       : ' + widened + ' scene(s) widened to ' + MARKET_OFFERS);
+    check('every scene pool covers its boss count and the offer count', poolOk);
+    check('the tutorial pool was widened for the market', widened > 0);
 }
 // Dual currency and the black market.
 //
