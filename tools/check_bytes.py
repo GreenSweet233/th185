@@ -162,16 +162,20 @@ def main():
         # 提取单个函数：从 //@witness func= 之后到下一个 //@witness 或文件尾
         lines = src.split("\n")
         idx = None
+        import re as _re2
         for k, ln in enumerate(lines):
-            if "//@witness func=" in ln:
-                # 该 witness 块所属的函数名是否匹配
-                # 向后找第一个函数定义
-                for j in range(k + 1, min(k + 12, len(lines))):
-                    if fn_name + "(" in lines[j].replace(" ", "") or \
-                       (fn_name + " (") in lines[j]:
+            if "//@witness func=" in ln and fn_name in "\n".join(lines[max(0,k):k+18]):
+                for j in range(k + 1, min(k + 18, len(lines))):
+                    if _re2.search(r"\b" + _re2.escape(fn_name) + r"\s*\(", lines[j]):
                         idx = j
                         break
                 if idx is not None:
+                    break
+        # 兜底：全文搜函数定义
+        if idx is None:
+            for j, ln in enumerate(lines):
+                if _re2.search(r"\b" + _re2.escape(fn_name) + r"\s*\(", ln) and "//" not in ln.split(fn_name)[0]:
+                    idx = j
                     break
         if idx is None:
             results.append({"func": label, "status": "SKIP",
@@ -200,7 +204,10 @@ def main():
             func_text = _re.sub(r"(\n)([A-Za-z_][\w\s\*]*?)\s+" + fn_name + r"\s*\(",
                                 r"\1\2 __fastcall " + fn_name + "(", func_text, count=1)
 
-        # 前置需要的常量定义（从 hpp 里抠 constexpr）
+        # 前置需要的定义：
+        #   1) hpp 里的 constexpr / static const 常量
+        #   2) cpp 里的匿名 namespace 块（辅助函数 / 辅助 struct）
+        #   3) 外部符号声明（extern "C" 之类）
         prefix = ""
         hpp_path = os.path.join(root, "include",
                                 src_name.replace(".cpp", ".hpp"))
@@ -210,6 +217,29 @@ def main():
                     s = ln.strip()
                     if s.startswith("constexpr") or s.startswith("static const"):
                         prefix += ln + "\n"
+
+        # 抠出所有 namespace { ... } 块（辅助定义）
+        depth = 0
+        in_anon = False
+        anon = []
+        for ln in lines:
+            if not in_anon and ln.strip().startswith("namespace {") and ln.strip().endswith("{"):
+                in_anon = True
+                depth = 1
+                anon.append(ln)
+                continue
+            if in_anon:
+                anon.append(ln)
+                depth += ln.count("{") - ln.count("}")
+                if depth == 0:
+                    in_anon = False
+        prefix += "\n".join(anon) + "\n"
+
+        # 外部符号声明（extern "C" 单行声明）
+        for ln in lines:
+            s = ln.strip()
+            if s.startswith("extern \"C\"") and s.endswith(";") and "{" not in s:
+                prefix += ln + "\n"
 
         body = prefix + "\n" + func_text
         body = "\n".join(ln for ln in body.split("\n")

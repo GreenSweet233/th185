@@ -1,6 +1,8 @@
 #include "Trivial.hpp"
 
-#include <cmath>
+// 用编译器内建函数，避免 <cmath> 依赖（P1 只编译单函数，不带头文件）
+extern "C" double sin(double);
+extern "C" double cos(double);
 
 namespace th185 {
 
@@ -88,13 +90,23 @@ int return_zero() {
 // Phase A 写法要简洁：中间变量会让 token/指令比超上限（实测 4.67 > 4.00）。
 // 原版就是三次读取 + 三次写入，没有暂存。
 //@witness func=0x00405830+0x00417730+0x00441650 kind=thiscall
+namespace {
+// 12 字节的向量结构。
+//
+// ★ 必须用 struct 整体赋值，不能逐字段赋。
+//   实测：3 次 u32 赋值生成 3 条 mov（18 字节），
+//   struct 赋值才生成原版那样的 movq xmm0(8 字节) + mov(4 字节)。
+//   这是 MSVC 对 12 字节聚合类型的特殊代码生成路径。
+struct Vec3Raw {
+    int x;
+    int y;
+    int z;
+};
+}  // namespace
+
 void __fastcall copy_vec3(void* self, void* unused_edx, const void* source) {
     (void)unused_edx;
-    const float* src = static_cast<const float*>(source);
-    float* dst = static_cast<float*>(self);
-    dst[0] = src[0];
-    dst[1] = src[1];
-    dst[2] = src[2];
+    *static_cast<Vec3Raw*>(self) = *static_cast<const Vec3Raw*>(source);
 }
 
 // --- 形状 H：写首字段 ---
