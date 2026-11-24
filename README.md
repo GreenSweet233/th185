@@ -1,255 +1,242 @@
-# th185
+# th185-decomp
 
-[![QQ Group 1124121427](https://img.shields.io/badge/QQ%20Group-1124121427-12B7F5?logo=tencentqq)](https://qm.qq.com/q/eeUrxIltug?from=tim)
+A matching decompilation of 東方虹龍洞 外伝 ～ バレットフィリア達の闇市場 ～
+(TH185) v1.00a: C++ source written to compile, with ZUN's own compiler and
+flags, back to the machine code of `th185.exe`, checked function by function.
 
-A high-fidelity, portable reimplementation of 東方虹龍洞 外伝 ～ バレットフィリア達の闇市場 ～ 100th Black Market. ver 1.00a.
+**Status: bootstrap complete, matching just begun.** 50 of 1678 functions are
+matched so far. This is not a finished decompilation; the toolchain gap below
+blocks the byte-equality check entirely.
 
-> **状态：可运行原型。**
-> 加密归档 → ECL 脚本 → ANM 动画 → 软件光栅化 → 浏览器画面的整条链路已打通并验证。
-> 游戏本体（波次编队、敌方弹幕、计分、菜单）尚未完成。
+This repository does not include the game's executable or its data files
+(`th185.dat`, `thbgm.dat`, the manual); you need your own copy of the game.
+`th185.exe` must have SHA-256
+`76bbf844e962c16004b64f1b2ef3551593056baa43ea53b9a5df45ad731345c7`.
 
----
+## Status
 
-## 现在能做什么
+Six gate scripts implement the rules in [AGENTS.md](AGENTS.md). Two pass. The
+other four report `INCOMPLETE`, each for a reason stated plainly below — an
+`INCOMPLETE` gate is one that exists and runs but cannot reach a conclusion,
+not one that was waved through. Nothing in
+this repository is claimed to be byte-identical, because the check that would
+prove it has never run.
 
-```powershell
-# 构建
-node th185_web/scripts/build-cpp.mjs --app
-
-# 启动网页外壳（需要自备 th185.dat）
-node th185_web/scripts/serve-shell.mjs --port 8170 --data 'C:\path\to\th185.dat'
-# 浏览器打开 http://127.0.0.1:8170/
-```
-
-**浏览器实测**：60 FPS · 32 精灵 · 32 动画 · canvas 640×480。
-
-### 性能
-
-9 关连跑（每关跑到通关）的实测耗时，WASM 单线程：
-
-```
-stage0  3.6s   stage1  3.2s   stage2  4.5s   stage3  6.1s   stage4  4.2s
-stage5 10.5s   stage6  8.0s   stage7  4.4s   stage8  5.1s
-                                                     总计 49.7s
-```
-
-这个数字从最初的 1212s 降下来的，靠三处修改：
-
-| 改动 | 效果 |
-|---|---|
-| 碰撞检测只扫存活敌人，不再扫 256 个空槽 | 390s → 36s（单关） |
-| 光栅化：`clear` 打包成 32 位字、`draw` 把边函数系数提到循环外 | 61ms → 7.8ms（每帧） |
-| 绘制尺寸与碰撞半径分离（`radius` 兼作刷怪区域尺寸，曾让 quad 边长到 8192px） | 22.8s → 10.5s（stage5） |
-画面里是 TH185 的敌人精灵，各自播放自己的 ANM 动画；玩家可以移动、射击、击毁敌人、被敌人击毁。
-
-### 9 关全部可以打通
-
-```
-stage0 clear=1 at=2183  sched=112/112
-stage1 clear=1 at=1803  sched=72/72
-stage2 clear=1 at=1803  sched=72/72
-stage3 clear=1 at=1803  sched=72/72
-stage4 clear=1 at=1780  sched=72/72
-stage5 clear=1 at=1807  sched=80/80
-stage6 clear=1 at=1412  sched=72/72
-stage7 clear=1 at=588   sched=80/80
-stage8 clear=1 at=712   sched=72/72
-```
-
-每一关都是「波次全部触发 → Boss 被击破 → 场上清空」之后置位 builtin 槽 104，
-场景脚本读到后走 `op1017` 分支退出。这不是模拟的完成判定，是脚本自己走出来的。
-
-![渲染帧](th185_web/docs/media/app-frame.png)
-
-### 从加密归档还原出的素材
-
-下面两张图直接从 `th185.dat` 解码得到，不经过任何中间格式：
-
-| 内容 | 说明 |
-|---|---|
-| `enemy.anm` 的 320 个 sprite | 证明 sprite UV 子矩形查表正确 |
-| `ascii.anm` 的 256×256 图集 | 证明 THTX 像素解码正确（可读出 ASCII 字符与 `Bonus`/`History`/`Failed`/`PowerUp`） |
-
-![敌人精灵表](th185_web/docs/media/anm-sprites.png)
-
-![字体图集](th185_web/docs/media/anm-atlas.png)
-
----
-
-## 概要
-
-本仓库是 [Eagler Touhou](https://github.com/YomotsuHisami/eagler-touhou)（[touhou.vip](https://touhou.vip/)）计划的 TH185 接入分支，沿用 TH08 / TH10 / TH11 已确立的 **C++ / SDL3 → WebAssembly → WebGL2** 路线。
-
-与 TH06/TH07/TH08 的字节级 matching decomp 不同，本项目采用**功能还原重建（source reconstruction）**：
-
-- 目标不是产出与原版逐字节相同的 `th185.exe`，而是**行为等价**——同样的输入产生同样的帧状态。
-- 以原版机器码、资源结构、函数调用次序、x87/SSE 舍入行为为**行为依据**，恢复具名 C++ 管理器与脚本解释器。
-- 生产运行时不执行原版 EXE，也不包含 x86 转译或 D3D9 设备适配层。
-
-### 为什么选功能还原而非字节级 matching
-
-TH185 使用的 MSVC 工具集是 **VS2019 16.11 区间**（Rich Header 显示 build 27412 / 31328 / 31332 三档并存），现代编译器优化远比 TH06（MSVC 2002）激进。字节级 matching 在这种工具链上投入产出比极低，而 Eagler Touhou 的产品目标是「能在浏览器里玩到原版体验」，行为等价即可满足。
-
----
-
-## 四事实分离
-
-本仓库严格遵守一条纪律：**「有源码」「能编译」「行为一致」「已验证」是四个独立事实**，不得互相替代。
-
-| 证据等级 | 含义 |
-|---|---|
-| `observed` | 从原版数据/内存/机器码直接观测 |
-| `corroborated` | 有外部权威定义支撑（如 thtk） |
-| `behavioral` | 真实运行行为（浏览器实测、探针） |
-| `inferred` | 推断，未经证实 |
-| `source-present` | 有代码，未验证 |
-
-账本（`th185_web/config/*.csv`）里每条断言都标注等级，`verified` 必须同时有 `test_ref`。
-
----
-
-## 目标版本
-
-| 项 | 值 |
-|---|---|
-| 作品 | 東方虹龍洞 外伝 ～ バレットフィリア達の闇市場 ～ 100th Black Market. |
-| 版本 | **1.00a**（2022-08-14，唯一正式版） |
-| 语言 | 日文原版 |
-| `th185.exe` SHA-256 | `76bbf844e962c16004b64f1b2ef3551593056baa43ea53b9a5df45ad731345c7` |
-| `th185.exe` 大小 | 883,200 字节 (0xD7A00) |
-| PE TimeDateStamp | 1659144319 (0x62E4887F, 2022-07-30 01:25:19 UTC) |
-| ImageBase | 0x00400000 |
-| `th185.dat` SHA-256 | `5AF133F02ADD57F27FBEBA1B8D1E7D579F484B40C2595D57D4536537806D7428` |
-| `thbgm.dat` SHA-256 | `5224F1311D4FD91325BCC53399DBBEFA3A6D33F14D8E820459753123D036F1EE` |
-
-完整指纹见 [`th185_web/target.json`](th185_web/target.json)。
-
-> 该 SHA-256 与 thcrap-tsa `versions.js` 中标注 **`(original, DLsite release)`** 的条目一致。Steam 渠道（AppID **2097720**）套了 SteamStub 壳，磁盘上的 exe 哈希不同，需脱壳后才与本仓库基准一致。
-
----
-
-## 仓库结构
-
-```
-th185_web/
-  cpp/game/      C++ 游戏逻辑（52 个文件，8614 行）
-  cpp/sdl/       SDL 宿主与 WASM 导出层
-  sdl-runtime/   网页外壳（HTML / CSS / shell.mjs）
-  scripts/       构建、CI、导出、服务脚本
-    native/      32 个 Python 逆向与校验工具
-  config/        账本（subsystems / behaviors / symbols CSV）
-  docs/          24 篇技术文档
-  reference/     外部权威定义（thtk）
-  tests/         测试
-  artifacts/     构建产物（不入库）
-```
-
----
-
-## 进度
-
-| 系统 | 状态 | 证据 |
+| Gate | What it checks | Status |
 |---|---|---|
-| 目标指纹与版本考证 | ✅ 完成 | `target.json` |
-| **PBG4 归档解密** | ✅ **complete** | 条目表 0 差异，284 条目全解 |
-| **LZSS 解压** | ✅ **complete** | 7172→7165 字节精确 |
-| **RNG** | ✅ **complete** | 逐位一致 |
-| **ANM 容器** | ✅ **complete** | 55/55 文件、1879 sprite、430 纹理块 |
-| ANM 纹理解码 | ✅ 完成 | 4784 万像素、0 拒绝、可读图集 |
-| **ANM 解释器** | ✅ 完成 | 2121 脚本、368024 指令、`unsupported=0`、`fault=0` |
-| ANM 对象调度 | ✅ 完成 | 2291 spawn、2094 回收、深度/容量上限 0 |
-| **软件光栅化 + PNG** | ✅ 完成 | 10 种 blend、可辨认精灵图 |
-| **应用模块 + 网页外壳** | ✅ 完成 | 浏览器实测 60 FPS、9 关 49.7s |
-| **玩家实体** | ✅ 完成 | 八方向/低速/边界/射击 |
-| **弹幕系统** | ✅ 完成 | 固定池 4096、出界回收 |
-| **碰撞判定** | ✅ 完成 | 圆形判定、16 敌人全灭 |
-| **ECL 解释器** | ✅ **complete** | 816 子程序、`unsupported=0`、`clean=697` |
-| **ECL 驱动敌人生成** | ✅ **complete** | `op1013` 时间表、`sched=112/112` |
-| **Boss 战** | ✅ **complete** | `BossNNtest` 场景主控、实体可击破 |
-| **关卡完成流程** | ✅ **complete** | 9/9 通关 |
-| **计分 / 擦弹 / 掉落物** | ✅ 完成 | 击杀/擦弹/上限钳制、4 碎片 1 命 |
-| **音频** | ✅ 完成 | 64 声道、SE + BGM、`dropped=0` |
-| 波次随机系统（110 模板 × 50 槽位） | ⬜ 待办 | 算法已解，未接入 |
-| 卡牌（87 张）/ 黑市 / 双货币 | ⬜ 待办 | 表已解，未接入 |
-| 8 档难度数值表 | ⚠️ 部分 | 表已解，`score_cap` 已接 |
-| 敌方弹幕图案 | ⚠️ 部分 | 600 族已解析，未全部呈现 |
-| 菜单、对话、结局 | ⬜ 待办 | — |
-| 存档 `scoreth185.dat` | ⚠️ 部分 | 格式已解，未接入 |
-| 启动器接入（eagler-touhou/1） | ⬜ 待办 | 见 `CONTRIBUTING-TO-EAGLER.md` |
+| G1 | Global type consistency | **PASS** — but `definitions = 0`; no struct is defined yet |
+| G2 | Binary witness, both directions | **INCOMPLETE** — 50 / 1678 functions matched (2.98%) |
+| G3 | Structure alignment (loops vs back edges) | **PASS** |
+| G4 | Canonical form + blacklist | **PASS** — without `clang-format`, which is absent here |
+| G5 | No UB + perturbation stability | **INCOMPLETE** — needs a compiler this machine lacks |
+| G6 | Independent evidence (RTTI/vtable) | **INCOMPLETE** — three of its four requirements are unsupported natively |
 
-账本实时数据：**33 个子系统 · 360 条行为断言 · 23 个已知符号**。
+`dashboard/metrics.json` is the only thing a human needs to read; it records
+these states and, where a number is unknown, stores `null` rather than `0`.
 
----
+The three non-PASS gates in one line each: G2 has explained 50 of 1678
+functions; G4 passes its blacklist but has never been run through
+`clang-format`, which is not installed; G5 and G6 cannot conclude without a
+matched toolchain and without RTTI, `.pdata` or a second disassembler.
 
-## 三个必须先知道的事实
+### What is actually matched
 
-**① 这是全球首例。** GitHub 全站搜索（`th185` / `"100th Black Market"` / `touhou 18.5` / `th185 in:readme`）只找到 Mod、随机化工具和资源编译器，**没有任何 TH185 的重建或反编译项目**。Eagler Touhou 进度表里 th185 标为 `Unassigned`。
+50 functions. 49 of them fall into eight instruction-shape groups found by
+scanning every `call` target in `.text`; the remaining one was written first,
+by hand, as the pilot:
 
-**② Replay 被取消了——但这不是 bug，是小数点作的传统。** 扫描本机全部小数点作 exe：th095/th125/th128/th143/th165/th185 **全都没有 `Replay` UI 字符串**，只有 th18 有。所以「ZUN 代码没写好」的说法不成立；更可能是 TH185 的随机性玩法与 Replay 天然不兼容（黑市是关卡中途交互，传统 `.rpy` 表达不了）。这意味着 **TH11 那套「原版录像逐帧比对」不可直接用**，验证改用「状态快照比对 + Force Wave 确定性注入」。**不建议自建 Replay**——那是替 ZUN 解决他主动绕开的问题。详见 [docs/RECONSTRUCTION.md](th185_web/docs/RECONSTRUCTION.md) §3.2.1 与 §3.3。
+| Shape | Instructions | Functions | Meaning |
+|---|---|---:|---|
+| A | `mov eax, ecx; ret` | 2 | return `this` |
+| B | `ret 0` | 13 | empty body |
+| C | `mov eax, [ecx]; ret` | 2 | read first field (u32) |
+| D | `movss xmm0, [ecx]; ret` | 2 | read first field (float) |
+| E | `fsincos` sequence | 20 | polar → Vec2 |
+| F | `xor eax, eax; ret` | 4 | return 0 |
+| G | `movq` + 8-byte copy | 3 | Vec3 copy |
+| H | `mov [ecx], eax; ret 4` | 3 | write first field |
 
-**③ 规模约为 TH11 的 3~3.5 倍。** 9 场景 × 50 波次槽位、110 条波次模板池、28 个 BOSS 编号、87 个卡牌类、8 档难度。自机砍到 1 人（仅魔理沙）是唯一减项。
+The pilot function, `0x00402A50` (44 bytes, 8 instructions, 6 callers),
+decrements a countdown at `[ecx+0x8C]` and, when it goes negative, clears that
+field along with `[ecx+0x00]` and `[ecx+0xD4]`:
 
----
-
-## 文档
-
-| 文档 | 内容 |
-|---|---|
-| [PBG4.md](th185_web/docs/PBG4.md) | 归档加密与 LZSS（49 KB） |
-| [ECL.md](th185_web/docs/ECL.md) | ECL 脚本格式与解释器（§1–§29） |
-| [ECL_DRIVEN.md](th185_web/docs/ECL_DRIVEN.md) | ECL 驱动敌人生成 |
-| [ECL_COROUTINE.md](th185_web/docs/ECL_COROUTINE.md) | 协程语义 |
-| [ECL_STACK.md](th185_web/docs/ECL_STACK.md) | 协程的栈语义 |
-| [ANM.md](th185_web/docs/ANM.md) | ANM 容器 / 纹理 / 脚本 / 调度（§1–§31） |
-| [RENDER.md](th185_web/docs/RENDER.md) | 渲染层与光栅化 |
-| [BANKS.md](th185_web/docs/BANKS.md) | 动画库分层 |
-| [WEB.md](th185_web/docs/WEB.md) | 网页外壳 |
-| [PLAYER.md](th185_web/docs/PLAYER.md) | 玩家实体 |
-| [BULLETS.md](th185_web/docs/BULLETS.md) | 弹幕系统 |
-| [COLLISION.md](th185_web/docs/COLLISION.md) | 碰撞判定 |
-| [WAVES.md](th185_web/docs/WAVES.md) | 波次随机系统 |
-| [CARDS.md](th185_web/docs/CARDS.md) / [CARD_CLASSES.md](th185_web/docs/CARD_CLASSES.md) | 卡牌表与类 |
-| [DIFFICULTY.md](th185_web/docs/DIFFICULTY.md) | 8 档难度 |
-| [SAVE.md](th185_web/docs/SAVE.md) | 存档格式 |
-| [STAGE.md](th185_web/docs/STAGE.md) | `.std` 场景格式 |
-| [RNG.md](th185_web/docs/RNG.md) | 随机数 |
-| [CPP.md](th185_web/docs/CPP.md) | C++ 实现进度 |
-| [BUILD.md](th185_web/docs/BUILD.md) | 构建与校验 |
-| [WORKFLOW.md](th185_web/docs/WORKFLOW.md) | 工作流 |
-| [PROGRESS.md](th185_web/docs/PROGRESS.md) | 进度总览 |
-| [RECONSTRUCTION.md](th185_web/docs/RECONSTRUCTION.md) | 重建方法论 |
-
----
-
-## 验证
-
-```powershell
-node th185_web/scripts/ci.mjs        # 全部 36 项检查
+```asm
+mov edx, [ecx+0x8C]      ; countdown
+sub edx, 1
+mov [ecx+0x8C], edx
+jns done
+mov dword [ecx+0x8C], 0  ; clamp and reset
+mov dword [ecx+0x00], 0
+mov dword [ecx+0xD4], 0
+ret
 ```
 
-CI 覆盖：目标指纹、账本一致性、进度、Unicorn 探针、RNG、波次、卡牌、LZSS、难度、PBG4、存档、ANM、纹理、STD、ECL、ECL 覆盖率、ECL 解释器、栈推断，以及 12 项 **C++ 与参考实现的交叉校验**，最后是构建、真实数据运行、应用模块渲染、玩家输入、外壳契约。
+Its source deliberately defines no struct. Only these three offsets are known;
+what lies between them is not, and padding a struct to make the offsets come
+out right would be an unwitnessed element that G2 rejects and G4 forbids. The
+offsets are named constants and the layout is listed as unresolved.
 
----
+Shape E is worth reading too: the original computes `x = sin(angle) * length` and
+`y = cos(angle) * length`, not the usual `(cos, sin)`. That follows from the x87
+stack order after `fsincos` — `st0` is sin and is popped first — and writing it
+the intuitive way would be 90° wrong.
 
-## 构建
+One source function can carry several addresses when the shape repeats across
+classes:
 
-源码树沿用 TH08 / TH10 / TH11 的共享工作区/工具链布局。构建、校验与打包命令见 [`th185_web/docs/BUILD.md`](th185_web/docs/BUILD.md)。
+```cpp
+//@witness func=0x00404B70+0x00405A70+...+0x0048F370 kind=stdcall
+void polar_to_vec2(void* self, float angle, float length);
+```
 
-构建产物写入 `th185_web/artifacts/`，不入库。
+## Toolchain
 
----
+What the executable says about how ZUN built it:
 
-## Assets and licensing
+| | | Evidence |
+|---|---|---|
+| Compiler | **three MSVC builds side by side**: 27412, 31328, 31332 (VS2019 16.0.x / 16.8 / 16.9) | Rich header, key `0x0D2865FF`: 237 objects at 27412, 89 at 31328, 81 at 31332 |
+| Target | PE32 / x86, ImageBase `0x00400000`, entry RVA `0x0009003B` | Optional header |
+| Linker flags | not yet recovered | LTCG signature absent from the POGO debug entry |
+| Timestamp | `1659144319` = 2022-07-30T01:25:19Z | COFF header |
+| PE CheckSum | `0x000DE79F` | recomputed value matches |
+| Sections | `.text` 711114 / `.rdata` 97948 / `.data` 734132 / `.rsrc` 7168 (VSize) | section table |
 
-This repository does not include the original Touhou executable, game data, music, replay, save files, or private development reference material. A runnable package must be assembled locally from files you are legally allowed to use.
+### The three-build problem
 
-Licensing is component-specific. Keep the notices and licenses beside each bundled component; no blanket license is asserted for the original game or its assets.
+`.data` declares 734132 bytes of virtual size but only 65536 are stored, so
+668596 bytes are BSS — vtables live there and their initial contents cannot be
+read from the file, only reconstructed from the constructors that write them.
 
-本仓库自己编写的代码与文档采用 **MIT** 许可，详见 [LICENSE](LICENSE)。
+More seriously, one executable carrying three compiler builds means a matching
+build needs all three toolchains present, or a proof that two of them leave no
+trace in `.text`. **Neither has been done.** This is why G5 and P1 are blocked.
 
-| 内容 | 归属 |
+### This machine's toolchain
+
+```
+original needs : MSVC build 27412 / 31328 / 31332  (VS2019 16.0.x / 16.8 / 16.9)
+this machine   : MSVC 14.44.35207 (VS2022 Community)
+                 C:\Program Files (x86)\Microsoft Visual Studio\2019 exists but is empty
+```
+
+AGENTS.md §2 forbids changing the compiler to make bytes line up, so VS2022 is
+not used as a stand-in. The consequence is stated rather than worked around:
+**the byte-equality check has never run, and no function here is claimed to be
+byte-identical.**
+
+## Repository layout
+
+```
+orig/        original binary (not committed; README explains the hash)
+src/         reconstructed source
+include/     shared headers — the only place types may be defined
+types/       db.json (all types) + lock.json (locked layouts)
+evidence/    witness maps, vtable scans, offset statistics, gate self-tests
+ledger/      unresolved.md, violations.md
+dashboard/   metrics.json — the human-readable state of everything
+tools/       gate scripts
+```
+
+## Gates
+
+```sh
+python tools/check_types.py        # G1 global type consistency
+python tools/check_witness.py      # G2 binary witness
+python tools/check_structure.py    # G3 structure alignment
+python tools/check_style.py        # G4 canonical form + blacklist
+python tools/check_stability.py    # G5 no UB + perturbation stability
+python tools/check_evidence.py     # G6 independent evidence
+python tools/check_bootstrap.py    # meta: are all six implemented and run?
+```
+
+Each prints PASS / FAIL / INCOMPLETE and writes its result into
+`dashboard/metrics.json`. `INCOMPLETE` is used where a gate exists but cannot
+reach a conclusion — it is not a soft pass.
+
+Every gate ships a mutation-test record under `evidence/`, because a checker
+that cannot fail is worse than no checker:
+
+| Gate | Mutation | Caught |
+|---|---|---|
+| G1 | locked offset 12 → 16 | `offset locked=16 found=12` |
+| G1 | same struct, two different definitions | `cross_tu_mismatch (2 variants)` |
+| G2 | witness a displacement that exists elsewhere but not in this function | `not inside this function` |
+| G3 | claim a match for a function whose binary has a loop, with loop-free source | `source_fully_unrolled` |
+| G4 | one line per blacklist rule | 9/9 caught; clean code + comments mentioning `goto` → 0 false positives |
+| G6 | card count 87 → 88 | `card_vtable_count_mismatch` |
+
+## Evidence gathered so far
+
+- **117 vtables, 2164 slots.** 87 of them have exactly 22 slots and sit at a
+  uniform `0x5C` stride — `(22 + 1) * 4`, the 22 virtual functions plus the
+  MSVC COL back-pointer. The card table (`CARD_DESC_LIST` at `0x004CA370`) holds
+  exactly 87 entries. Two independent structures agreeing on a count and a
+  stride is the strongest cross-check available without RTTI.
+- **9 virtual call slots** found by classifying all 592 `[ecx+N]` offsets by
+  access pattern. `0xE4` is called indirectly 156 times, the hottest in `.text`.
+- **592 offsets / 4398 accesses** classified into read-write, float, bit-flag,
+  state-value and indirect-call groups (`evidence/offsets-ecx.json`). The file
+  states its own limit: the same offset in different classes is merged, so this
+  is not any one class's layout.
+
+### What is not available natively
+
+| Requirement | Why not |
 |---|---|
-| 本仓库代码与文档 | MIT |
-| 東方Project 系列作品及资源 | 上海アリス幻樂団 / ZUN（**不在本仓库内**） |
-| `th185_web/reference/thtk/` | thpatch/thtk，BSD-2-Clause |
-| `_references/` | 各自许可证 |
+| RTTI class names | zero `.??AV...@@` hits; the build used `/GR-` |
+| `.pdata` function bounds | PE32 x86 has no `.pdata` — that is an x64 table |
+| Cross-checking two disassemblers | no Ghidra, IDA or retdec on this machine |
+| `clang-format` | not installed; G4 reports `FORMAT_UNAVAILABLE` every run |
+
+None of these are silently skipped. Each is printed on every run and recorded
+in `evidence/`.
+
+## Documentation
+
+- [AGENTS.md](AGENTS.md): the rules. Byte equality is the gate, not the goal;
+  a candidate that fails G1–G6 is rejected however small its diff.
+- [ledger/unresolved.md](ledger/unresolved.md): every function or field whose
+  meaning is not yet established, each with its blocking condition.
+- [ledger/violations.md](ledger/violations.md): rules that were broken, kept
+  rather than edited away. The first entry records a `match:` commit made while
+  only three of the six gates existed.
+- `th185_web/docs/`: the format work from before this repository changed
+  direction — PBG4 decryption, LZSS, ANM, ECL, the card table. That work is
+  behaviourally verified but is *not* matching evidence.
+
+## History
+
+This repository spent 156 commits as a behaviour-equivalent reconstruction:
+C++ compiled to WebAssembly, playable in a browser, verified by clearing all
+nine stages with zero ECL faults. That work is preserved, and the original
+specification is archived at
+[`th185_web/docs/HISTORY-ROUTE-SWITCH.md`](th185_web/docs/HISTORY-ROUTE-SWITCH.md)
+— including the clause that said this repository would not attempt byte-level
+matching, which this direction change overrides.
+
+The reconstruction is the reason Phase A of each function can be written
+quickly: the formats, the opcodes and the card semantics were already worked
+out. It is not evidence that anything compiles to the right bytes.
+
+## License
+
+The project's own work (the gate scripts, the analysis, the names, comments and
+documentation) is MIT — see [LICENSE](LICENSE). The game itself, including the
+data tables and strings the source reproduces from `th185.exe`, remains the
+property of its author, ZUN (Team Shanghai Alice).
+
+## Credits
+
+- [th16-decomp](https://github.com/johnthreekay/th16) by JohnThreeKay, for the
+  structure of this repository and its README; a demonstration that MSVC
+  matching on a modern Touhou build is possible when the toolchain is pinned.
+- [thprac](https://github.com/touhouworldcup/thprac): its TH185 module supplies
+  the global addresses used here (`funds`, `bulletMoney`, `CARD_DESC_LIST`,
+  `ENEMY_MANAGER`). Those addresses are cross-checked against this repository's
+  own disassembly rather than trusted blindly.
+- [thtk](https://github.com/thpatch/thtk): the authoritative ANM/ECL format
+  definitions vendored under `th185_web/reference/thtk/`.
+- [Touhou 20 reconstruction](https://github.com/Oracatt/Touhou20): its ECL
+  opcode audit let 93 of TH185's 117 entity opcodes be checked against a
+  same-generation implementation instead of being guessed.

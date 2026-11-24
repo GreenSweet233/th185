@@ -257,7 +257,21 @@ def main():
 
     src_classes = declared_classes(os.path.join(root, "include"))
 
-    status = "FAIL" if failures else "PASS"
+    # ★ 状态三态，与 check_witness / check_stability 一致。
+    #
+    # 此前这里只判 failures，于是：
+    #   脚本输出 [PASS] G6
+    #   dashboard 写 G6: false（因为下面 write_dashboard 里有 all_supported 判断）
+    # 两个说法互相矛盾。README 更是同时复述了两者。
+    #
+    # 正确做法：有 UNSUPPORTED 项就不是 PASS。
+    # 「能做的部分都成立」是 INCOMPLETE，不是 PASS。
+    if failures:
+        status = "FAIL"
+    elif unsupported:
+        status = "INCOMPLETE"
+    else:
+        status = "PASS"
     result = {
         "gate": "G6",
         "status": status,
@@ -323,7 +337,9 @@ def main():
                 print("         %s" % f["detail"])
         print()
         print("[%s] G6" % status)
-        print("  注意：PASS 只代表「能做的部分都成立」，不等于全部 G6 要求已满足")
+        if status == "INCOMPLETE":
+            print("  %d 项要求 UNSUPPORTED，因此不是 PASS。" % len(unsupported))
+            print("  「能做的部分都成立」不等于「G6 满足」。")
 
     if args.write_dashboard:
         write_dashboard(root, result)
@@ -338,10 +354,8 @@ def write_dashboard(root, result):
             m = json.load(fh)
     except (OSError, json.JSONDecodeError):
         m = {}
-    # 有 UNSUPPORTED 项时，G6 不能记 true —— 那会让人以为 G6 完整了。
-    all_supported = not result.get("unsupported_requirements")
-    m.setdefault("gates_implemented", {})["G6"] = (
-        result.get("status") == "PASS" and all_supported)
+    # status 现在是三态权威值：只有无 failures 且无 UNSUPPORTED 才是 PASS。
+    m.setdefault("gates_implemented", {})["G6"] = (result.get("status") == "PASS")
     m["_g6_last_run"] = {
         "status": result.get("status"),
         "vtables": result["vtables"]["total"],
