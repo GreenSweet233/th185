@@ -11,6 +11,23 @@
 | 5 | `check_stability.py` | G5 | UBSan/ASan；-O0/-O2/-Os 行为一致；安全扰动后 .text 不变 |
 | 6 | `check_evidence.py` | G6 | assert/RTTI/vtable/.pdata；多反编译器 ≥2 一致 |
 
+## 第 7 个脚本（非门槛）：`check_bootstrap.py`
+
+不是 G1–G6 之一，而是**元检查**：防止 V1 违规（Bootstrap 未完成就提交 match:）复发。
+
+检查六件事：
+
+1. 六个门槛脚本都存在
+2. 六个都能被 `ast.parse` 解析
+3. 六个都跑过（dashboard 里有 `_gN_last_run` 记录）
+
+**不要求六门都 PASS**（G2/G5 因客观缺口无法 PASS），
+只要求「六个都实现且都跑过」—— 这与 §0.1 的措辞一致。
+
+```powershell
+python tools/check_bootstrap.py   # 0 = 可以提交 match，1 = 禁止
+```
+
 ## 输出契约
 
 每个脚本必须：

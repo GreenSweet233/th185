@@ -16,7 +16,7 @@ void* return_this(void* self) {
 //
 // 13 个二进制函数共享此形状。0x00404C20 有 11 个调用方。
 // 这是「虚函数的空实现」最常见的形态。
-//@witness func=0x00404C20+0x00441640+0x00448100+0x0045CA20+0x004717D0+0x0047A210+0x0048AFA0+0x0048C910 kind=thiscall
+//@witness func=0x00404C20+0x00441640+0x00448100+0x0045CA20+0x004717D0+0x00473800+0x00478740+0x0047A210+0x0048AFA0+0x0048C910+0x0048C920+0x00490592+0x00490595 kind=thiscall
 void do_nothing() {
 }
 
@@ -52,6 +52,52 @@ void polar_to_vec2(void* self, float angle, float length) {
     c = std::cos(angle);
     out[0] = s * length;
     out[1] = c * length;
+}
+
+// --- 形状 F：返回 0 ---
+//
+// `xor eax, eax; ret`。MSVC 生成 `return 0;` 的标准形式。
+//@witness func=0x004903B9+0x00490553+0x0049055C+0x0049055F kind=cdecl
+int return_zero() {
+    return 0;
+}
+
+// --- 形状 G：Vec3 拷贝 ---
+//
+// 反汇编（三个地址逐字节相同）：
+//
+//   mov  eax, [ebp+8]        ; eax = src
+//   movq xmm0, qword [eax]   ; 前 8 字节
+//   movq [ecx], xmm0         ; 写入 this 前 8 字节
+//   mov  eax, [eax+8]        ; 后 4 字节
+//   mov  [ecx+8], eax        ; 写入 this 后 4 字节
+//   ret 4
+//
+// ★ 这是**线性**代码，没有循环。
+//
+// 我第一版写成 `for (i=0; i<12; ++i) dst[i]=src[i];` ——
+// 结果 G3 报 `loop_count_mismatch`：源码 1 个循环 vs 二进制 0 条回边。
+// 编译器即使展开循环，源码结构仍与二进制不对齐。
+//
+// 改成三个 float 的直接赋值，结构上就是一串直线代码 + 1 个 ret。
+// 注意顺序：前 8 字节作为一个 movq 一起动，符合「先 2 个 float 再 1 个」的字段序。
+// Phase A 写法要简洁：中间变量会让 token/指令比超上限（实测 4.67 > 4.00）。
+// 原版就是三次读取 + 三次写入，没有暂存。
+//@witness func=0x00405830+0x00417730+0x00441650 kind=thiscall
+void copy_vec3(void* self, const void* source) {
+    const float* src = static_cast<const float*>(source);
+    float* dst = static_cast<float*>(self);
+    dst[0] = src[0];
+    dst[1] = src[1];
+    dst[2] = src[2];
+}
+
+// --- 形状 H：写首字段 ---
+//
+// `this[0..3] = value`。
+//@witness func=0x00406720+0x00433BC0+0x00433C80 kind=thiscall
+void set_first_field(void* self, unsigned value) {
+    *reinterpret_cast<unsigned*>(self) = value;
 }
 
 }  // namespace th185

@@ -181,11 +181,9 @@ def build_target_facts(sections, image_base, md):
         outside = ins["op_str"]
         for d in disp_parts:
             outside = outside.replace(d, "")
-        for m in re.finditer(r"0x([0-9a-fA-F]+)", outside):
-            imms.add(int(m.group(1), 16))
+        imms.update(extract_numbers(outside))
         for d in disp_parts:
-            for m in re.finditer(r"0x([0-9a-fA-F]+)", d):
-                disps.add(int(m.group(1), 16))
+            disps.update(extract_numbers(d))
         # 栈槽：ebp - 0xNN / ebp + 0xNN
         for m in re.finditer(r"ebp ([+-]) 0x([0-9a-fA-F]+)", ins["op_str"]):
             sign = -1 if m.group(1) == "-" else 1
@@ -199,6 +197,38 @@ def build_target_facts(sections, image_base, md):
         "displacements": disps,
         "stack_slots": slots,
     }
+
+
+def extract_numbers(text):
+    """从反汇编文本里提取所有数值，**同时支持十六进制与十进制**。
+
+    ## 为什么必须两种都支持
+
+    capstone 对位移/立即数的打印格式取决于大小：
+
+        [eax + 0x8c]   -> 十六进制（带 0x）
+        [eax + 8]      -> **十进制**（不带 0x）
+
+    我第一版只写了 `0x([0-9a-fA-F]+)`，于是：
+      - `[eax + 8]` 提取不到（没有 0x 前缀）-> disp 集合缺 8
+      - 声明 `disp 0x8` 的见证被判 FAIL，报错「not inside this function」，
+        但反汇编里它明明就在
+
+    实测证据（0x00405830 的 9 条指令全部 disp=[]）：
+        mov eax, dword ptr [eax + 8]   brackets=['[eax + 8]']   提取: []
+        movq qword ptr [ecx], xmm0     brackets=['[ecx]']       提取: []
+
+    这是**系统性漏检**：所有小于 0x0A 的位移都提取不到。
+    """
+    out = set()
+    # 十六进制
+    for m in re.finditer(r"0x([0-9a-fA-F]+)", text):
+        out.add(int(m.group(1), 16))
+    # 十进制（去掉 0x 形式的残留后，剩下的纯数字）
+    stripped = re.sub(r"0x[0-9a-fA-F]+", " ", text)
+    for m in re.finditer(r"\b([0-9]+)\b", stripped):
+        out.add(int(m.group(1), 10))
+    return out
 
 
 def facts_for_range(sections, image_base, md, lo, hi):
@@ -234,11 +264,9 @@ def facts_for_range(sections, image_base, md, lo, hi):
         outside = ins["op_str"]
         for d in disp_parts:
             outside = outside.replace(d, "")
-        for m in re.finditer(r"0x([0-9a-fA-F]+)", outside):
-            imms.add(int(m.group(1), 16))
+        imms.update(extract_numbers(outside))
         for d in disp_parts:
-            for m in re.finditer(r"0x([0-9a-fA-F]+)", d):
-                disps.add(int(m.group(1), 16))
+            disps.update(extract_numbers(d))
         for m in re.finditer(r"ebp ([+-]) 0x([0-9a-fA-F]+)", ins["op_str"]):
             sign = -1 if m.group(1) == "-" else 1
             slots.add(sign * int(m.group(2), 16))
@@ -536,6 +564,19 @@ def write_dashboard(root, result):
         m = {}
     m.setdefault("gates_implemented", {})["G2"] = (result["status"] == "PASS")
     m["witnessless_elements"] = result["witnessless_elements"]
+    # ★ 顶层 coverage 必须与 _g2_last_run 一致。
+    #
+    # 曾经长期是 {"matched": 0, "total": null, "ratio": 0}，
+    # 而 _g2_last_run.function_coverage 是 0.020858（35/1678）——
+    # 两个字段互相矛盾，仪表盘读者会以为进度是 0。
+    # 根因：coverage 是早期手写的初始值，后来加 _g2_last_run 时没同步更新它。
+    rc = result["reverse_coverage"]
+    m["coverage"] = {
+        "matched": rc["matched_functions"],
+        "total": rc["binary_functions"],
+        "ratio": rc["function_coverage"],
+        "_definition": "matched functions / binary call targets（call 目标作为可枚举函数下界）",
+    }
     m.setdefault("_notes", {})["witnessless_elements"] = (
         "G2 实测值。0 表示当前源码的见证声明全部命中；"
         "不表示二进制已被完全解释（见 reverse_coverage）")

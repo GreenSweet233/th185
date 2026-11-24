@@ -75,4 +75,37 @@ float read_first_float(void* self);
 //   第一次 fstp 弹出的是 st0=sin，写到 [eax]（即 x）。
 void polar_to_vec2(void* self, float angle, float length);
 
+// --- 形状 F：返回 0（`xor eax, eax; ret`）---
+//
+// `xor eax, eax` 是 MSVC 生成 `return 0;` 的标准方式（比 mov eax,0 短 2 字节）。
+// 4 个函数：0x004903B9 / 0x00490553 / 0x0049055C / 0x0049055F
+int return_zero();
+
+// --- 形状 G：Vec3 拷贝（`movq` + 8 字节）---
+//
+// 反汇编（0x00405830）：
+//
+//   mov  eax, [ebp+8]     ; eax = src
+//   movq xmm0, [eax]      ; xmm0 = src[0..7]  （前 8 字节，两个 float）
+//   movq [ecx], xmm0      ; this[0..7] = xmm0
+//   mov  eax, [eax+8]     ; eax = src[8..11] （第三个 float）
+//   mov  [ecx+8], eax     ; this[8..11] = eax
+//   ret  4
+//
+// 即 `*this = *src`，12 字节 = 3 个 float（Vec3）。
+// MSVC 用 movq 拷前 8 字节 + mov 拷剩余 4 字节，是 12 字节结构体的标准拷贝序列。
+// 3 个函数：0x00405830 / 0x00417730 / 0x00441650
+void copy_vec3(void* self, const void* source);
+
+// --- 形状 H：写首字段为 u32（`mov [ecx], eax; ret 4`）---
+//
+// 反汇编（0x00406720）：
+//
+//   mov eax, [ebp+8]      ; eax = value
+//   mov [ecx], eax        ; this[0..3] = value
+//   ret 4
+//
+// 即 `this->first = value`。3 个函数：0x00406720 / 0x00433BC0 / 0x00433C80
+void set_first_field(void* self, unsigned value);
+
 }  // namespace th185
