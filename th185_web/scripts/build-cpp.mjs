@@ -68,14 +68,51 @@ const SDK_CANDIDATES = [
   resolve(workspace, "th11", "tools", "emsdk"),
 ];
 
-const sdk = SDK_CANDIDATES.find((p) => existsSync(join(p, "install", "emscripten", "emcc.py")));
-if (!sdk) {
-  console.error("error: emsdk not found. Looked in:");
+// Two emsdk layouts exist and they are NOT interchangeable:
+//
+//   releases-* style (what is installed here): ships the toolchain under
+//     <sdk>/upstream/{bin,emscripten}, and <sdk>/install/emscripten is a
+//     junction to <sdk>/upstream/emscripten -- so emcc.py is reachable via
+//     install/ but <sdk>/install/bin does NOT exist at all.
+//
+//   older emsdk style: everything under <sdk>/install/{bin,emscripten}.
+//
+// The previous code assumed the second layout and hardcoded install/bin as
+// LLVM_ROOT. On the layout actually present that path does not exist, so emcc
+// died with "clang executable not found at .../install/bin/clang" and the whole
+// cpp-build check failed. Probing for clang instead of guessing is what makes
+// this work on both.
+function layoutOf(candidate) {
+  const emccInUpstream = join(candidate, "upstream", "emscripten", "emcc.py");
+  const emccInInstall = join(candidate, "install", "emscripten", "emcc.py");
+  const emcc = existsSync(emccInUpstream) ? emccInUpstream
+    : existsSync(emccInInstall) ? emccInInstall
+    : null;
+  if (!emcc) return null;
+
+  // LLVM_ROOT must contain clang.exe; BINARYEN_ROOT must contain wasm-opt.exe.
+  // Derive them from where the binaries really are rather than from a naming
+  // convention, because the two layouts disagree.
+  const roots = [
+    { llvm: join(candidate, "upstream", "bin"), binaryen: join(candidate, "upstream") },
+    { llvm: join(candidate, "install", "bin"), binaryen: join(candidate, "install") },
+  ];
+  const usable = roots.find((r) =>
+    existsSync(join(r.llvm, "clang.exe")) || existsSync(join(r.llvm, "clang")));
+  if (!usable) return null;
+
+  return { sdk: candidate, emcc, llvm: usable.llvm, binaryen: usable.binaryen };
+}
+
+const layout = SDK_CANDIDATES.map(layoutOf).find(Boolean);
+if (!layout) {
+  console.error("error: no usable emsdk found (need emcc.py plus a clang binary). Looked in:");
   for (const p of SDK_CANDIDATES) console.error("  " + p);
   process.exit(2);
 }
 
-const emcc = join(sdk, "install", "emscripten", "emcc.py");
+const sdk = layout.sdk;
+const emcc = layout.emcc;
 
 // The bundled .emscripten may reference a node.exe that does not exist here,
 // so write our own config pointing at a node that does.
@@ -84,14 +121,16 @@ const configPath = join(outDir, ".emscripten");
 
 function writeConfig() {
   mkdirSync(outDir, { recursive: true });
+  // Every path below is derived from the probed layout, not from a naming
+  // convention -- see layoutOf() for why the assumption had to go.
   const body = [
     "import os",
     `_sdk = ${JSON.stringify(sdk.replaceAll("\\", "/"))}` ,
-    `LLVM_ROOT = os.path.join(_sdk, "install", "bin")`,
-    `BINARYEN_ROOT = os.path.join(_sdk, "install")`,
+    `LLVM_ROOT = ${JSON.stringify(layout.llvm.replaceAll("\\", "/"))}`,
+    `BINARYEN_ROOT = ${JSON.stringify(layout.binaryen.replaceAll("\\", "/"))}`,
     `NODE_JS = [${JSON.stringify(nodeExe.replaceAll("\\", "/"))}]`,
-    `CACHE = os.path.join(_sdk, "install", "emscripten", "cache")`,
-    `EMSCRIPTEN_ROOT = os.path.join(_sdk, "install", "emscripten")`,
+    `CACHE = ${JSON.stringify(join(layout.binaryen, "emscripten", "cache").replaceAll("\\", "/"))}`,
+    `EMSCRIPTEN_ROOT = ${JSON.stringify(join(layout.binaryen, "emscripten").replaceAll("\\", "/"))}`,
     "",
   ].join("\n");
   writeFileSync(configPath, body, "utf8");
@@ -101,7 +140,10 @@ const env = {
   ...process.env,
   EMSDK: sdk,
   EM_CONFIG: configPath,
-  EM_CACHE: join(sdk, "install", "emscripten", "cache"),
+  // Derived from the probed layout. The old value was
+  //   join(sdk, "install", "emscripten", "cache")
+  // which does not exist on the releases-* layout.
+  EM_CACHE: join(layout.binaryen, "emscripten", "cache"),
   EMSDK_NODE: nodeExe,
   PYTHONIOENCODING: "utf-8",
 };
