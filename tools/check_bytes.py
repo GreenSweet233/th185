@@ -96,6 +96,70 @@ def compile_cpp(source_text, flags, workdir):
     return obj, ""
 
 
+
+
+def parse_coff_relocs(path, section_bytes):
+    """解析 COFF 重定位表，返回需要屏蔽的字节区间列表。
+
+    ## 为什么需要这个
+
+    `call rel32` 在未链接的 .obj 里位移是占位值（0 或 -5），只有链接后才是真实值。
+    但我们比对的是**单个函数**，不需要真的链接 —— 只需知道「这 4 个字节是重定位占位，
+    不能参与比对」，把它们排除掉即可。
+
+    ## 返回
+
+    区间列表 [(start, size), ...]，size 由重定位类型决定：
+      REL32 / REL32_1..5  -> 4 字节
+      ADDR32              -> 4 字节
+      其他                -> 4 字节（保守）
+    """
+    raw = open(path, "rb").read()
+    _machine, nsec, _tds, symptr, nsym, optsz, _chars = struct.unpack_from(
+        "<HHIIIHH", raw, 0)
+    off = 20 + optsz
+    ranges = []
+    for _ in range(nsec):
+        s = raw[off:off+40]
+        if len(s) < 40:
+            break
+        _vs, _va, rs, _rp, relp, _lnp, nrel, _nln, _fl = struct.unpack_from(
+            "<IIIIIIHHI", s, 8)
+        # 只关心本次实际取用的那段代码所在节（size 匹配的）
+        if rs == len(section_bytes) and nrel > 0:
+            for k in range(nrel):
+                ro = relp + k * 10
+                try:
+                    va, _symidx, rtype = struct.unpack_from("<IIH", raw, ro)
+                except struct.error:
+                    break
+                ranges.append((va, 4))
+        off += 40
+    return ranges
+
+
+def bytes_match_with_relocs(ours, orig, relocs):
+    """比较两段字节，忽略重定位占位区。
+
+    返回 (是否相等, 差异描述)。
+    """
+    if len(ours) != len(orig):
+        return False, "length differs: %d vs %d" % (len(ours), len(orig))
+    masked = bytearray(len(ours))
+    for start, size in relocs:
+        for k in range(size):
+            if start + k < len(masked):
+                masked[start + k] = 1
+    diffs = []
+    for idx in range(len(ours)):
+        if masked[idx]:
+            continue
+        if ours[idx] != orig[idx]:
+            diffs.append(idx)
+    if not diffs:
+        return True, "%d 字节中 %d 字节是重定位占位（已忽略）" % (len(ours), sum(masked))
+    return False, "非重定位区差异在: %s" % diffs[:8]
+
 def original_bytes(sections, image_base, va, size):
     for name, s in sections.items():
         lo = image_base + s["va"]
@@ -110,7 +174,9 @@ def main():
     ap.add_argument("--root", default=os.path.dirname(os.path.dirname(
         os.path.abspath(__file__))))
     ap.add_argument("--exe", default=None)
-    ap.add_argument("--flags", default="/MT /O2 /GS-")
+    # ★ 默认值必须含 /Oy- —— 原版多数函数保留栈帧，而 /O2 默认省略。
+    #   见 evidence/P1-flags-breakthrough.json
+    ap.add_argument("--flags", default="/MT /O2 /GS- /Oy-")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--write-dashboard", action="store_true")
     args = ap.parse_args()
@@ -139,7 +205,7 @@ def main():
     flags = args.flags.split()
     results = []
 
-    # 每个条目：(标签, 地址, 源文件, 函数名, 额外前缀)
+    # 每个条目：(标签, 地址, 源文件, 函数名, 额外前缀, 额外flags)
     # 额外前缀用于把 __fastcall 模拟的声明也带进去
     targets = [
         ("0x00402A50", 0x00402A50, "Timer.cpp", "tick_timer", True),
@@ -175,9 +241,12 @@ def main():
         ("0x00431300", 0x00431300, "FieldAccess.cpp", "get_field_50", True),
         ("0x00431260", 0x00431260, "FieldAccess.cpp", "get_field_19260", True),
         ("0x0040A0E0", 0x0040A0E0, "FieldAccess.cpp", "get_field_47FAC", True),
+        # ★ 这个函数需要 /Os（生成 pop ecx 而非 add esp,4）
+        ("0x0048F711", 0x0048F711, "FieldAccess.cpp", "forward_to_cpu_probe", False, "/MT /Os /GS- /Oy-"),
     ]
 
-    for label, va, src_name, fn_name, need_this in targets:
+    for label, va, src_name, fn_name, need_this, *rest in targets:
+        extra_flags = rest[0] if rest else None
         lo, hi = cw.function_extent(label, insns)
         if lo is None:
             results.append({"func": label, "status": "ERROR", "error": "no extent"})
@@ -289,23 +358,31 @@ def main():
         if sys_includes:
             body = "\n".join(sys_includes) + "\n" + body
 
+        use_flags = (extra_flags.split() if extra_flags else flags)
         with tempfile.TemporaryDirectory() as td:
-            obj, err = compile_cpp(body, flags, td)
+            obj, err = compile_cpp(body, use_flags, td)
             if not obj:
                 results.append({"func": label, "status": "COMPILE_ERROR", "error": err[:500]})
                 continue
             parsed = parse_coff_text(obj)
+            # relocation 表也要在临时目录销毁前读取
+            _tmp_relocs = parse_coff_relocs(obj, parsed[2]) if parsed else []
             if not parsed:
                 results.append({"func": label, "status": "COFF_ERROR"})
                 continue
             _, _, code = parsed
 
-        same = (code == orig)
+        # ★ 用 relocation 感知的比较：call rel32 在未链接的 .obj 里是占位值，
+        #   不能参与比对。这部分字节在链接时才被填成真实位移。
+        relocs = _tmp_relocs
+        same, detail = bytes_match_with_relocs(code, orig, relocs)
         entry = {
             "func": label,
             "status": "MATCH" if same else "DIFF",
             "orig_len": len(orig),
             "ours_len": len(code),
+            "relocs": len(relocs),
+            "detail": detail,
         }
         if not same:
             n = 0
@@ -316,9 +393,10 @@ def main():
             entry["ours"] = code.hex()
         results.append(entry)
 
-        print("  %-14s %-8s  orig=%d ours=%d %s" % (
+        shown = (" [%s]" % extra_flags) if extra_flags else ""
+        print("  %-14s %-8s  orig=%d ours=%d %s%s" % (
             label, entry["status"], len(orig), len(code),
-            "" if same else "(prefix %d)" % entry.get("common_prefix", 0)))
+            "" if same else "(prefix %d)" % entry.get("common_prefix", 0), shown))
 
     print()
     n_match = sum(1 for r in results if r["status"] == "MATCH")

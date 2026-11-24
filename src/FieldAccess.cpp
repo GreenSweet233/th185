@@ -2,6 +2,10 @@
 
 #include <xmmintrin.h>
 
+// 被 0x0048F711 调用的 CPU 特性探测函数（含 cpuid，473 字节）。
+// 这里只声明不实现 —— P1 比对时 rel32 是占位值，需要用 relocation 处理。
+extern "C" void th185_CpuFeatureProbe(int features);
+
 namespace th185 {
 
 namespace {
@@ -225,6 +229,23 @@ int __fastcall get_field_19260(void* self, void* unused_edx) {
 int __fastcall get_field_47FAC(void* self, void* unused_edx) {
     (void)unused_edx;
     return *INT_AT(self, kField47FACOffset);
+}
+
+// ===========================================================================
+// 第五批：含 call 的包装器
+// ===========================================================================
+
+// --- 0x0048F711：转发给 CPU 特性探测函数（被 202 个函数调用）---
+//
+// 字节: 558bec ff7508 e863090000 59 5d c3
+//   = push ebp / mov ebp,esp / push [ebp+8] / call 0x49007F / pop ecx / pop ebp / ret
+//
+// ★ 两个关键发现：
+//   ① 必须是 /Os（优化体积）而非 /O2 —— 只有 /Os 生成 `pop ecx` 而非 `add esp,4`
+//   ② 必须是 cdecl 且返回 void —— 末尾是 c3(ret) 而非 c20400(ret 4)
+////@witness func=0x0048F711 kind=cdecl
+void __cdecl forward_to_cpu_probe(int features) {
+    th185_CpuFeatureProbe(features);
 }
 
 }  // namespace th185
