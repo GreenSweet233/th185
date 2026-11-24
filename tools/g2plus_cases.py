@@ -197,9 +197,181 @@ def verify_timer_tick(Runner, HEAP_BASE, sections, image_base):
         out.append(e)
     return out
 
+def verify_ret_zero(Runner, HEAP_BASE, sections, image_base):
+    """0x00404C20（13 个同形状）：空函数 `ret 0`。
+
+    ret 0 = stdcall/thiscall 带 0 字节参数清理，函数体为空。
+    """
+    FUNC = 0x00404C20
+    obj = bytearray(b"\xAA" * 16)
+    r = Runner(sections, image_base)
+    eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj)
+    if err:
+        return [{"case": "empty body, no side effect", "status": "ERROR", "error": err}]
+    ok = (after == bytes(obj))
+    e = {"case": "empty body, no side effect", "status": "PASS" if ok else "FAIL"}
+    if not ok:
+        e["binary"] = after.hex()
+        e["expected"] = bytes(obj).hex()
+    return [e]
+
+
+def verify_return_zero(Runner, HEAP_BASE, sections, image_base):
+    """0x004903B9（4 个同形状）：`xor eax,eax; ret` = return 0。"""
+    FUNC = 0x004903B9
+    obj = bytearray(8)
+    r = Runner(sections, image_base)
+    eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj)
+    if err:
+        return [{"case": "returns 0", "status": "ERROR", "error": err}]
+    ok = (eax == 0)
+    e = {"case": "returns 0", "status": "PASS" if ok else "FAIL"}
+    if not ok:
+        e["binary"] = "eax=0x%08X" % eax
+        e["expected"] = "eax=0x00000000"
+    return [e]
+
+
+def verify_encode_value(Runner, HEAP_BASE, sections, image_base):
+    """0x0049DC88（5 个同形状）：MSVC /GS 指针编码。
+
+        mov  eax, [0x4C8A4C]     ; __security_cookie
+        and  eax, 0x1f
+        push 0x20 / pop ecx      ; ecx = 32
+        sub  ecx, eax            ; ecx = 32 - (cookie & 31)
+        mov  eax, [ebp+8]        ; value
+        ror  eax, cl
+        xor  eax, [0x4C8A4C]
+        ret
+
+    ★ 关键：x86 的 ror 对 32 位操作数把 CL 按 5 位掩码。
+      所以 shift=32 时实际旋转 0 次，等价于不旋转。
+      这正是我上一轮靠人工推导修掉 UB 的那处 —— 现在实测验证。
+
+    实测 cookie = 0xBB40E64E，cookie&31 = 14，shift = 18（不是 32）。
+    但为覆盖边界，本测试会额外验证 shift=32 的等价公式。
+    """
+    FUNC = 0x0049DC88
+    COOKIE_ADDR = 0x004C8A4C
+
+    # 读 cookie（镜像已映射，可直接 mem_read）
+    r0 = Runner(sections, image_base)
+    cookie = struct.unpack('<I', r0.uc.mem_read(COOKIE_ADDR, 4))[0]
+    shift = (32 - (cookie & 0x1F)) & 0x1F
+
+    out = []
+
+    def ror32(v, n):
+        n &= 0x1F
+        if n == 0:
+            return v & 0xFFFFFFFF
+        return ((v >> n) | (v << (32 - n))) & 0xFFFFFFFF
+
+    # 用例 1：用真实 cookie（实测 0xBB40E64E，shift=18）
+    # 用例 2-4：覆盖 cookie 构造 shift=32 的边界
+    #
+    # ★ shift_raw = 32 - (cookie & 31)，当 cookie & 31 == 0 时 shift_raw = 32。
+    #   C++ 里 `v >> 32` 是 UB（移位量 >= 类型宽度），但 x86 的 ror 把 CL 掩码到 5 位，
+    #   所以硬件行为是「旋转 0 次」。这正是我上一轮靠人工推导修掉 UB 的地方，
+    #   现在用实测固化下来。
+    scenarios = [
+        ("real cookie", None),
+        ("cookie &31==0 (shift_raw=32)", 0xBB40E640),
+        ("cookie==0 (shift_raw=32)", 0x00000000),
+        ("cookie==0xFFFFFFFF (shift=1)", 0xFFFFFFFF),
+    ]
+
+    for scen_name, cookie_override in scenarios:
+        for val in (0, 1, 0x12345678, 0xFFFFFFFF, 0xDEADBEEF):
+            obj = bytearray(4)
+            r = Runner(sections, image_base)
+            if cookie_override is not None:
+                r.uc.mem_write(COOKIE_ADDR, struct.pack("<I", cookie_override))
+            eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj, args=[val])
+            name = "%s v=0x%08X" % (scen_name, val)
+            if err:
+                out.append({"case": name, "status": "ERROR", "error": err})
+                continue
+
+            eff_cookie = cookie_override if cookie_override is not None else cookie
+            raw_shift = 32 - (eff_cookie & 0x1F)
+            exp = ror32(val, raw_shift) ^ eff_cookie
+            ok = (eax == exp)
+            e = {"case": name, "status": "PASS" if ok else "FAIL"}
+            if not ok:
+                e["binary"] = "eax=0x%08X (cookie=0x%08X raw_shift=%d)" % (eax, eff_cookie, raw_shift)
+                e["expected"] = "eax=0x%08X (cookie=0x%08X raw_shift=%d)" % (exp, eff_cookie, raw_shift)
+            out.append(e)
+    return out
+
+
+def verify_read_first_float(Runner, HEAP_BASE, sections, image_base):
+    """0x00404B60（2 个）：`movss xmm0,[ecx]; ret` = 读首字段为 float。"""
+    FUNC = 0x00404B60
+    out = []
+    for fval in (0.0, 1.5, -3.25, 1e10):
+        obj = bytearray(8)
+        raw = struct.pack('<f', fval)
+        obj[0:4] = raw
+        r = Runner(sections, image_base)
+        eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj)
+        name = "read float %.2f" % fval
+        if err:
+            out.append({"case": name, "status": "ERROR", "error": err})
+            continue
+        # xmm0 读不到，但函数无副作用，验证内存不变 + 不崩溃
+        ok = (after == bytes(obj))
+        out.append({"case": name, "status": "PASS" if ok else "FAIL"})
+    return out
+
+
+def verify_read_first_u32(Runner, HEAP_BASE, sections, image_base):
+    """0x0041FA20（2 个）：`mov eax,[ecx]; ret` = 读首字段为 u32。"""
+    FUNC = 0x0041FA20
+    out = []
+    for val in (0, 0x12345678, 0xFFFFFFFF):
+        obj = bytearray(8)
+        struct.pack_into('<I', obj, 0, val)
+        r = Runner(sections, image_base)
+        eax, after, err = r.run_leaf(FUNC, HEAP_BASE + 0x1000, obj)
+        name = "read u32 0x%08X" % val
+        if err:
+            out.append({"case": name, "status": "ERROR", "error": err})
+            continue
+        ok = (eax == val)
+        e = {"case": name, "status": "PASS" if ok else "FAIL"}
+        if not ok:
+            e["binary"] = "eax=0x%08X" % eax
+            e["expected"] = "eax=0x%08X" % val
+        out.append(e)
+    return out
+
+
+def verify_return_this(Runner, HEAP_BASE, sections, image_base):
+    """0x00404AA0（2 个）：`mov eax,ecx; ret` = 返回 this。"""
+    FUNC = 0x00404AA0
+    obj = bytearray(8)
+    r = Runner(sections, image_base)
+    this_va = HEAP_BASE + 0x1000
+    eax, after, err = r.run_leaf(FUNC, this_va, obj)
+    if err:
+        return [{"case": "returns this", "status": "ERROR", "error": err}]
+    ok = (eax == this_va)
+    e = {"case": "returns this", "status": "PASS" if ok else "FAIL"}
+    if not ok:
+        e["binary"] = "eax=0x%08X" % eax
+        e["expected"] = "eax=0x%08X" % this_va
+    return [e]
+
 # 注册表：(名称, 函数地址, 验证器)
 CASES = [
     ("0x00402A50 timer tick", 0x00402A50, "verify_timer_tick"),
+    ("0x00404C20 ret 0 (empty)", 0x00404C20, "verify_ret_zero"),
+    ("0x004903B9 return 0", 0x004903B9, "verify_return_zero"),
+    ("0x0049DC88 encode_value (/GS)", 0x0049DC88, "verify_encode_value"),
+    ("0x00404B60 read_first_float", 0x00404B60, "verify_read_first_float"),
+    ("0x0041FA20 read_first_u32", 0x0041FA20, "verify_read_first_u32"),
+    ("0x00404AA0 return_this", 0x00404AA0, "verify_return_this"),
     ("0x00404B70 polar (circle)", 0x00404B70, "verify_polar_to_vec2"),
     ("0x00417750 polar (scaled)", 0x00417750, "verify_polar_scaled"),
     ("0x00405830 copy_vec3", 0x00405830, "verify_copy_vec3"),
