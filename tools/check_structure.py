@@ -456,6 +456,9 @@ def main():
                 print("    branch : src=%d bin=%d tol=%d %s"
                       % (bc["source"], bc["binary_cond_jumps"], bc["tolerance"],
                          "OK" if bc["ok"] else "EXCESS"))
+            abi = (s or {}).get("abi_tokens_excluded", 0)
+            if abi:
+                print("    ABI    : %d token 已从统计中扣除（见 ledger/violations.md V2）" % abi)
             tr = e.get("token_ratio")
             if tr:
                 print("    ratio  : %.2f (max %.1f) %s"
