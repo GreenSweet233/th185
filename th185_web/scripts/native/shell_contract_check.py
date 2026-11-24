@@ -121,9 +121,41 @@ def selftest() -> int:
                 print('       ' + item)
             failures += 1
 
-    # 4. HEAPU8 must be exported: the shell reads pixels through it.
+    # 4. Every Emscripten RUNTIME method the shell touches must be exported.
+    #
+    # The old check only asked "is HEAPU8 in the build file", which is a string
+    # search: it passed while UTF8ToString -- which the shell calls in three
+    # places, including populatePickers() on the first start -- was absent from
+    # EXPORTED_RUNTIME_METHODS. On the real artifact that threw
+    #   TypeError: core.UTF8ToString is not a function
+    # inside prepare(), so the game never started in a browser at all.
+    #
+    # The property that actually has to hold is "the shell's core.X accesses
+    # are a subset of what the app link exports", so derive both sides.
     build = read(ROOT / 'scripts' / 'build-cpp.mjs')
-    ok = 'HEAPU8' in build
+    # The app link is the one with MODULARIZE + ENVIRONMENT=web,node; take the
+    # LAST EXPORTED_RUNTIME_METHODS that is not the node-harness one, which is
+    # identified by carrying NODEFS.
+    runtime_lists = re.findall(r'-sEXPORTED_RUNTIME_METHODS=([^"\']+)', build)
+    app_methods: set[str] = set()
+    for entry in runtime_lists:
+        names = {n.strip() for n in entry.split(',') if n.strip()}
+        if 'NODEFS' not in names:
+            app_methods = names
+    used_runtime = set(re.findall(r'core\.([A-Z][A-Za-z0-9_]*)\b', shell))
+    # _th185_* are KEEPALIVE C exports, checked separately; HEAP* are views the
+    # runtime always exposes but that still belong in the list for clarity.
+    used_runtime = {n for n in used_runtime if not n.startswith('_')}
+    missing_runtime = sorted(used_runtime - app_methods)
+    ok = not missing_runtime
+    print('[%s] every runtime method the shell uses is exported (%d used, %d missing)'
+          % ('PASS' if ok else 'FAIL', len(used_runtime), len(missing_runtime)))
+    if not ok:
+        for item in missing_runtime:
+            print('       ' + item)
+        failures += 1
+
+    ok = 'HEAPU8' in app_methods
     print('[%s] HEAPU8 is in EXPORTED_RUNTIME_METHODS'
           % ('PASS' if ok else 'FAIL'))
     if not ok:

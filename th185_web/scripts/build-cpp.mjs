@@ -340,7 +340,24 @@ async function main() {
         "-sSTACK_SIZE=5242880",
         "-sDEFAULT_TO_CXX=1",
         "-sFORCE_FILESYSTEM=1",
-        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8,HEAPF32",
+        // UTF8ToString is REQUIRED: three exports return `const char*`
+        // (th185_scene_name / th185_difficulty_name / th185_error) and the
+        // shell decodes them with core.UTF8ToString(). It was never in this
+        // list, so the built module had no such member.
+        //
+        // Consequence, measured on the real artifact: populatePickers() -- the
+        // first thing prepare() does after initialize() -- threw
+        // "core.UTF8ToString is not a function", prepare() rejected, fail()
+        // ran, and **the game never started at all** in a browser.
+        //
+        // Nothing caught it because shell_contract_check.py only verified the
+        // _th185_* function exports and the presence of HEAPU8; UTF8ToString
+        // was in neither list. The probes missed it because probe-input.mjs
+        // prints raw pointers and never decodes a string.
+        //
+        // EXPORTED_RUNTIME_METHODS is checked against the shell's real usage
+        // now (see the "runtime methods" section of shell_contract_check.py).
+        "-sEXPORTED_RUNTIME_METHODS=FS,cwrap,HEAPU8,HEAPF32,UTF8ToString",
         // Every th185_* function is EMSCRIPTEN_KEEPALIVE, so the list is
         // generated from Exports.cpp rather than hand-maintained.
         //
